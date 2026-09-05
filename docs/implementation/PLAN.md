@@ -124,7 +124,8 @@ WP-018 quedó integrado mediante squash merge de PR #24 sobre el candidato final
 | WP-074 | Consolidar Apoyo Técnico en una única proyección SSE para evitar starvation HTTP/1.1 | EN_CURSO | WP-056, WP-071 | claude |
 | WP-075 | Capturar exclusivamente los numpads mapeados para que no escriban en el escritorio del moderador | PENDIENTE | WP-019, WP-020 | claude |
 | WP-076 | Alinear destino a la izquierda y acciones a la derecha en mensajes precargados | PENDIENTE | WP-070 | claude |
-| WP-077 | Renombrar repositorios, código y referencias vigentes de Botonera2 a SIS-Leg | PENDIENTE | WP-074, WP-075, WP-076 | claude |
+| WP-078 | Registrar mensajes al Recinto como eventos principales INICIO/FIN | PENDIENTE | WP-055, WP-056 | claude |
+| WP-077 | Renombrar repositorios, código y referencias vigentes de Botonera2 a SIS-Leg | PENDIENTE | WP-074, WP-075, WP-076, WP-078 | claude |
 
 WP-032 quedó integrado mediante squash merge de PR #28 sobre el candidato `ae0b5fa8e2c36b5a00f1711650e72e575d5e597d`, después de CI candidata #192 / run `32857548560` verde 6/6 y revisión independiente con OpenCode + DeepSeek V4 Pro, que concluyó `LISTA PARA INTEGRAR` con cero hallazgos BLOQUEANTES, IMPORTANTES y MENORES. El squash produjo `8e2cf38c0ddd4fd9a003df0754497253fcf710ff` en `main`. La CI post-merge #193 / run `32861046565` terminó `success` 6/6 y `Backend · pruebas` completó `uv run pytest` normalmente, confirmando que la condición de carrera de cancelación que había bloqueado el gate post-merge de WP-021 quedó corregida.
 
@@ -447,3 +448,6 @@ HUMAN_GATE aprobó durante la cuarta ronda una mejora operacional adicional para
 
 
 HUMAN_GATE agregó dos trabajos a la cuarta ronda. WP-076 ajusta únicamente la fila de acciones de los mensajes precargados: destino alineado a la izquierda y los tres botones alineados a la derecha, conservando una sola línea en 1366×768 y 1920×1080. WP-077 establece el cambio de identidad oficial a SIS-Leg y se reserva como último corte de la secuencia: renombra Product/Control a martinebene/SIS-Leg y martinebene/SIS-Leg-Control, normaliza identificadores técnicos y elimina referencias activas al nombre legado sin reescribir historia Git ni handoffs inmutables. Ambos quedan PENDIENTE; WP-074 continúa activo y rige max_concurrency=1. WP-029 permanece BLOQUEADO.
+
+
+HUMAN_GATE agregó WP-078 a la cuarta ronda: todo aviso técnico que alcance Recinto debe registrar un marcador principal L3 `[EVENTO] INICIO` con el texto exacto al aparecer y un `[EVENTO] FIN` con el mismo texto al dejar de mostrarse. El cierre aplica a cancelación, reemplazo y vencimiento automático, con idempotencia por período/aviso y sin convertir estos marcadores en eventos públicos adicionales del Recinto. Los registros técnicos L2 existentes pueden conservarse; el marcador principal no debe identificarse como mensaje del operador ni Apoyo Técnico. WP-078 queda PENDIENTE. WP-077 continúa reservado como último corte de identidad y pasa a depender también de WP-078. WP-074 sigue activo; max_concurrency=1; WP-029 permanece BLOQUEADO.
