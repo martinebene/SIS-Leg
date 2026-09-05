@@ -122,6 +122,7 @@ WP-018 quedó integrado mediante squash merge de PR #24 sobre el candidato final
 |---|---|---|---|---|
 | WP-032 | Corregir pérdida de cancelación en fronteras temporales y estabilizar teardown/CI del backend | INTEGRADO | WP-017 | - |
 | WP-074 | Consolidar Apoyo Técnico en una única proyección SSE para evitar starvation HTTP/1.1 | EN_CURSO | WP-056, WP-071 | claude |
+| WP-075 | Capturar exclusivamente los numpads mapeados para que no escriban en el escritorio del moderador | PENDIENTE | WP-019, WP-020 | claude |
 
 WP-032 quedó integrado mediante squash merge de PR #28 sobre el candidato `ae0b5fa8e2c36b5a00f1711650e72e575d5e597d`, después de CI candidata #192 / run `32857548560` verde 6/6 y revisión independiente con OpenCode + DeepSeek V4 Pro, que concluyó `LISTA PARA INTEGRAR` con cero hallazgos BLOQUEANTES, IMPORTANTES y MENORES. El squash produjo `8e2cf38c0ddd4fd9a003df0754497253fcf710ff` en `main`. La CI post-merge #193 / run `32861046565` terminó `success` 6/6 y `Backend · pruebas` completó `uv run pytest` normalmente, confirmando que la condición de carrera de cancelación que había bloqueado el gate post-merge de WP-021 quedó corregida.
 
@@ -438,3 +439,6 @@ Con WP-069, WP-073, WP-070, WP-072 y WP-071 ya cerrados y verificados, la campa�
 
 
 HUMAN_GATE registró durante la cuarta ronda de prueba humana un bloqueo reproducible al operar las cuatro superficies en un mismo navegador/origen HTTP/1.1: seis conexiones SSE persistentes agotaban el cupo efectivo del navegador y los comandos REST quedaban esperando aunque backend y proxy siguieran saludables. HUMAN_GATE aprobó expresamente la alternativa de consolidar Apoyo Técnico en una única proyección/stream. Se crea y activa WP-074 con Claude Code / Claude Opus 5 (High) como IMPLEMENTER y Antigravity/AGY / Gemini 3.8 Flash (High) como REVIEWER independiente. La corrección debe reducir el escenario a cuatro streams persistentes, preservar remapeo, los quince sonidos y la frontera de secreto, y agregar E2E de regresión con las cuatro superficies abiertas. Navegador con max_concurrency=1. La cuarta ronda continúa abierta para otros hallazgos y WP-029 permanece BLOQUEADO.
+
+
+HUMAN_GATE aprobó durante la cuarta ronda una mejora operacional adicional para conservar la topología de una sola PC: los numpads de banca mapeados deben quedar bajo captura exclusiva de Device Bridge mediante EVIOCGRAB, evitando que sus pulsaciones alcancen campos editables u otras aplicaciones del escritorio. Se define WP-075 como siguiente trabajo independiente, con Claude Code / Claude Opus 5 (High) previsto como IMPLEMENTER y Antigravity/AGY / Gemini 3.8 Flash (High) como REVIEWER. No se activa mientras WP-074 continúe en curso por la política vigente de max_concurrency=1. El frontend no bloqueará Numpad por JavaScript porque el navegador no distingue qué teclado físico originó la pulsación y podría afectar al operador. WP-029 permanece BLOQUEADO.
