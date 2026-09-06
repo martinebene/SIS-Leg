@@ -121,7 +121,7 @@ WP-018 quedó integrado mediante squash merge de PR #24 sobre el candidato final
 | WP | Objetivo | Estado | Depende de | Agente |
 |---|---|---|---|---|
 | WP-032 | Corregir pérdida de cancelación en fronteras temporales y estabilizar teardown/CI del backend | INTEGRADO | WP-017 | - |
-| WP-074 | Consolidar Apoyo Técnico en una única proyección SSE para evitar starvation HTTP/1.1 | EN_CURSO | WP-056, WP-071 | claude |
+| WP-074 | Consolidar Apoyo Técnico en una única proyección SSE para evitar starvation HTTP/1.1 | INTEGRADO | WP-056, WP-071 | - |
 | WP-075 | Capturar exclusivamente los numpads mapeados para que no escriban en el escritorio del moderador | PENDIENTE | WP-019, WP-020 | claude |
 | WP-076 | Alinear destino a la izquierda y acciones a la derecha en mensajes precargados | PENDIENTE | WP-070 | claude |
 | WP-078 | Registrar mensajes al Recinto como eventos principales INICIO/FIN | PENDIENTE | WP-055, WP-056 | claude |
@@ -451,3 +451,6 @@ HUMAN_GATE agregó dos trabajos a la cuarta ronda. WP-076 ajusta únicamente la 
 
 
 HUMAN_GATE agregó WP-078 a la cuarta ronda: todo aviso técnico que alcance Recinto debe registrar un marcador principal L3 `[EVENTO] INICIO` con el texto exacto al aparecer y un `[EVENTO] FIN` con el mismo texto al dejar de mostrarse. El cierre aplica a cancelación, reemplazo y vencimiento automático, con idempotencia por período/aviso y sin convertir estos marcadores en eventos públicos adicionales del Recinto. Los registros técnicos L2 existentes pueden conservarse; el marcador principal no debe identificarse como mensaje del operador ni Apoyo Técnico. WP-078 queda PENDIENTE. WP-077 continúa reservado como último corte de identidad y pasa a depender también de WP-078. WP-074 sigue activo; max_concurrency=1; WP-029 permanece BLOQUEADO.
+
+
+WP-074 quedó integrado mediante PR #83 sobre el candidato `36206974ff13f2b08e32801e6119e23d63a06b85` / tree `ac0aa70f1a61205c44fe63c92c2ef96ceb00e060`, implementado por Claude Code / Claude Opus 5 (High) y revisado independientemente por Antigravity/AGY / Gemini 3.8 Flash (High), con 0 BLOQUEANTES, 0 IMPORTANTES y 0 MENORES y veredicto `LISTA PARA INTEGRAR`. La auditoría sustantiva pre-merge del ORCHESTRATOR concluyó `APROBADO_PARA_MERGE`. El squash `3fa88d83190aec55ac1b7c95133502c2028dc959` conserva exactamente el tree revisado. CI candidata #478 y CI post-merge #479 terminaron `success` 8/8. Queda pendiente únicamente el cleanup verificable del worktree/rama de WP-074 antes de activar WP-075. WP-029 permanece BLOQUEADO.
