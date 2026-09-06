@@ -27,8 +27,9 @@ DESCRIPCION_SSE_RECINTO = (
 )
 DESCRIPCION_SSE_TECNICO = (
     "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoTecnico completo "
-    "con transmisión, avisos de ambos destinos, biblioteca y eventos seguros; `id` "
-    "coincide con su revision."
+    "con transmisión, avisos de ambos destinos, biblioteca, eventos seguros, la allowlist "
+    "de remapeo y la subproyección de sonorización; `id` coincide con su revision. Es el "
+    "único stream persistente que necesita el puesto de Apoyo Técnico."
 )
 
 
@@ -133,6 +134,11 @@ async def transmitir_estado_tecnico(solicitud: Request) -> StreamingResponse:
     que garantiza que una cuenta regresiva que vence, o un aviso que expira,
     despierte a la vez a Moderación, al Recinto y al puesto técnico sin que
     ninguno pregunte periódicamente.
+
+    Desde WP-074 éste es además el **único** stream que abre la SPA técnica.
+    Antes abría también los de Moderación y Recinto, y con las cuatro
+    superficies de SISLeg abiertas bajo el mismo origen HTTP/1.1 las seis
+    conexiones persistentes resultantes dejaban sin cupo a los comandos REST.
     """
 
     recursos = obtener_recursos_aplicacion(solicitud.app)

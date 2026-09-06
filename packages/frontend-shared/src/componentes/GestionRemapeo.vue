@@ -7,12 +7,18 @@
  * Compartir el componente —en lugar de copiarlo— es lo que garantiza que las dos
  * pantallas usen las mismas capacidades, los mismos comandos y los mismos textos: una
  * corrección futura no puede quedar aplicada en una sola interfaz. Sigue siendo la
- * única superficie de remapeo del proyecto y no incorpora reglas propias; lee
- * `EstadoModeracion.remapeo` y ejecuta `ClienteModeracion`, igual que antes.
+ * única superficie de remapeo del proyecto y no incorpora reglas propias.
+ *
+ * WP-074 reemplaza sus dos dependencias concretas por contratos mínimos: en lugar de exigir
+ * un `EstadoModeracion` y un `ClienteModeracion`, pide sólo lo que lee y lo que ejecuta.
+ * El motivo es que Apoyo Técnico dejó de observar la proyección de Moderación —esa
+ * suscripción de más agotaba las conexiones HTTP/1.1 del navegador— y ahora recibe la misma
+ * información dentro de su propio estado. El comportamiento no cambió: mismos campos,
+ * mismos comandos, mismas capacidades.
  *
  * La selección de banca y del modo de persistencia son borradores locales del
  * operador. La operación activa, sus fingerprints y su etapa se reconstruyen
- * siempre desde `EstadoModeracion.remapeo`; ningún 201/204 modifica ese estado
+ * siempre desde `estado.remapeo`; ningún 201/204 modifica ese estado
  * de forma optimista ni conecta al navegador con el device-bridge.
  *
  * WP-051 retira los tres acuses de tránsito que este panel dejaba fijos en pantalla
@@ -25,16 +31,23 @@
  */
 
 import { computed, ref, watch } from 'vue'
-import type { ClienteModeracion, EstadoModeracion } from '@botonera2/api-client'
+import type { ClienteRemapeo } from '@botonera2/api-client'
 import { extraerMensajeError } from '../errores'
 import { traducirMotivos } from '../motivos'
+import type { EstadoRemapeoCompartido } from '../contrato_remapeo'
 
 const props = defineProps<{
-  /** Snapshot completo y autoritativo de Moderación. */
-  estado: EstadoModeracion | null
-  /** Cliente REST/SSE compartido; el browser solo conoce esta frontera. */
-  cliente: ClienteModeracion
-  /** Estado técnico confirmado del stream SSE. */
+  /**
+   * Estado autoritativo mínimo del remapeo (WP-074).
+   *
+   * Moderación pasa acá su `EstadoModeracion` completo y Apoyo Técnico pasa la allowlist
+   * `EstadoTecnico.remapeo`: las dos satisfacen el mismo contrato, así que el componente no
+   * distingue de qué pantalla viene ni necesita una segunda suscripción para funcionar.
+   */
+  estado: EstadoRemapeoCompartido | null
+  /** Comandos REST de remapeo; el browser solo conoce esta frontera y nunca al bridge. */
+  cliente: ClienteRemapeo
+  /** Estado técnico confirmado del stream SSE de la pantalla que lo aloja. */
   conectado: boolean
 }>()
 

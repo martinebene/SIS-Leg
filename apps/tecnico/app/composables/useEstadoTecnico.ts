@@ -1,41 +1,45 @@
 /**
  * Frontera reactiva de sincronización del puesto de Apoyo Técnico (WP-056, ampliada por
- * WP-071).
+ * WP-071 y consolidada por WP-074).
  *
- * El puesto técnico observa **tres** proyecciones autoritativas ya existentes y no inventa
- * ninguna cuarta:
+ * ## Una sola suscripción, y por qué importa tanto
  *
- * 1. `EstadoTecnico` (`/api/v1/estado/tecnico` + su stream SSE) trae transmisión, los
- *    avisos vigentes de ambos destinos, la biblioteca de mensajes precargados y la misma
- *    franja segura de eventos L1/L2/L3 que ve Moderación.
- * 2. `EstadoModeracion` (`/api/v1/estado/moderacion` + su stream SSE) trae el padrón, las
- *    capacidades y la operación de remapeo en curso.
- * 3. `EstadoRecinto` (`/api/v1/estado/recinto` + su stream SSE) trae, desde WP-071, lo
- *    único que faltaba para sonorizar: la proyección **pública** completa del recinto y su
- *    configuración de sonidos.
+ * Este puesto observa **una** proyección autoritativa: `EstadoTecnico`
+ * (`/api/v1/estado/tecnico` + `/api/v1/estado/tecnico/stream`). De ahí salen la
+ * transmisión, los avisos vigentes de ambos destinos, la biblioteca de mensajes
+ * precargados, la franja segura de eventos L1/L2/L3, la allowlist de remapeo y la
+ * subproyección con la que se sonoriza igual que el Recinto.
  *
- * ¿Por qué tres y no una sola ampliada?
+ * Hasta WP-074 eran **tres** suscripciones: además de la técnica, una al `EstadoModeracion`
+ * para el remapeo y otra al `EstadoRecinto` para el sonido. La razón de entonces era
+ * razonable —no duplicar en el backend una verdad que ya existía— pero tenía un costo que
+ * sólo se hizo visible con las cuatro superficies abiertas a la vez.
  *
- * El remapeo ya existe como contrato completo en la superficie de Moderación y WP-056
- * exige reutilizar "la semántica y API vigentes". La sonorización, por su parte, se deduce
- * comparando dos `EstadoRecinto` consecutivos: los quince eventos de WP-065 están
- * definidos sobre esa proyección y sobre ninguna otra. Agregar esos campos a
- * `EstadoTecnico` habría significado tocar el backend y crear una segunda proyección de la
- * misma verdad, que es exactamente lo que los WP prohíben. Con tres suscripciones el
- * backend sigue siendo la única autoridad y el sonido del puesto técnico es, por
- * construcción, el mismo que el del recinto.
+ * El navegador limita las conexiones simultáneas por origen sobre HTTP/1.1 (típicamente
+ * seis en Chromium). Un stream SSE es una conexión que no termina nunca. Con Moderación,
+ * Recinto y Simulador aportando una cada uno y este puesto aportando tres, se llegaba
+ * exactamente al límite: la séptima petición —cualquier comando REST, «Preparar sala» el
+ * primero— quedaba encolada en el navegador sin llegar jamás al backend. El operador lo
+ * vivía como una caída del servidor, aunque el servicio estuviera perfectamente sano.
  *
- * Ninguna de las tres suscripciones agrega polling: las tres son snapshot REST inicial +
- * SSE + reconexión con retroceso, resueltas dentro de `@botonera2/api-client`. La cuenta
- * regresiva tampoco lo agrega: su número lo deriva localmente `usePresentacionTecnica`.
+ * La corrección no es operativa («cerrá una pestaña») sino de contrato: el backend ahora
+ * transporta dentro de `EstadoTecnico` las dos porciones que faltaban, cada una recortada
+ * por su propia allowlist. Esta pantalla consume esas porciones y ya no abre streams
+ * ajenos, así que el escenario completo usa cuatro conexiones persistentes en lugar de
+ * seis y sobran conexiones para los comandos.
  *
- * Sobre el secreto de voto: esta pantalla nunca representa votos ni resultados. Del
- * snapshot de Moderación consume exclusivamente `remapeo`, `concejales` y `capacidades`;
- * los eventos los toma de la proyección técnica, que aplica la misma frontera de WP-052
- * resuelta en el servidor; y de `EstadoRecinto` consume la misma proyección pública que ya
- * ve cualquiera que mire la pantalla del salón, donde el secreto temporal del voto lo
- * garantiza el backend. Ninguna de las tres le da acceso a información que no fuera ya
- * legítimamente suya.
+ * ## Qué sigue igual
+ *
+ * - No hay polling: snapshot REST inicial, SSE y reconexión con retroceso, todo resuelto
+ *   dentro de `@botonera2/api-client`. La cuenta regresiva la deriva localmente
+ *   `usePresentacionTecnica`.
+ * - El remapeo sigue siendo el mismo componente compartido, con las mismas capacidades y
+ *   los mismos endpoints REST (`/api/v1/remapeos`). Lo único que cambió es que sus
+ *   comandos viajan por un cliente propio de remapeo, que no abre ninguna conexión
+ *   persistente.
+ * - El secreto de voto sigue garantizado en el servidor. Esta pantalla nunca representa
+ *   votos ni resultados, y la porción que usa para sonorizar contiene **menos** información
+ *   que la pantalla pública del salón: de la votación sólo su identidad y su recepción.
  */
 
 import {
@@ -49,14 +53,10 @@ import {
 } from 'vue'
 import {
   crearClienteApoyoTecnico,
-  crearClienteModeracion,
-  crearClienteRecinto,
+  crearClienteRemapeo,
   type ClienteApoyoTecnico,
-  type ClienteModeracion,
-  type ClienteRecinto,
+  type ClienteRemapeo,
   type ConfiguracionCliente,
-  type EstadoModeracion,
-  type EstadoRecinto,
   type EstadoTecnico,
   type Suscripcion,
 } from '@botonera2/api-client'
@@ -71,23 +71,11 @@ export type EstadoConexionTecnico = 'INICIAL' | 'CONECTADO' | 'RECONECTANDO' | '
 export interface SincronizacionTecnica {
   /** Último `EstadoTecnico` confirmado, o `null` antes del primer snapshot. */
   estado: Ref<EstadoTecnico | null>
-  /** Último `EstadoModeracion` confirmado; sólo alimenta el remapeo. */
-  estadoModeracion: Ref<EstadoModeracion | null>
-  /** Último `EstadoRecinto` confirmado; sólo alimenta la sonorización (WP-071). */
-  estadoRecinto: Ref<EstadoRecinto | null>
-  /** Estado técnico del stream principal (el del plano técnico). */
+  /** Estado del único stream de esta pantalla. */
   estadoConexion: Ref<EstadoConexionTecnico>
-  /**
-   * Estado del stream público, que la sonorización necesita por separado (WP-071).
-   *
-   * No gobierna ningún indicador visible. Su único uso es distinguir un hecho nuevo de una
-   * baseline: un `EstadoRecinto` adoptado sin el stream abierto describe historia y no debe
-   * reproducirse. Por eso importa el estado de **ese** canal y no el del canal técnico.
-   */
-  estadoConexionRecinto: Ref<EstadoConexionTecnico>
-  /** Último error de transporte observado en cualquiera de los tres canales. */
+  /** Último error de transporte observado. */
   ultimoError: Ref<unknown | null>
-  /** `true` sólo con el stream técnico plenamente abierto. */
+  /** `true` sólo con el stream plenamente abierto. */
   conectado: ComputedRef<boolean>
   /** `true` cuando se conserva un estado previo pero la conexión se interrumpió. */
   desactualizado: ComputedRef<boolean>
@@ -95,21 +83,23 @@ export interface SincronizacionTecnica {
   revision: ComputedRef<number | null>
   /** Cliente de comandos del plano técnico. */
   cliente: ClienteApoyoTecnico
-  /** Cliente de Moderación, usado exclusivamente por el remapeo compartido. */
-  clienteModeracion: ClienteModeracion
-  /** Cliente público del Recinto, de solo lectura, usado exclusivamente por el sonido. */
-  clienteRecinto: ClienteRecinto
-  /** Abre las tres suscripciones. Es idempotente. */
+  /**
+   * Cliente de los tres comandos de remapeo.
+   *
+   * Es sólo REST: no tiene `suscribirEstado` ni abre ningún `EventSource`, así que no
+   * consume ninguna de las conexiones persistentes que WP-074 vino a liberar.
+   */
+  clienteRemapeo: ClienteRemapeo
+  /** Abre la suscripción. Es idempotente. */
   iniciar: () => void
-  /** Cierra las tres suscripciones sin borrar el último estado confirmado. */
+  /** Cierra la suscripción sin borrar el último estado confirmado. */
   cancelar: () => void
 }
 
 /** Opciones de construcción; los clientes inyectables mantienen las pruebas deterministas. */
 export interface OpcionesSincronizacionTecnica {
   cliente?: ClienteApoyoTecnico
-  clienteModeracion?: ClienteModeracion
-  clienteRecinto?: ClienteRecinto
+  clienteRemapeo?: ClienteRemapeo
   configuracionCliente?: ConfiguracionCliente
   autoIniciar?: boolean
 }
@@ -126,21 +116,15 @@ export function crearSincronizacionTecnica(
 ): SincronizacionTecnica {
   const configuracion = opciones.configuracionCliente ?? {}
   const cliente = opciones.cliente ?? crearClienteApoyoTecnico(configuracion)
-  const clienteModeracion = opciones.clienteModeracion ?? crearClienteModeracion(configuracion)
-  const clienteRecinto = opciones.clienteRecinto ?? crearClienteRecinto(configuracion)
+  const clienteRemapeo = opciones.clienteRemapeo ?? crearClienteRemapeo(configuracion)
 
   // `shallowRef` alcanza porque cada snapshot se reemplaza entero y nunca se muta por
   // dentro: evita que Vue recorra en profundidad un objeto grande en cada revisión.
   const estado = shallowRef<EstadoTecnico | null>(null)
-  const estadoModeracion = shallowRef<EstadoModeracion | null>(null)
-  const estadoRecinto = shallowRef<EstadoRecinto | null>(null)
   const estadoConexion = ref<EstadoConexionTecnico>('INICIAL')
-  const estadoConexionRecinto = ref<EstadoConexionTecnico>('INICIAL')
   const ultimoError = ref<unknown | null>(null)
 
   let suscripcionTecnica: Suscripcion | null = null
-  let suscripcionModeracion: Suscripcion | null = null
-  let suscripcionRecinto: Suscripcion | null = null
 
   const conectado = computed(() => estadoConexion.value === 'CONECTADO')
   const desactualizado = computed(
@@ -149,109 +133,52 @@ export function crearSincronizacionTecnica(
   const revision = computed(() => estado.value?.revision ?? null)
 
   /**
-   * El indicador de conexión refleja el canal técnico, que es el que habilita los
-   * comandos de esta pantalla. Se distingue "sin conexión" de "reconectando" según haya
-   * o no un estado previo que el operador siga viendo.
+   * El indicador de conexión refleja el único canal de la pantalla, que es el que habilita
+   * sus comandos. Se distingue "sin conexión" de "reconectando" según haya o no un estado
+   * previo que el operador siga viendo.
    */
   function marcarDesconexion(): void {
     estadoConexion.value = estado.value === null ? 'DESCONECTADO' : 'RECONECTANDO'
   }
 
-  /**
-   * Mismo criterio para el canal público, con su propio estado previo.
-   *
-   * Se mantiene separado a propósito: la sonorización necesita saber si **ese** stream
-   * estaba abierto cuando llegó el estado, y mezclarlo con el canal técnico haría sonar
-   * historia después de una reconexión pública que el canal técnico nunca vio.
-   */
-  function marcarDesconexionRecinto(): void {
-    estadoConexionRecinto.value = estadoRecinto.value === null ? 'DESCONECTADO' : 'RECONECTANDO'
-  }
-
   function iniciar(): void {
-    if (suscripcionTecnica?.activa !== true) {
-      suscripcionTecnica = cliente.suscribirEstado({
-        alEstado: (nuevoEstado) => {
-          estado.value = nuevoEstado
-        },
-        alCambiarConexion: (estaConectado) => {
-          if (estaConectado) {
-            estadoConexion.value = 'CONECTADO'
-            ultimoError.value = null
-          } else {
-            marcarDesconexion()
-          }
-        },
-        alError: (error) => {
-          ultimoError.value = error
+    if (suscripcionTecnica?.activa === true) return
+    suscripcionTecnica = cliente.suscribirEstado({
+      alEstado: (nuevoEstado) => {
+        estado.value = nuevoEstado
+      },
+      alCambiarConexion: (estaConectado) => {
+        if (estaConectado) {
+          estadoConexion.value = 'CONECTADO'
+          ultimoError.value = null
+        } else {
           marcarDesconexion()
-        },
-      })
-    }
-
-    if (suscripcionModeracion?.activa !== true) {
-      suscripcionModeracion = clienteModeracion.suscribirEstado({
-        alEstado: (nuevoEstado) => {
-          estadoModeracion.value = nuevoEstado
-        },
-        // El canal de Moderación no gobierna el indicador de conexión de esta pantalla:
-        // si lo hiciera, un corte de ese único stream apagaría también los controles de
-        // transmisión y avisos, que dependen del canal técnico y podrían seguir vivos.
-        alError: (error) => {
-          ultimoError.value = error
-        },
-      })
-    }
-
-    if (suscripcionRecinto?.activa !== true) {
-      suscripcionRecinto = clienteRecinto.suscribirEstado({
-        alEstado: (nuevoEstado) => {
-          estadoRecinto.value = nuevoEstado
-        },
-        // El canal público tampoco gobierna el indicador visible de esta pantalla: si la
-        // proyección del recinto se cortara, el puesto técnico seguiría operando avisos y
-        // transmisión con normalidad; sólo se quedaría sin sonido hasta reconectar.
-        alCambiarConexion: (estaConectado) => {
-          if (estaConectado) {
-            estadoConexionRecinto.value = 'CONECTADO'
-          } else {
-            marcarDesconexionRecinto()
-          }
-        },
-        alError: (error) => {
-          ultimoError.value = error
-          marcarDesconexionRecinto()
-        },
-      })
-    }
+        }
+      },
+      alError: (error) => {
+        ultimoError.value = error
+        marcarDesconexion()
+      },
+    })
   }
 
   function cancelar(): void {
     suscripcionTecnica?.cancelar()
     suscripcionTecnica = null
-    suscripcionModeracion?.cancelar()
-    suscripcionModeracion = null
-    suscripcionRecinto?.cancelar()
-    suscripcionRecinto = null
     estadoConexion.value = 'DESCONECTADO'
-    estadoConexionRecinto.value = 'DESCONECTADO'
   }
 
   if (opciones.autoIniciar) iniciar()
 
   return {
     estado,
-    estadoModeracion,
-    estadoRecinto,
     estadoConexion,
-    estadoConexionRecinto,
     ultimoError,
     conectado,
     desactualizado,
     revision,
     cliente,
-    clienteModeracion,
-    clienteRecinto,
+    clienteRemapeo,
     iniciar,
     cancelar,
   }
@@ -264,13 +191,10 @@ export function crearSincronizacionTecnica(
  * conexiones SSE abiertas contra el backend.
  */
 export function useEstadoTecnico(
-  clientes: Pick<
-    OpcionesSincronizacionTecnica,
-    'cliente' | 'clienteModeracion' | 'clienteRecinto'
-  > = {},
+  clientes: Pick<OpcionesSincronizacionTecnica, 'cliente' | 'clienteRemapeo'> = {},
 ): SincronizacionTecnica {
   let baseUrl = ''
-  if (!clientes.cliente || !clientes.clienteModeracion || !clientes.clienteRecinto) {
+  if (!clientes.cliente || !clientes.clienteRemapeo) {
     baseUrl = useRuntimeConfig().public.apiBaseUrl
   }
 

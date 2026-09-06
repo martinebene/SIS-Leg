@@ -37,7 +37,61 @@
  * composable `useSonidosRecinto` observando ese valor y no esta función.
  */
 
-import type { EstadoPalabraPublico, EstadoRecinto } from '@botonera2/api-client'
+import type {
+  EstadoGlobal,
+  EstadoTransmision,
+  SonidosRecintoProyectados,
+} from '@botonera2/api-client'
+
+/**
+ * Contrato mínimo que necesita esta comparación para deducir un sonido (WP-074).
+ *
+ * ## Por qué no se pide directamente `EstadoRecinto`
+ *
+ * Hasta WP-074 esta función recibía el `EstadoRecinto` completo, porque la única pantalla
+ * que sonorizaba era la del salón y el puesto técnico se suscribía a esa misma proyección.
+ * Ese segundo stream, sumado a los otros cinco que abrían las cuatro superficies de SISLeg
+ * bajo el mismo origen, agotaba el cupo de conexiones de HTTP/1.1 y dejaba los comandos
+ * REST esperando indefinidamente.
+ *
+ * La corrección fue que el backend transporte, dentro del único estado técnico, una
+ * subproyección con **exactamente estos campos**. Declarándolos acá como contrato, la
+ * misma comparación sirve a las dos pantallas: el Recinto sigue pasando su `EstadoRecinto`
+ * —que satisface esta forma por tener todos estos campos y más— y Apoyo Técnico pasa la
+ * subproyección mínima que le manda el backend.
+ *
+ * Que el contrato sea así de chico es también la definición ejecutable de la frontera:
+ * todo lo que no está acá no hace falta para sonorizar y, por lo tanto, no tiene por qué
+ * viajar al puesto técnico. En particular no aparecen conteos, resultados ni votos
+ * individuales.
+ */
+export interface InstantaneaSonora {
+  /** Revisión monotónica; quien llama la usa para no sonorizar dos veces la misma. */
+  revision: number
+  /** Estado global, que delimita qué hechos de sesión pueden compararse. */
+  estado_global: EstadoGlobal
+  /** Plano técnico visible en el salón: transmisión y aviso del destino RECINTO. */
+  tecnico: {
+    transmision: { estado: EstadoTransmision } | null
+    aviso: { aviso_id: string } | null
+  } | null
+  /** Cola y orador identificados por banca. */
+  palabra: {
+    cola: readonly { banca: number }[]
+    orador: { banca: number } | null
+  } | null
+  /**
+   * Identidad y recepción de la votación visible.
+   *
+   * `estado_recepcion` es `string` porque así viaja en el contrato público desde WP-049;
+   * los dos valores que esta comparación distingue son `EN_CURSO` y `CERRADA`.
+   */
+  votacion: { id: string; estado_recepcion: string } | null
+  /** Presencia de cada banca proyectada. */
+  concejales: readonly { banca: number; presente: boolean }[]
+  /** Configuración de audio, que el motor adopta antes de reproducir. */
+  sonidos: SonidosRecintoProyectados
+}
 
 /**
  * Los quince eventos sonoros del contrato de WP-065, en su orden canónico.
@@ -74,7 +128,7 @@ export const EVENTOS_SONOROS_RECINTO = [
 export type EventoSonoroRecinto = (typeof EVENTOS_SONOROS_RECINTO)[number]
 
 /** Estado de palabra normalizado: el contrato admite `null` fuera de una sesión. */
-const PALABRA_VACIA: EstadoPalabraPublico = { cola: [], orador: null }
+const PALABRA_VACIA: NonNullable<InstantaneaSonora['palabra']> = { cola: [], orador: null }
 
 /**
  * Compara dos snapshots consecutivos y devuelve los eventos sonoros que ocurrieron.
@@ -93,8 +147,8 @@ const PALABRA_VACIA: EstadoPalabraPublico = { cola: [], orador: null }
  * produce ninguna transición.
  */
 export function detectarTransicionesSonoras(
-  previo: EstadoRecinto,
-  actual: EstadoRecinto,
+  previo: InstantaneaSonora,
+  actual: InstantaneaSonora,
 ): EventoSonoroRecinto[] {
   const eventos: EventoSonoroRecinto[] = []
 
@@ -124,8 +178,8 @@ export function detectarTransicionesSonoras(
  * global es autoritativo: si el sistema dejó de estar en sesión, la sesión terminó.
  */
 function agregarTransicionesGlobales(
-  previo: EstadoRecinto,
-  actual: EstadoRecinto,
+  previo: InstantaneaSonora,
+  actual: InstantaneaSonora,
   eventos: EventoSonoroRecinto[],
 ): void {
   if (previo.estado_global === actual.estado_global) return
@@ -153,8 +207,8 @@ function agregarTransicionesGlobales(
  * `aviso_id` y no la mera presencia del objeto.
  */
 function agregarTransicionesTecnicas(
-  previo: EstadoRecinto,
-  actual: EstadoRecinto,
+  previo: InstantaneaSonora,
+  actual: InstantaneaSonora,
   eventos: EventoSonoroRecinto[],
 ): void {
   const avisoPrevio = previo.tecnico?.aviso ?? null
@@ -190,8 +244,8 @@ function agregarTransicionesTecnicas(
  * considera retiro la salida de la cola de alguien que no quedó como orador.
  */
 function agregarTransicionesPalabra(
-  previo: EstadoRecinto,
-  actual: EstadoRecinto,
+  previo: InstantaneaSonora,
+  actual: InstantaneaSonora,
   eventos: EventoSonoroRecinto[],
 ): void {
   const palabraPrevia = previo.palabra ?? PALABRA_VACIA
@@ -230,8 +284,8 @@ function agregarTransicionesPalabra(
  * cambie el resultado» que pide el WP.
  */
 function agregarTransicionesVotacion(
-  previo: EstadoRecinto,
-  actual: EstadoRecinto,
+  previo: InstantaneaSonora,
+  actual: InstantaneaSonora,
   eventos: EventoSonoroRecinto[],
 ): void {
   const votacionPrevia = previo.votacion
@@ -261,8 +315,8 @@ function agregarTransicionesVotacion(
  * presencia, y leerlo así llenaría el recinto de sonidos en el peor momento.
  */
 function agregarTransicionesPresencia(
-  previo: EstadoRecinto,
-  actual: EstadoRecinto,
+  previo: InstantaneaSonora,
+  actual: InstantaneaSonora,
   eventos: EventoSonoroRecinto[],
 ): void {
   const presenciaPrevia = new Map(

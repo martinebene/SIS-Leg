@@ -8,10 +8,16 @@
  * y tiene que callarse exactamente en los mismos casos.
  *
  * Las pruebas se apoyan en el mismo cableado que arma `app.vue`: la sincronización real
- * (`crearSincronizacionTecnica`, con clientes falsos que no tocan la red) conectada al
+ * (`crearSincronizacionTecnica`, con un cliente falso que no toca la red) conectada al
  * composable compartido `useSonidosRecinto`. Lo único sustituido es el reproductor, porque
  * lo que acá se verifica es la decisión de sonar, no el audio. La reproducción real en un
  * navegador la demuestra el E2E integrado `sonidos_tecnico_wp071.spec.ts`.
+ *
+ * Desde WP-074 el insumo sonoro ya no es un `EstadoRecinto` recibido por un stream propio,
+ * sino la subproyección `EstadoTecnico.sonorizacion` que llega por el **único** stream del
+ * puesto. Los escenarios siguen escritos sobre estados del Recinto —ahí está definida la
+ * semántica— y se traducen con el mismo recorte que aplica el backend, de modo que la
+ * paridad se sigue comprobando contra la misma tabla canónica.
  *
  * Los quince escenarios no se escriben acá: vienen de la tabla canónica compartida que
  * también ejercita la suite del Recinto. Ésa es la forma concreta de comprobar paridad 1:1
@@ -19,7 +25,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, ref, type Ref } from 'vue'
+import { computed, effectScope, ref, type Ref } from 'vue'
 import {
   EVENTOS_SONOROS_RECINTO,
   useSonidosRecinto,
@@ -27,9 +33,8 @@ import {
 } from '@botonera2/frontend-shared'
 import type {
   ClienteApoyoTecnico,
-  ClienteModeracion,
-  ClienteRecinto,
   EstadoRecinto,
+  EstadoTecnico,
   Suscripcion,
 } from '@botonera2/api-client'
 import {
@@ -44,7 +49,9 @@ import {
 import {
   crearEstadoRecintoPrueba,
   crearSonidosRecintoPrueba,
+  proyectarSonorizacionTecnica,
 } from '../../../packages/frontend-shared/tests/helpers/estado_recinto'
+import { crearEstadoTecnicoPrueba } from './datos_prueba'
 
 /** Motor de prueba: anota qué le pidieron reproducir y qué configuración adoptó. */
 function crearMotorEspia() {
@@ -96,16 +103,19 @@ function crearClienteSuscribible<T>() {
 /** Banco de pruebas con el cableado completo del puesto técnico. */
 interface BancoTecnico {
   sincronizacion: SincronizacionTecnica
-  /** Publica un `EstadoRecinto` por el stream público, como haría el backend. */
+  /**
+   * Publica un estado técnico cuya porción sonora describe ese `EstadoRecinto`.
+   *
+   * Es la traducción que hace el backend desde WP-074: el escenario sigue expresándose en
+   * términos del salón y llega al puesto dentro de su propio snapshot.
+   */
   emitirRecinto: (estado: EstadoRecinto) => void
-  /** Abre o corta el stream público. */
-  conexionRecinto: (conectado: boolean) => void
+  /** Abre o corta el único stream del puesto. */
+  conexion: (conectado: boolean) => void
   /** Número visible de la cuenta regresiva, el mismo que muestra el panel de Transmisión. */
   segundos: Ref<number | null>
   reproducidos: string[]
-  recinto: ReturnType<typeof crearClienteSuscribible<EstadoRecinto>>
-  tecnico: ReturnType<typeof crearClienteSuscribible<never>>
-  moderacion: ReturnType<typeof crearClienteSuscribible<never>>
+  tecnico: ReturnType<typeof crearClienteSuscribible<EstadoTecnico>>
   detener: () => void
 }
 
@@ -118,29 +128,26 @@ afterEach(() => {
 /**
  * Monta el cableado de `app.vue` sin Nuxt ni DOM.
  *
- * Es deliberadamente el mismo orden de dependencias que la SPA: la sincronización expone
- * `estadoRecinto` y `estadoConexionRecinto`, y esos dos refs —más el número de la cuenta
- * regresiva que ya calcula el panel de Transmisión— son lo único que recibe el composable.
+ * Es deliberadamente el mismo orden de dependencias que la SPA: la sincronización expone el
+ * estado técnico y su conexión, de ahí sale `sonorizacion`, y ese ref —más el número de la
+ * cuenta regresiva que ya calcula el panel de Transmisión— es lo único que recibe el
+ * composable.
  */
 function montarTecnico(): BancoTecnico {
-  const tecnico = crearClienteSuscribible<never>()
-  const moderacion = crearClienteSuscribible<never>()
-  const recinto = crearClienteSuscribible<EstadoRecinto>()
+  const tecnico = crearClienteSuscribible<EstadoTecnico>()
   const espia = crearMotorEspia()
   const segundos = ref<number | null>(null)
   const scope = effectScope()
 
   const sincronizacion = crearSincronizacionTecnica({
     cliente: tecnico.cliente as unknown as ClienteApoyoTecnico,
-    clienteModeracion: moderacion.cliente as unknown as ClienteModeracion,
-    clienteRecinto: recinto.cliente as unknown as ClienteRecinto,
   })
   sincronizacion.iniciar()
 
   scope.run(() => {
     useSonidosRecinto({
-      estado: sincronizacion.estadoRecinto,
-      estadoConexion: sincronizacion.estadoConexionRecinto,
+      estado: computed(() => sincronizacion.estado.value?.sonorizacion ?? null),
+      estadoConexion: sincronizacion.estadoConexion,
       segundosCuentaRegresiva: segundos,
       resolverUrl: resolverRutaAsset,
       motor: espia.motor,
@@ -149,13 +156,18 @@ function montarTecnico(): BancoTecnico {
 
   const banco: BancoTecnico = {
     sincronizacion,
-    emitirRecinto: recinto.emitir,
-    conexionRecinto: recinto.cambiarConexion,
+    emitirRecinto: (estado) =>
+      tecnico.emitir(
+        crearEstadoTecnicoPrueba({
+          revision: estado.revision,
+          estado_global: estado.estado_global,
+          sonorizacion: proyectarSonorizacionTecnica(estado),
+        }),
+      ),
+    conexion: tecnico.cambiarConexion,
     segundos,
     reproducidos: espia.reproducidos,
-    recinto,
     tecnico,
-    moderacion,
     detener: () => {
       scope.stop()
       sincronizacion.cancelar()
@@ -166,12 +178,12 @@ function montarTecnico(): BancoTecnico {
 }
 
 /**
- * Deja el puesto técnico con el stream público abierto y una baseline ya adoptada.
+ * Deja el puesto técnico con su stream abierto y una baseline ya adoptada.
  *
  * Después de esto, cualquier estado nuevo cuenta como hecho posterior y debe sonar.
  */
 function conBaseline(banco: BancoTecnico, baseline: EstadoRecinto): void {
-  banco.conexionRecinto(true)
+  banco.conexion(true)
   banco.emitirRecinto(baseline)
   banco.reproducidos.length = 0
 }
@@ -232,7 +244,7 @@ describe('El puesto técnico nunca reproduce historia', () => {
   it('no suena al adoptar el primer snapshot, aunque describa una sesión en curso', () => {
     const banco = montarTecnico()
 
-    banco.conexionRecinto(true)
+    banco.conexion(true)
     banco.emitirRecinto(sesionAvanzada)
 
     expect(banco.reproducidos).toEqual([])
@@ -244,7 +256,7 @@ describe('El puesto técnico nunca reproduce historia', () => {
     const banco = montarTecnico()
     conBaseline(banco, crearEstadoRecintoPrueba({ revision: 1 }))
 
-    banco.conexionRecinto(false)
+    banco.conexion(false)
     banco.emitirRecinto({ ...sesionAvanzada, revision: 43 })
 
     expect(banco.reproducidos).toEqual([])
@@ -254,9 +266,9 @@ describe('El puesto técnico nunca reproduce historia', () => {
     const banco = montarTecnico()
     conBaseline(banco, crearEstadoRecintoPrueba({ revision: 1 }))
 
-    banco.conexionRecinto(false)
+    banco.conexion(false)
     banco.emitirRecinto({ ...sesionAvanzada, revision: 43 })
-    banco.conexionRecinto(true)
+    banco.conexion(true)
     banco.emitirRecinto({ ...sesionAvanzada, revision: 44, estado_global: 'SIN_PREPARAR' })
 
     expect(banco.reproducidos).toEqual(['sesion_cerrada'])
@@ -325,7 +337,7 @@ describe('Superposición y cuenta regresiva', () => {
   it('acompaña cada cambio de segundo con un tic, sin pedir una revisión por segundo', () => {
     const banco = montarTecnico()
     conBaseline(banco, crearEstadoRecintoPrueba({ revision: 1 }))
-    const revisionesAntes = banco.recinto.cliente.suscribirEstado.mock.calls.length
+    const suscripcionesAntes = banco.tecnico.cliente.suscribirEstado.mock.calls.length
 
     banco.segundos.value = 4
     banco.segundos.value = 3
@@ -338,7 +350,7 @@ describe('Superposición y cuenta regresiva', () => {
       'transmision_cuenta_regresiva_tic',
     ])
     // El tic no abrió ninguna suscripción nueva: el número lo baja el reloj local.
-    expect(banco.recinto.cliente.suscribirEstado.mock.calls.length).toBe(revisionesAntes)
+    expect(banco.tecnico.cliente.suscribirEstado.mock.calls.length).toBe(suscripcionesAntes)
   })
 
   it('no suena al entrar a una cuenta regresiva ya empezada ni al terminarla', () => {
@@ -355,42 +367,46 @@ describe('Superposición y cuenta regresiva', () => {
 })
 
 // =============================================================================
-// 4. La tercera suscripción es de solo lectura y no altera lo que ya existía
+// 4. Una sola suscripción alimenta el sonido y la operación (WP-074)
 // =============================================================================
 
-describe('Suscripción pública del puesto técnico', () => {
-  it('abre una única suscripción a cada una de las tres proyecciones', () => {
+describe('Suscripción única del puesto técnico', () => {
+  it('sonoriza sin abrir ninguna suscripción además de la técnica', () => {
     const banco = montarTecnico()
 
     banco.sincronizacion.iniciar()
+    conBaseline(banco, crearEstadoRecintoPrueba({ revision: 1, estado_global: 'PREPARANDO' }))
+    banco.emitirRecinto(crearEstadoRecintoPrueba({ revision: 2, estado_global: 'SESION_ABIERTA' }))
 
+    // Sonó el hecho institucional, y para eso alcanzó un único stream: es exactamente la
+    // condición que WP-074 necesita para liberar conexiones HTTP/1.1.
+    expect(banco.reproducidos).toEqual(['sesion_abierta'])
     expect(banco.tecnico.cliente.suscribirEstado).toHaveBeenCalledTimes(1)
-    expect(banco.moderacion.cliente.suscribirEstado).toHaveBeenCalledTimes(1)
-    expect(banco.recinto.cliente.suscribirEstado).toHaveBeenCalledTimes(1)
   })
 
-  it('cancela también la suscripción pública sin borrar el último estado adoptado', () => {
+  it('cancela esa única suscripción sin borrar el último estado adoptado', () => {
     const banco = montarTecnico()
     conBaseline(banco, crearEstadoRecintoPrueba({ revision: 7 }))
 
     banco.sincronizacion.cancelar()
 
-    expect(banco.recinto.cancelado()).toBe(true)
-    expect(banco.sincronizacion.estadoRecinto.value?.revision).toBe(7)
+    expect(banco.tecnico.cancelado()).toBe(true)
+    expect(banco.sincronizacion.estado.value?.revision).toBe(7)
+    expect(banco.sincronizacion.estado.value?.sonorizacion.revision).toBe(7)
   })
 
-  it('un corte del canal público no apaga los controles del puesto técnico', () => {
-    // Los comandos de transmisión y avisos dependen del canal técnico. Perder el sonido no
-    // puede deshabilitar la operación: son dos planos distintos.
+  it('un corte del stream deja de sonorizar y conserva el estado en pantalla', () => {
+    // Con una sola conexión, perder el stream es perder a la vez la operación y el sonido.
+    // Lo que no puede pasar es que la reconexión reproduzca lo ocurrido durante el corte.
     const banco = montarTecnico()
-    banco.tecnico.cambiarConexion(true)
-    banco.conexionRecinto(true)
+    conBaseline(banco, crearEstadoRecintoPrueba({ revision: 1 }))
 
-    banco.conexionRecinto(false)
+    banco.conexion(false)
+    banco.emitirRecinto(crearEstadoRecintoPrueba({ revision: 9, estado_global: 'SESION_ABIERTA' }))
 
-    expect(banco.sincronizacion.conectado.value).toBe(true)
-    expect(banco.sincronizacion.estadoConexion.value).toBe('CONECTADO')
-    expect(banco.sincronizacion.estadoConexionRecinto.value).toBe('DESCONECTADO')
+    expect(banco.sincronizacion.estadoConexion.value).toBe('RECONECTANDO')
+    expect(banco.sincronizacion.desactualizado.value).toBe(true)
+    expect(banco.reproducidos).toEqual([])
   })
 
   it('resuelve las rutas de sonido bajo el prefijo público de Apoyo Técnico', () => {

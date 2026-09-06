@@ -9,6 +9,11 @@
  */
 
 import { ClienteRest, crearClienteRest } from './rest'
+import {
+  ClienteRemapeoDispositivos,
+  type ClienteRemapeo,
+  type PersistenciaRemapeo,
+} from './remapeo'
 import { iniciarSincronizacionEstado } from './sincronizador'
 import type {
   ConfiguracionCliente,
@@ -22,20 +27,22 @@ import type {
   SolicitudAperturaVotacion,
   SolicitudDesempate,
   SolicitudFinalizarVotacion,
-  SolicitudIniciarRemapeo,
   Suscripcion,
 } from './tipos'
 
 /**
  * Cliente para la aplicación de Moderación.
  */
-export class ClienteModeracion {
+export class ClienteModeracion implements ClienteRemapeo {
   private readonly rest: ClienteRest
   private readonly configuracion: ConfiguracionCliente
+  /** Implementación compartida de los comandos de remapeo (WP-074). */
+  private readonly remapeo: ClienteRemapeoDispositivos
 
   constructor(configuracion: ConfiguracionCliente = {}) {
     this.configuracion = configuracion
     this.rest = crearClienteRest(configuracion)
+    this.remapeo = new ClienteRemapeoDispositivos(configuracion)
   }
 
   // ===========================================================================
@@ -257,31 +264,36 @@ export class ClienteModeracion {
   // 7. Coordinación pública de remapeo físico
   // ===========================================================================
 
+  /*
+    Los tres comandos siguientes se delegan en `ClienteRemapeoDispositivos` desde WP-074.
+
+    Los endpoints y la firma pública no cambiaron: Moderación sigue llamando a
+    `cliente.iniciarRemapeo(...)` igual que antes. Lo que cambió es dónde está la
+    implementación, porque el puesto de Apoyo Técnico también la necesita y ya no observa
+    la proyección de Moderación. Una sola implementación evita que una corrección futura
+    quede aplicada en un solo puesto.
+  */
+
   /**
    * Inicia captura para un devXX del padrón activo. El navegador sigue
    * comunicándose solo con FastAPI; nunca conoce la URL local del bridge.
    */
   async iniciarRemapeo(dispositivo: string, signal?: AbortSignal): Promise<EstadoRemapeoRespuesta> {
-    const cuerpo: SolicitudIniciarRemapeo = { dispositivo }
-    return this.rest.post<EstadoRemapeoRespuesta>('/api/v1/remapeos', cuerpo, signal)
+    return this.remapeo.iniciarRemapeo(dispositivo, signal)
   }
 
   /** Autoriza el candidato congelado con la persistencia elegida. */
   async confirmarRemapeo(
     remapeoId: string,
-    persistencia: 'TEMPORAL' | 'PERSISTENTE',
+    persistencia: PersistenciaRemapeo,
     signal?: AbortSignal,
   ): Promise<void> {
-    return this.rest.postVacio(
-      `/api/v1/remapeos/${encodeURIComponent(remapeoId)}/confirmacion`,
-      { persistencia },
-      signal,
-    )
+    return this.remapeo.confirmarRemapeo(remapeoId, persistencia, signal)
   }
 
   /** Cancela captura/candidato sin cambiar el mapping físico. */
   async cancelarRemapeo(remapeoId: string, signal?: AbortSignal): Promise<void> {
-    return this.rest.deleteVacio(`/api/v1/remapeos/${encodeURIComponent(remapeoId)}`, signal)
+    return this.remapeo.cancelarRemapeo(remapeoId, signal)
   }
 }
 

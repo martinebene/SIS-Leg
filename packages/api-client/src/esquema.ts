@@ -341,6 +341,11 @@ export interface paths {
          *     que garantiza que una cuenta regresiva que vence, o un aviso que expira,
          *     despierte a la vez a Moderación, al Recinto y al puesto técnico sin que
          *     ninguno pregunte periódicamente.
+         *
+         *     Desde WP-074 éste es además el **único** stream que abre la SPA técnica.
+         *     Antes abría también los de Moderación y Recinto, y con las cuatro
+         *     superficies de SISLeg abiertas bajo el mismo origen HTTP/1.1 las seis
+         *     conexiones persistentes resultantes dejaban sin cupo a los comandos REST.
          */
         get: operations["transmitir_estado_tecnico_api_v1_estado_tecnico_stream_get"];
         put?: never;
@@ -602,6 +607,16 @@ export interface components {
             segundos_restantes: number | null;
         };
         /**
+         * BancaSonorizacionProyectada
+         * @description Presencia de una banca, que es lo único que distingue los dos sonidos de presencia.
+         */
+        BancaSonorizacionProyectada: {
+            /** Banca */
+            banca: number;
+            /** Presente */
+            presente: boolean;
+        };
+        /**
          * BaseMayoria
          * @description Representa el denominador conceptual de una regla de mayoría.
          *
@@ -666,6 +681,19 @@ export interface components {
             desempatar: components["schemas"]["Capacidad"];
             otorgar_palabra: components["schemas"]["Capacidad"];
             quitar_palabra: components["schemas"]["Capacidad"];
+            iniciar_remapeo: components["schemas"]["Capacidad"];
+            confirmar_remapeo: components["schemas"]["Capacidad"];
+            cancelar_remapeo: components["schemas"]["Capacidad"];
+        };
+        /**
+         * CapacidadesRemapeoProyectadas
+         * @description Las tres capacidades de remapeo, recortadas de ``CapacidadesModeracion``.
+         *
+         *     Se copian tal cual del mismo evaluador autoritativo: acá no se recalcula
+         *     ninguna precondición. Si mañana cambiara la regla que habilita confirmar un
+         *     remapeo, cambia en un solo lugar y los dos puestos la heredan.
+         */
+        CapacidadesRemapeoProyectadas: {
             iniciar_remapeo: components["schemas"]["Capacidad"];
             confirmar_remapeo: components["schemas"]["Capacidad"];
             cancelar_remapeo: components["schemas"]["Capacidad"];
@@ -745,6 +773,32 @@ export interface components {
             test_activo: boolean;
             /** Test Expira En */
             test_expira_en: string | null;
+        };
+        /**
+         * ConcejalRemapeoProyectado
+         * @description Banca mínima que el panel de remapeo necesita para operar (WP-074).
+         *
+         *     Es una **allowlist** deliberadamente corta. El remapeo sólo tiene que poder
+         *     listar bancas elegibles, mostrar de quién es la que se está reemplazando y
+         *     enviar su identificador lógico de dispositivo. No necesita presencia, test
+         *     de dispositivo, bloque ni imagen, así que esos campos no viajan al puesto
+         *     técnico dentro de esta porción.
+         *
+         *     Los campos son exactamente los que lee ``GestionRemapeo.vue``; por eso el
+         *     componente compartido acepta indistintamente esta proyección y la de
+         *     Moderación sin adaptadores ni copias de reglas.
+         */
+        ConcejalRemapeoProyectado: {
+            /** Dni */
+            dni: string;
+            /** Nombre */
+            nombre: string;
+            /** Apellido */
+            apellido: string;
+            /** Banca */
+            banca: number;
+            /** Dispositivo Votacion */
+            dispositivo_votacion: string;
         };
         /**
          * ConfiguracionProyectada
@@ -994,12 +1048,29 @@ export interface components {
         };
         /**
          * EstadoTecnico
-         * @description Snapshot completo del futuro puesto de Apoyo Técnico (WP-055).
+         * @description Snapshot completo del puesto de Apoyo Técnico (WP-055, consolidado por WP-074).
          *
          *     Reúne todo lo que ese puesto necesita observar y nada más: el estado de
          *     transmisión, los avisos vigentes de **ambos** destinos, la biblioteca de
-         *     mensajes precargados y la misma franja de eventos L1/L2/L3 que ve
-         *     Moderación.
+         *     mensajes precargados, la misma franja de eventos L1/L2/L3 que ve Moderación
+         *     y, desde WP-074, las dos allowlists que faltaban: la del remapeo y la de la
+         *     sonorización.
+         *
+         *     ## Por qué WP-074 amplió este DTO
+         *
+         *     El puesto técnico observaba tres proyecciones a la vez y abría, por lo
+         *     tanto, tres streams SSE. Con Moderación, Recinto, Simulador y Apoyo Técnico
+         *     abiertos en el mismo navegador y bajo el mismo origen, eso daba seis
+         *     conexiones persistentes: más de las que HTTP/1.1 permite por origen. La
+         *     séptima petición —cualquier comando REST, por ejemplo «Preparar sala»—
+         *     quedaba encolada en el navegador sin llegar nunca al backend, y el operador
+         *     lo vivía como una caída del servidor.
+         *
+         *     La corrección consiste en que esta proyección transporte lo que el puesto
+         *     necesitaba pedirles a las otras dos. No se copia ``EstadoModeracion`` ni
+         *     ``EstadoRecinto``: ``remapeo`` y ``sonorizacion`` son allowlists mínimas,
+         *     documentadas en sus propias clases, construidas con los mismos helpers
+         *     autoritativos que usan las otras dos proyecciones.
          *
          *     ``eventos_recientes`` se construye con el mismo método que la proyección
          *     de Moderación, de modo que la frontera de secreto de WP-052 se aplica una
@@ -1022,6 +1093,8 @@ export interface components {
             /** Eventos Recientes */
             eventos_recientes: components["schemas"]["EventoRecienteProyectado"][];
             auditoria: components["schemas"]["EstadoAuditoriaProyectado"];
+            remapeo: components["schemas"]["RemapeoTecnicoProyectado"];
+            sonorizacion: components["schemas"]["SonorizacionRecintoProyectada"];
         };
         /**
          * EstadoTransmision
@@ -1152,6 +1225,15 @@ export interface components {
         NumeroSesionOmitible: number;
         NumeroVotacion: number;
         /**
+         * PalabraSonorizacionProyectada
+         * @description Cola y orador reducidos a bancas, para deducir los tres sonidos de palabra.
+         */
+        PalabraSonorizacionProyectada: {
+            /** Cola */
+            cola: components["schemas"]["PersonaSonorizacionProyectada"][];
+            orador: components["schemas"]["PersonaSonorizacionProyectada"] | null;
+        };
+        /**
          * PersonaPalabraModeracion
          * @description Identidad de cola/orador apropiada para Moderación.
          */
@@ -1174,6 +1256,18 @@ export interface components {
             nombre: string;
             /** Apellido */
             apellido: string;
+            /** Banca */
+            banca: number;
+        };
+        /**
+         * PersonaSonorizacionProyectada
+         * @description Identidad mínima de una persona en la cola o en uso de la palabra.
+         *
+         *     Sólo la banca: es la única identidad que el detector de transiciones compara
+         *     para saber si alguien pidió, retiró o recibió la palabra. Nombre y apellido
+         *     no cambian ningún sonido, así que no viajan en esta porción.
+         */
+        PersonaSonorizacionProyectada: {
             /** Banca */
             banca: number;
         };
@@ -1237,6 +1331,30 @@ export interface components {
             factor: number;
             /** @description Denominador institucional normalizado: VOTOS_COMPUTABLES, PRESENTES o CUERPO. */
             base: components["schemas"]["BaseMayoria"];
+        };
+        /**
+         * RemapeoTecnicoProyectado
+         * @description Todo lo que Apoyo Técnico necesita para remapear, y nada más (WP-074).
+         *
+         *     Antes de WP-074 el puesto técnico obtenía estos tres datos abriendo una
+         *     segunda suscripción SSE al ``EstadoModeracion`` completo. Con cuatro
+         *     superficies abiertas bajo el mismo origen HTTP/1.1 eso agotaba el cupo de
+         *     conexiones del navegador y los comandos REST quedaban esperando, con
+         *     apariencia de servidor caído.
+         *
+         *     La solución no es copiar Moderación acá dentro: es proyectar sólo esta
+         *     allowlist. El puesto técnico sigue sin ver votación, quórum, orden del día,
+         *     autoridades ni las capacidades institucionales que no le corresponden.
+         *
+         *     Los nombres de los tres campos coinciden a propósito con los de
+         *     ``EstadoModeracion`` para que el componente compartido de remapeo consuma
+         *     ambas proyecciones sin ninguna traducción intermedia.
+         */
+        RemapeoTecnicoProyectado: {
+            remapeo: components["schemas"]["EstadoRemapeoModeracion"] | null;
+            /** Concejales */
+            concejales: components["schemas"]["ConcejalRemapeoProyectado"][];
+            capacidades: components["schemas"]["CapacidadesRemapeoProyectadas"];
         };
         /**
          * RespuestaSalud
@@ -1574,6 +1692,48 @@ export interface components {
             /** Sonidos */
             sonidos: components["schemas"]["SonidoRecintoProyectado"][];
         };
+        /**
+         * SonorizacionRecintoProyectada
+         * @description Subproyección pública mínima que permite sonorizar igual que el Recinto (WP-074).
+         *
+         *     ## Por qué existe
+         *
+         *     Los quince sonidos de WP-065 no son eventos que publique el backend: se
+         *     deducen comparando dos estados públicos consecutivos. Hasta WP-074 el puesto
+         *     técnico obtenía esos estados abriendo un tercer stream SSE al Recinto. Este
+         *     submodelo transporta, dentro del **único** stream técnico, exactamente los
+         *     campos que esa comparación consulta y ninguno más.
+         *
+         *     ## Por qué no expone de más
+         *
+         *     Cada campo se construye con el mismo helper que arma la proyección pública
+         *     del Recinto y después se recorta. De ``VotacionPublica`` sólo sobreviven la
+         *     identidad y la recepción; de cada banca, la presencia; de la palabra, las
+         *     bancas. En consecuencia esta porción contiene **menos** información que la
+         *     pantalla del salón, que cualquiera puede mirar: nunca puede convertirse en
+         *     una vía de fuga del secreto temporal del voto.
+         *
+         *     ``tecnico`` sí viaja completo porque es el mismo submodelo pequeño que ve el
+         *     Recinto, con el aviso del destino ``RECINTO``. Que se construya con
+         *     ``_apoyo_tecnico`` —el helper que usa la proyección pública— es lo que
+         *     garantiza que un aviso o una transmisión suenen en el puesto técnico en la
+         *     misma revisión en que suenan en el salón.
+         *
+         *     ``revision`` se repite acá, además de en el estado técnico que la contiene,
+         *     porque la frontera reactiva usa la revisión del objeto que compara para
+         *     descartar una revisión repetida sin volver a sonar.
+         */
+        SonorizacionRecintoProyectada: {
+            /** Revision */
+            revision: number;
+            estado_global: components["schemas"]["EstadoGlobal"];
+            tecnico: components["schemas"]["ApoyoTecnicoProyectado"];
+            palabra: components["schemas"]["PalabraSonorizacionProyectada"] | null;
+            votacion: components["schemas"]["VotacionSonorizacionProyectada"] | null;
+            /** Concejales */
+            concejales: components["schemas"]["BancaSonorizacionProyectada"][];
+            sonidos: components["schemas"]["SonidosRecintoProyectados"];
+        };
         TextoOmitible: string;
         /**
          * TipoMayoria
@@ -1726,6 +1886,22 @@ export interface components {
             votos_individuales: components["schemas"]["VotoPublico"][] | null;
             conteos: components["schemas"]["ConteosVotosProyectados"] | null;
             voto_presidencial: components["schemas"]["VotoPresidencialProyectado"] | null;
+        };
+        /**
+         * VotacionSonorizacionProyectada
+         * @description Identidad y recepción de la votación visible, sin ningún dato de voto.
+         *
+         *     Los dos sonidos de votación se deducen comparando estos dos campos: una
+         *     identidad nueva ``EN_CURSO`` es una apertura y el paso ``EN_CURSO`` ->
+         *     ``CERRADA`` de la misma identidad es un cierre. Conteos, resultado y votos
+         *     individuales no participan de esa deducción y por eso quedan afuera: la
+         *     frontera de secreto se estrecha en lugar de ampliarse.
+         */
+        VotacionSonorizacionProyectada: {
+            /** Id */
+            id: string;
+            /** Estado Recepcion */
+            estado_recepcion: string;
         };
         /**
          * VotoModeracion
@@ -2629,7 +2805,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Stream Server-Sent Events. Cada evento `estado` contiene un EstadoTecnico completo con transmisión, avisos de ambos destinos, biblioteca y eventos seguros; `id` coincide con su revision. */
+            /** @description Stream Server-Sent Events. Cada evento `estado` contiene un EstadoTecnico completo con transmisión, avisos de ambos destinos, biblioteca, eventos seguros, la allowlist de remapeo y la subproyección de sonorización; `id` coincide con su revision. Es el único stream persistente que necesita el puesto de Apoyo Técnico. */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -9,12 +9,19 @@
 import type {
   AvisoTecnicoProyectado,
   BibliotecaMensajesProyectada,
+  Capacidad,
   DestinoAvisoTecnico,
   EstadoTecnico,
   EventoRecienteProyectado,
   MensajeTecnicoProyectado,
+  RemapeoTecnicoProyectado,
+  SonorizacionRecintoProyectada,
   TransmisionProyectada,
 } from '@botonera2/api-client'
+import {
+  crearEstadoRecintoPrueba,
+  proyectarSonorizacionTecnica,
+} from '../../../packages/frontend-shared/tests/helpers/estado_recinto'
 
 export function crearTransmisionPrueba(
   parcial: Partial<TransmisionProyectada> = {},
@@ -74,6 +81,58 @@ export function crearEventoPrueba(
   }
 }
 
+/** Capacidad habilitada por defecto; las pruebas que necesiten un bloqueo pasan la suya. */
+function capacidadHabilitada(): Capacidad {
+  return { habilitada: true, motivos: [] }
+}
+
+/**
+ * Allowlist de remapeo que viaja dentro del estado técnico desde WP-074.
+ *
+ * Por defecto no hay operación activa y las tres capacidades están habilitadas, que es el
+ * punto de partida del panel: se puede elegir una banca e iniciar la captura.
+ */
+export function crearRemapeoTecnicoPrueba(
+  parcial: Partial<RemapeoTecnicoProyectado> = {},
+): RemapeoTecnicoProyectado {
+  return {
+    remapeo: parcial.remapeo ?? null,
+    concejales: parcial.concejales ?? [
+      {
+        dni: '10000001',
+        nombre: 'Nombre1',
+        apellido: 'Apellido1',
+        banca: 1,
+        dispositivo_votacion: 'dev01',
+      },
+      {
+        dni: '10000002',
+        nombre: 'Nombre2',
+        apellido: 'Apellido2',
+        banca: 2,
+        dispositivo_votacion: 'dev02',
+      },
+    ],
+    capacidades: parcial.capacidades ?? {
+      iniciar_remapeo: capacidadHabilitada(),
+      confirmar_remapeo: capacidadHabilitada(),
+      cancelar_remapeo: capacidadHabilitada(),
+    },
+  }
+}
+
+/**
+ * Subproyección sonora por defecto, derivada de la fixture pública del Recinto.
+ *
+ * Se deriva y no se escribe a mano para que las dos superficies partan del mismo estado de
+ * referencia: es la misma configuración de audio y el mismo plano técnico apagado.
+ */
+export function crearSonorizacionPrueba(
+  parcial: Partial<SonorizacionRecintoProyectada> = {},
+): SonorizacionRecintoProyectada {
+  return { ...proyectarSonorizacionTecnica(crearEstadoRecintoPrueba()), ...parcial }
+}
+
 export function crearEstadoTecnicoPrueba(parcial: Partial<EstadoTecnico> = {}): EstadoTecnico {
   return {
     revision: parcial.revision ?? 1,
@@ -91,5 +150,12 @@ export function crearEstadoTecnicoPrueba(parcial: Partial<EstadoTecnico> = {}): 
       cerrado: false,
       motivo: null,
     },
+    remapeo: parcial.remapeo ?? crearRemapeoTecnicoPrueba(),
+    sonorizacion:
+      parcial.sonorizacion ??
+      crearSonorizacionPrueba({
+        revision: parcial.revision ?? 1,
+        estado_global: parcial.estado_global ?? 'SIN_PREPARAR',
+      }),
   }
 }

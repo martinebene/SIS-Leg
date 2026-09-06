@@ -328,7 +328,15 @@ Los streams canónicos son:
 ```text
 GET /api/v1/estado/moderacion/stream
 GET /api/v1/estado/recinto/stream
+GET /api/v1/estado/tecnico/stream
 ```
+
+Cada superficie abre **exactamente una** suscripción persistente: la de su propia
+proyección. Una superficie que necesite un dato producido para otra lo recibe como
+subproyección declarada por allowlist dentro de su propio estado, nunca abriendo un
+segundo stream. La regla es una restricción de transporte y no de contenido: HTTP/1.1
+limita las conexiones simultáneas por origen, y varias superficies abiertas a la vez
+pueden agotar ese cupo y dejar los comandos REST sin conexión disponible (WP-074).
 
 Responden `text/event-stream`. El primer evento `estado` es inmediato y cada
 `data:` posterior contiene el DTO completo vigente; `id:` usa la misma
