@@ -239,7 +239,15 @@ function cargar(mensaje: MensajeTecnicoProyectado): void {
         <template v-else>
           <p data-testid="texto-mensaje" class="break-words text-slate-200">{{ mensaje.texto }}</p>
           <!--
-            WP-070: destino + las tres acciones entran en un solo renglón.
+            WP-070 + WP-076: destino + las tres acciones entran en un solo renglón, con el
+            destino pegado a la izquierda y las acciones agrupadas contra la derecha.
+
+            La fila tiene exactamente dos hijos: la etiqueta de destino y un subcontenedor
+            con los tres botones. Ese par es lo que permite usar `justify-between`, que es
+            la forma declarativa de decir "uno a cada extremo del ancho disponible" sin
+            inventar anchos fijos ni separadores elásticos: el espacio sobrante se reparte
+            entre los dos bloques, no entre los cuatro controles. Antes los cuatro
+            elementos eran hermanos directos y quedaban todos apelmazados a la izquierda.
 
             La fila conserva `flex-wrap` a propósito. El envoltorio es la salida
             defensiva por debajo de las resoluciones canónicas —donde la grilla ya se
@@ -253,39 +261,60 @@ function cargar(mensaje: MensajeTecnicoProyectado): void {
             un botón sin ancho suficiente desborda de forma medible en lugar de partir su
             rótulo en dos líneas, así que la prueba de geometría lo detecta.
           -->
-          <div data-testid="acciones-mensaje" class="mt-1 flex flex-wrap items-center gap-1.5">
+          <div
+            data-testid="acciones-mensaje"
+            class="mt-1 flex flex-wrap items-center justify-between gap-1.5"
+          >
             <span
               data-testid="destino-mensaje"
               class="shrink-0 whitespace-nowrap rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[10px] font-bold text-slate-400"
             >
               {{ mensaje.destino }}
             </span>
-            <button
-              type="button"
-              data-testid="btn-cargar-mensaje"
-              class="shrink-0 whitespace-nowrap rounded border border-sky-700 bg-sky-950 px-1.5 py-1 text-[10px] font-bold text-sky-200"
-              @click="cargar(mensaje)"
+            <!--
+              Grupo derecho de acciones (WP-076).
+
+              `ml-auto` es lo que sostiene la alineación derecha también cuando la fila
+              envuelve por debajo de las resoluciones canónicas: ahí el grupo queda solo en
+              su renglón, `justify-between` ya no tiene contra qué separarlo y el margen
+              automático se come el espacio sobrante. A las resoluciones canónicas es
+              inocuo, porque `justify-between` ya lo había llevado al extremo.
+
+              `flex-wrap` acá adentro es el último recurso adaptable: si ni siquiera el
+              grupo entra en un renglón, se apila entre sus propios botones —alineados a la
+              derecha por `justify-end`— en lugar de desbordar el panel.
+            -->
+            <div
+              data-testid="grupo-acciones-mensaje"
+              class="ml-auto flex flex-wrap items-center justify-end gap-1.5"
             >
-              Usar en el formulario
-            </button>
-            <button
-              type="button"
-              data-testid="btn-editar-mensaje"
-              class="shrink-0 whitespace-nowrap rounded border border-slate-600 bg-slate-900 px-1.5 py-1 text-[10px] font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
-              :disabled="!operable"
-              @click="comenzarEdicion(mensaje)"
-            >
-              Editar
-            </button>
-            <button
-              type="button"
-              data-testid="btn-eliminar-mensaje"
-              class="shrink-0 whitespace-nowrap rounded border border-rose-700 bg-rose-950 px-1.5 py-1 text-[10px] font-bold text-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
-              :disabled="!operable"
-              @click="eliminar(mensaje)"
-            >
-              Eliminar
-            </button>
+              <button
+                type="button"
+                data-testid="btn-cargar-mensaje"
+                class="shrink-0 whitespace-nowrap rounded border border-sky-700 bg-sky-950 px-1.5 py-1 text-[10px] font-bold text-sky-200"
+                @click="cargar(mensaje)"
+              >
+                Usar en el formulario
+              </button>
+              <button
+                type="button"
+                data-testid="btn-editar-mensaje"
+                class="shrink-0 whitespace-nowrap rounded border border-slate-600 bg-slate-900 px-1.5 py-1 text-[10px] font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+                :disabled="!operable"
+                @click="comenzarEdicion(mensaje)"
+              >
+                Editar
+              </button>
+              <button
+                type="button"
+                data-testid="btn-eliminar-mensaje"
+                class="shrink-0 whitespace-nowrap rounded border border-rose-700 bg-rose-950 px-1.5 py-1 text-[10px] font-bold text-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
+                :disabled="!operable"
+                @click="eliminar(mensaje)"
+              >
+                Eliminar
+              </button>
+            </div>
           </div>
         </template>
       </li>

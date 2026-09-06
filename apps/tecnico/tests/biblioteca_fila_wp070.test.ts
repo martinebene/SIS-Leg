@@ -8,14 +8,19 @@
  * jsdom no calcula layout, así que acá se fija lo que sí es estructural y protege esa
  * decisión de una regresión silenciosa:
  *
- * - los cuatro elementos son hermanos de un único contenedor de acciones;
+ * - los cuatro controles viven bajo un único contenedor de acciones;
  * - los rótulos siguen completos, sin abreviaturas ni recortes;
- * - ningún elemento de la fila puede partir su texto en dos líneas (`whitespace-nowrap`),
+ * - ningún control de la fila puede partir su texto en dos líneas (`whitespace-nowrap`),
  *   de modo que la falta de ancho se manifieste como desborde medible en Playwright y no
  *   como un rótulo cortado que nadie note.
  *
+ * WP-076 agregó un nivel de anidamiento: los tres botones pasaron a vivir dentro de un
+ * subcontenedor para poder alinearlos a la derecha. Por eso este archivo dejó de exigir
+ * que los cuatro sean hermanos directos y pasó a recorrer los controles reales de la fila.
+ * La alineación en sí la cubre `biblioteca_alineacion_wp076.test.ts`.
+ *
  * La medición real —una sola fila, sin desborde, sin scroll global— vive en
- * `tests/playwright/geometria_biblioteca_wp070.spec.ts`.
+ * `tests/playwright/geometria_wp070.spec.ts`.
  */
 
 import { mount, type VueWrapper } from '@vue/test-utils'
@@ -56,14 +61,31 @@ function montarBiblioteca(): VueWrapper {
   return wrapper
 }
 
+/**
+ * Controles reales de la fila: la etiqueta de destino y los tres botones.
+ *
+ * Se resuelven por consulta y no por `children` para no volver a atar la prueba a un nivel
+ * de anidamiento concreto, que es justamente lo que WP-076 tuvo que cambiar.
+ */
+function controlesDeLaFila(fila: Element): Element[] {
+  return [
+    fila.querySelector('[data-testid="destino-mensaje"]')!,
+    ...fila.querySelectorAll('button'),
+  ]
+}
+
 describe('WP-070 · fila única de destino y acciones', () => {
   it('agrupa la etiqueta de destino y los tres botones en un solo contenedor', () => {
     const fila = montarBiblioteca().get('[data-testid="acciones-mensaje"]')
 
-    const hijos = Array.from(fila.element.children)
-    expect(hijos).toHaveLength(4)
-    expect(hijos[0]!.getAttribute('data-testid')).toBe('destino-mensaje')
-    expect(hijos.slice(1).map((hijo) => hijo.tagName)).toEqual(['BUTTON', 'BUTTON', 'BUTTON'])
+    const controles = controlesDeLaFila(fila.element)
+    expect(controles).toHaveLength(4)
+    expect(controles[0]!.getAttribute('data-testid')).toBe('destino-mensaje')
+    expect(controles.slice(1).map((control) => control.tagName)).toEqual([
+      'BUTTON',
+      'BUTTON',
+      'BUTTON',
+    ])
   })
 
   it('conserva los rótulos completos de los tres botones', () => {
@@ -73,14 +95,14 @@ describe('WP-070 · fila única de destino y acciones', () => {
     expect(rotulos).toEqual([...ROTULOS_ESPERADOS])
   })
 
-  it('impide que cualquier elemento de la fila parta su texto en dos líneas', () => {
+  it('impide que cualquier control de la fila parta su texto en dos líneas', () => {
     const fila = montarBiblioteca().get('[data-testid="acciones-mensaje"]')
 
-    for (const hijo of Array.from(fila.element.children)) {
-      expect(hijo.className).toContain('whitespace-nowrap')
+    for (const control of controlesDeLaFila(fila.element)) {
+      expect(control.className).toContain('whitespace-nowrap')
       // `shrink-0` evita el otro modo silencioso de falla: que flexbox comprima un botón
       // hasta hacerlo ilegible en vez de dejar que el desborde sea visible.
-      expect(hijo.className).toContain('shrink-0')
+      expect(control.className).toContain('shrink-0')
     }
   })
 })
