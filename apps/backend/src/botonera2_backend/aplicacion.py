@@ -25,7 +25,10 @@ from botonera2_backend.recursos import (
     descartar_recursos_aplicacion,
     guardar_recursos_aplicacion,
 )
-from botonera2_backend.servicios.apoyo_tecnico import RUTA_MENSAJES_TECNICOS_POR_DEFECTO
+from botonera2_backend.servicios.apoyo_tecnico import (
+    RUTA_MENSAJES_TECNICOS_POR_DEFECTO,
+    ServicioApoyoTecnico,
+)
 from botonera2_backend.servicios.fronteras_temporales import ServicioFronterasTemporales
 
 REGISTRO = logging.getLogger(__name__)
@@ -55,10 +58,21 @@ async def ciclo_vida(aplicacion: FastAPI) -> AsyncGenerator[None]:
         )
     )
     guardar_recursos_aplicacion(aplicacion, recursos)
+    # El servicio técnico no guarda estado propio, así que esta instancia del
+    # lifespan y la que construye cada request comparten exactamente el mismo
+    # estado operativo y el mismo ejecutor. Se crea acá únicamente para que el
+    # temporizador pueda cerrar con un ``FIN`` durable el aviso de Recinto que
+    # vence solo (WP-078), sin que el temporizador conozca el plano técnico.
+    servicio_apoyo_tecnico = ServicioApoyoTecnico(
+        recursos.estado_operativo,
+        recursos.ejecutor_mutaciones,
+        ruta_mensajes=recursos.ruta_mensajes_tecnicos,
+    )
     fronteras = ServicioFronterasTemporales(
         recursos.servicio_proyecciones,
         recursos.ejecutor_mutaciones,
         recursos.coordinador_publicacion,
+        cerrar_marcadores_vencidos=servicio_apoyo_tecnico.cerrar_marcadores_recinto_vencidos,
     )
     tarea_fronteras = asyncio.create_task(fronteras.ejecutar())
     try:

@@ -44,6 +44,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
+from botonera2_backend.auditoria import EscritorAuditoriaCsv
+
 
 class EstadoTransmision(StrEnum):
     """Estados observables del indicador de transmisión.
@@ -138,6 +140,42 @@ class AvisoTecnico:
         """
 
         return self.expira_en is None or ahora < self.expira_en
+
+
+@dataclass(frozen=True, slots=True)
+class MarcadorRecintoAbierto:
+    """Período de visualización en Recinto con un ``INICIO`` ya persistido.
+
+    WP-078 convierte cada aparición de un aviso en la Pantalla del Recinto en un
+    par de eventos principales de la sesión: ``INICIO`` cuando el texto aparece
+    y ``FIN`` cuando deja de mostrarse. Para garantizar que ese par no se
+    duplique ni quede desparejo hace falta un dato autoritativo que diga
+    "hay un período abierto y todavía no fue cerrado".
+
+    Ese dato **no** puede deducirse del aviso vigente. El aviso sigue existiendo
+    en su ranura después de vencer (el vencimiento es derivado del reloj), puede
+    haberse publicado en ``SIN_PREPARAR`` —donde no existe auditoría y por lo
+    tanto no hubo ``INICIO``— y su texto no permite distinguir un período de
+    otro. Por eso el marcador se instala recién **después** de que el ``INICIO``
+    quedó confirmado por la auditoría, y se retira recién después de confirmar
+    el ``FIN``.
+
+    Atributos:
+        aviso_id: identificador del aviso cuya presencia en Recinto abrió el
+            período. Permite verificar que el cierre corresponde exactamente a
+            la misma publicación y no a una posterior.
+        texto: texto exacto que se registró en el ``INICIO``. Se conserva acá y
+            no se relee del aviso porque el ``FIN`` debe repetir literalmente el
+            mismo texto aunque la ranura ya haya sido reemplazada.
+        escritor_auditoria: conjunto de CSV en el que se persistió el
+            ``INICIO``. Se compara por identidad: si la preparación/sesión
+            terminó y hay otro conjunto abierto, el período pertenece a archivos
+            ya cerrados y su ``FIN`` no puede escribirse en un conjunto distinto.
+    """
+
+    aviso_id: str
+    texto: str
+    escritor_auditoria: EscritorAuditoriaCsv
 
 
 @dataclass(frozen=True, slots=True)

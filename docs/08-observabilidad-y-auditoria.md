@@ -178,6 +178,39 @@ El desempate presidencial persiste dos hechos L3 diferenciados bajo la misma adq
 
 Si falla el primer evento, no se almacena voto presidencial. Si falla el segundo, no se revierte el primer hecho: la misma votación conserva `CERRADA + EMPATADA`, el `VotoDesempate` y la referencia activa, sin publicar un resultado no auditado. En ambos casos el writer queda en fallo cerrado. Los rechazos funcionales del comando usan `COMANDO_VOTACION_RECHAZADO` L2 con operación, id solicitado y código estable; una falla de ese rechazo prevalece como indisponibilidad de auditoría.
 
+Los avisos que Apoyo Técnico dirige a la Pantalla del Recinto (destino `RECINTO`
+o `AMBOS`) delimitan además un momento de la sesión y registran dos hechos L3
+con etiqueta general `EVENTO`:
+
+- `INICIO` cuando el texto aparece efectivamente en el Recinto;
+- `FIN` cuando deja de mostrarse, con exactamente el mismo texto.
+
+El `message` de ambos es el texto del aviso tal como se publicó, sin prefijos,
+destino, duración ni identificadores internos. La etiqueta es deliberadamente
+`EVENTO` y no `APOYO_TECNICO`: estos registros representan momentos generales de
+la sesión, no la mensajería del puesto técnico. La auditoría técnica L2
+`AVISO_TECNICO_PUBLICADO` / `AVISO_TECNICO_CANCELADO` se conserva sin cambios y
+es adicional a estos marcadores.
+
+Un aviso dirigido únicamente a `MODERACION` no genera marcadores. Un aviso
+`AMBOS` genera una única pareja, la correspondiente a su presencia en Recinto:
+cancelar solamente la ranura de Moderación no cierra el período.
+
+El `FIN` se registra por cualquier causa válida de desaparición —cancelación
+manual que alcanza Recinto, vencimiento por duración o reemplazo por otro aviso
+que alcanza Recinto— y en un reemplazo precede al `INICIO` del texto nuevo
+dentro de la misma mutación. La vigencia nunca se decide interpretando textos:
+la autoridad es el período abierto que el estado operativo conserva junto con el
+`aviso_id`, de modo que un mismo período no puede producir más de un `INICIO` ni
+más de un `FIN` aunque coincidan temporizador, cancelación y reintento. El
+vencimiento automático se convierte en hecho durable desde el temporizador único
+de fronteras temporales, sin introducir polling.
+
+Si la persistencia del `INICIO` falla, el aviso tampoco se publica: rige el
+fallo cerrado general y no se anuncia una transición que no pudo registrarse. Un
+período abierto cuyo conjunto de CSV ya fue cerrado por el fin de la
+preparación/sesión se descarta sin escribir su `FIN` en un conjunto distinto.
+
 ## 10. Identidad de concejales
 
 La implementación histórica usa principalmente nombre, apellido y banca en mensajes funcionales.
@@ -217,6 +250,14 @@ orden institucional, no agrega persistencia y nunca sustituye a los CSV.
 `EstadoRecinto` no expone eventos de auditoría en este alcance. Esta omisión
 deliberada evita transportar `message` crudo o clasificar por exclusión códigos
 que podrían revelar votos durante `EN_CURSO`.
+
+La franja pública del Recinto trabaja con una allowlist positiva de códigos. Los
+marcadores `INICIO` / `FIN` de los avisos al Recinto no se incorporan a esa
+allowlist: el Recinto ya está mostrando el texto en su propia ranura de aviso y
+publicarlo otra vez como tarjeta de evento duplicaría el mismo hecho. Sí
+aparecen, en cambio, en los eventos recientes de Moderación y de Apoyo Técnico
+bajo el filtro `Principales (L3)`, por el mecanismo de proyección L3 ya
+existente y sin ninguna traducción especial.
 
 La proyección que consume Moderación es **operativa y segura**, no una copia
 literal de la fila persistida. Además de las seis dimensiones canónicas, cada

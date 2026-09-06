@@ -17,6 +17,7 @@ from botonera2_backend.configuracion.modelos import ConfiguracionSonidosRecinto
 from botonera2_backend.dominio.apoyo_tecnico import (
     AvisoTecnico,
     BibliotecaMensajesTecnicos,
+    MarcadorRecintoAbierto,
     TransmisionTecnica,
 )
 from botonera2_backend.dominio.preparacion import Preparacion
@@ -70,6 +71,13 @@ class EstadoOperativo:
             ``None``. Es una ranura independiente de la del Recinto: por eso
             un aviso de un destino nunca puede aparecer en el otro.
         aviso_tecnico_recinto: aviso técnico dirigido al Recinto, o ``None``.
+        marcador_recinto_abierto: período de visualización en Recinto cuyo
+            evento principal ``INICIO`` ya fue persistido y todavía no fue
+            cerrado con su ``FIN`` (WP-078). Vive acá, y no dentro del aviso,
+            porque un aviso puede existir sin haber generado marcador —por
+            ejemplo si se publicó en ``SIN_PREPARAR``, donde no hay auditoría— y
+            porque el período debe poder cerrarse aunque la ranura ya haya sido
+            reemplazada por otro texto.
         biblioteca_mensajes_tecnicos: copia en memoria del CSV de mensajes
             precargados, más su condición técnica. Se carga una sola vez al
             arrancar y se actualiza únicamente después de que una escritura
@@ -95,6 +103,7 @@ class EstadoOperativo:
     transmision_tecnica: TransmisionTecnica | None = field(default=None, init=False)
     aviso_tecnico_moderacion: AvisoTecnico | None = field(default=None, init=False)
     aviso_tecnico_recinto: AvisoTecnico | None = field(default=None, init=False)
+    marcador_recinto_abierto: MarcadorRecintoAbierto | None = field(default=None, init=False)
     biblioteca_mensajes_tecnicos: BibliotecaMensajesTecnicos = field(
         default_factory=BibliotecaMensajesTecnicos, init=False
     )
