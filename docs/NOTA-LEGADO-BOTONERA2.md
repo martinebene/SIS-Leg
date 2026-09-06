@@ -84,9 +84,24 @@ desactualizados hacen fallar la CI.
 ## Redirects de GitHub
 
 Al renombrar un repositorio, GitHub deja redirecciones desde el nombre anterior hacia el nuevo
-para las URL web y para las operaciones Git. Esas redirecciones son un respaldo transitorio y no
-configuración canónica: los remotos, la documentación, las integraciones y los enlaces de este
-proyecto apuntan directamente a `martinebene/SIS-Leg` y `martinebene/SIS-Leg-Control`.
+para las URL web y para las operaciones Git: `clone`, `fetch` y `push` contra la dirección vieja
+siguen funcionando, y también redirigen issues, wikis, estrellas y seguidores. Esas redirecciones
+son un respaldo transitorio y no configuración canónica: los remotos, la documentación, las
+integraciones y los enlaces de este proyecto apuntan directamente a `martinebene/SIS-Leg` y
+`martinebene/SIS-Leg-Control`.
+
+Hay dos excepciones documentadas por GitHub que conviene tener presentes en el corte:
+
+- **GitHub Actions no redirige.** Un workflow que use una *action* alojada en un repositorio
+  renombrado falla con `repository not found`. Los workflows de este proyecto sólo consumen
+  actions de terceros (`actions/checkout`, `astral-sh/setup-uv`, `pnpm/action-setup`,
+  `actions/setup-node`, `actions/upload-artifact`), así que el rename no los afecta; si en el
+  futuro se publicara una action propia, habría que actualizar cada referencia a mano.
+- **Las URL de GitHub Pages no se redirigen.** El proyecto no publica sitio de Pages, de modo que
+  hoy no hay nada que reconfigurar.
+
+Fuente consultada el 6 de septiembre de 2026:
+`https://docs.github.com/en/repositories/creating-and-managing-repositories/renaming-a-repository`.
 
 Los nombres `Botonera2` y `Botonera2-Control` **no vuelven a usarse** para repositorios nuevos.
 Reutilizarlos rompería las redirecciones y haría que evidencia histórica apuntara a un proyecto
