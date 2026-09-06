@@ -125,7 +125,7 @@ WP-018 quedó integrado mediante squash merge de PR #24 sobre el candidato final
 | WP-075 | Capturar exclusivamente los numpads mapeados para que no escriban en el escritorio del moderador | INTEGRADO | WP-019, WP-020 | claude |
 | WP-076 | Alinear destino a la izquierda y acciones a la derecha en mensajes precargados | INTEGRADO | WP-070 | claude |
 | WP-078 | Registrar mensajes al Recinto como eventos principales INICIO/FIN | INTEGRADO | WP-055, WP-056 | claude |
-| WP-077 | Renombrar repositorios, código y referencias vigentes de Botonera2 a SIS-Leg | PENDIENTE | WP-074, WP-075, WP-076, WP-078 | claude |
+| WP-077 | Renombrar repositorios, código y referencias vigentes de Botonera2 a SIS-Leg | EN_CURSO | WP-074, WP-075, WP-076, WP-078 | claude |
 
 WP-032 quedó integrado mediante squash merge de PR #28 sobre el candidato `ae0b5fa8e2c36b5a00f1711650e72e575d5e597d`, después de CI candidata #192 / run `32857548560` verde 6/6 y revisión independiente con OpenCode + DeepSeek V4 Pro, que concluyó `LISTA PARA INTEGRAR` con cero hallazgos BLOQUEANTES, IMPORTANTES y MENORES. El squash produjo `8e2cf38c0ddd4fd9a003df0754497253fcf710ff` en `main`. La CI post-merge #193 / run `32861046565` terminó `success` 6/6 y `Backend · pruebas` completó `uv run pytest` normalmente, confirmando que la condición de carrera de cancelación que había bloqueado el gate post-merge de WP-021 quedó corregida.
 
@@ -476,3 +476,8 @@ WP-078 permanece EN_CURSO. Su review original fue satisfactorio sobre `b21ba6a8d
 
 
 WP-078 quedó integrado luego de una resincronización obligatoria y re-review independiente. Candidato final `12dbd840c9d6cf3134ddc0b3a1184921fadee44b` / tree `76aa7eda5e9ad3ad9e9c402de0f7b58575caaa4d`, con merge normal previo del main `01983bf59504d2e6f16a07ecc122344d1bd6e285` para preservar conjuntamente el manual de WP-075 y WP-078. Re-review Antigravity/AGY / Gemini 3.8 Flash (High): 0 BLOQUEANTES, 0 IMPORTANTES, 0 MENORES, `LISTA PARA INTEGRAR`. Auditoría ORCHESTRATOR I002: `APROBADO_PARA_MERGE`. PR #86 squash mergeada en `01b80e7fc3766acac7838e53bf73b8590ced92e7`; CI post-merge #486 / `34046193855` success 8/8. WP-077 permanece PENDIENTE y sólo se activa después del cleanup verificable de WP-075, WP-076 y WP-078, sin otros worktrees/ramas funcionales activos.
+
+
+HUMAN_GATE verificó el cleanup completo previo al corte final: Product en `9f3b0d23df9bd5b991174cd908e47f55c2c23da7`, Control en `eefa732802213804ce2e5697d374622f0ee7a715`, Orca y Git con único worktree `main`, ramas WP-075/WP-076/WP-078 locales/remotas ausentes, ninguna rama remota `wp-*` ni PR abierta en Product. Los cuatro runtime locales definidos por WP-073 siguen deliberadamente fuera de tracking y deberán preservarse byte-a-byte durante WP-077. Con ese gate satisfecho se activa WP-077, último WP y exclusivo, con Claude Code / Claude Opus 5 (High) como IMPLEMENTER y Antigravity/AGY / Gemini 3.8 Flash (High) como REVIEWER independiente.
+
+WP-077 se divide operacionalmente en dos fronteras: (1) candidate versionado y revisable con todo el rename interno/canónico, scripts/migración, tests y documentación preparados, sin renombrar todavía físicamente los repositorios GitHub ni mutar una instalación productiva; (2) después de revisión, integración, CI y cleanup del branch, HUMAN_GATE ejecutará el corte físico Product/Control y la verificación inmediata post-rename. Esta separación satisface el gate explícito del WP para el rename físico y evita que la revisión dependa de redirects o de una mutación irreversible previa.
