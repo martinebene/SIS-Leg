@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { EventoRecienteProyectado } from '@botonera2/api-client'
+import type { EventoRecienteProyectado } from '@sis-leg/api-client'
 import {
   filtrarEventosPorNivel,
   hayActividadNueva,

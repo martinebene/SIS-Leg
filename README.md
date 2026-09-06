@@ -1,8 +1,8 @@
-# SISLeg
+# SIS-Leg
 
 Reimplementación desde cero del sistema de votación del Concejo Deliberante de Puerto Madryn.
 
-**SISLeg** es el nombre del producto: es lo que ve una persona en las pantallas, en el título de cada pestaña y en el logo institucional. `Botonera2` sigue siendo el nombre del repositorio, de los paquetes `@botonera2/*`, de los módulos Python y de las unidades de servicio; esos identificadores técnicos no se renombran porque sostienen la compatibilidad y la trazabilidad del proyecto (WP-062).
+**SIS-Leg** es el nombre del producto y también su identidad técnica: es lo que ve una persona en las pantallas, en el título de cada pestaña y en el logo institucional, y es además el nombre del repositorio, de los paquetes `@sis-leg/*`, de los módulos Python y de las unidades de servicio. WP-062 adoptó la marca visible y WP-077 completó el cambio de identidad técnica; `Botonera2` quedó como nombre histórico del proyecto y se explica en `docs/NOTA-LEGADO-BOTONERA2.md`.
 
 ## Objetivo
 
@@ -13,7 +13,7 @@ Construir una nueva versión mantenible y verificable compuesta por:
 - frontend Nuxt.js de Pantalla del Recinto;
 - servicio/bridge independiente para capturar los teclados físicos y enviar sus pulsaciones al backend.
 
-La documentación de este repositorio es la especificación canónica para SISLeg y debe permitir que agentes de programación implementen el sistema sin reinterpretar las reglas institucionales ni técnicas ya decididas.
+La documentación de este repositorio es la especificación canónica para SIS-Leg y debe permitir que agentes de programación implementen el sistema sin reinterpretar las reglas institucionales ni técnicas ya decididas.
 
 ## Fuentes históricas
 
@@ -29,7 +29,7 @@ Existe además una rama histórica `v2`, no validada en producción. Puede aport
 
 ### Regla de autoridad
 
-1. La documentación vigente de **SISLeg** (repositorio `Botonera2`) manda para la nueva implementación.
+1. La documentación vigente de **SIS-Leg** (repositorio `SIS-Leg`) manda para la nueva implementación.
 2. Para reglas extraídas del sistema anterior, se tomó como fuente de verdad el **código ejecutable de `Botonera/main`**, no su documentación antigua.
 3. `Botonera/v2`, README, manuales, comentarios y documentación histórica sirven solo como contexto salvo referencia expresa.
 4. El repositorio histórico solo debe consultarse en el futuro para descargar assets o validar explícitamente una regla dudosa.
@@ -63,7 +63,7 @@ El estado operativo es deliberadamente **volátil y en memoria**. Una interrupci
 
 ## Arquitectura técnica base aprobada
 
-SISLeg será un **monorepo** con separación entre backend, los dos frontends y el bridge físico.
+SIS-Leg será un **monorepo** con separación entre backend, los dos frontends y el bridge físico.
 
 Decisiones ya cerradas:
 
@@ -164,7 +164,7 @@ igual a la plantilla.
 
 ```bash
 # 1. Desde la raíz del checkout, respaldar los cuatro archivos FUERA del árbol.
-RESPALDO="$HOME/botonera2-config-$(date +%Y%m%d-%H%M%S)"
+RESPALDO="$HOME/sis-leg-config-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$RESPALDO/config/apoyo-tecnico" "$RESPALDO/services/device-bridge/config"
 cp config/system.toml                          "$RESPALDO/config/"
 cp config/concejales.csv                       "$RESPALDO/config/"
@@ -372,7 +372,7 @@ pnpm empaquetar:produccion
 ```
 
 construye las cuatro SPA y deja en `dist/produccion/` un
-`botonera2-<sha-completo>.tar.gz` junto con su sidecar `.sha256`. El paquete
+`sis-leg-<sha-completo>.tar.gz` junto con su sidecar `.sha256`. El paquete
 contiene fuentes runtime Python, lockfiles, frontends ya compilados, el manual
 de usuario, `release.json`, unidades systemd, configuración Nginx y la
 herramienta de despliegue; no contiene configuración institucional, logs,
@@ -385,7 +385,7 @@ el artefacto no despliega ni modifica ningún host.
 
 ## Manual de usuario
 
-`manual/index.html` es el manual de operación, configuración e instalación de SISLeg. Es
+`manual/index.html` es el manual de operación, configuración e instalación de SIS-Leg. Es
 un único documento HTML autocontenido: no carga hojas de estilo, scripts, tipografías ni
 imágenes externas, de modo que se lee igual en una instalación sin salida a Internet.
 
@@ -436,7 +436,7 @@ uv run python scripts/iniciar_wp.py 030 antigravity
 
 El lanzador genérico hace `fetch`, permite actualizar `main` solo por fast-forward,
 valida aprobación, estado, agente y dependencias, y crea una rama
-`wp/NNN-descripcion` en un worktree hermano `Botonera2-wpNNN`. Si la relación
+`wp/NNN-descripcion` en un worktree hermano `SIS-Leg-wpNNN`. Si la relación
 rama/worktree ya es inequívocamente la misma, la reutiliza. Para el agente `antigravity`,
 mapea a la CLI `agy` (o `antigravity`). Ante una CLI ausente o un conflicto se
 detiene sin borrar ni reparar trabajo.

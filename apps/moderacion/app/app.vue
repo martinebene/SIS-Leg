@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Vista principal y Shell de la aplicación de Moderación de SISLeg.
+ * Vista principal y Shell de la aplicación de Moderación de SIS-Leg.
  *
  * Responsabilidades:
  * 1. Inicializar y consumir la frontera reactiva de sincronización (useEstadoModeracion).
@@ -33,16 +33,16 @@
  */
 
 import { computed, ref, shallowRef } from 'vue'
-import type { PuntoOrdenDelDiaProyectado } from '@botonera2/api-client'
-import type { FiltroNivelEventos } from '@botonera2/frontend-shared'
+import type { PuntoOrdenDelDiaProyectado } from '@sis-leg/api-client'
+import type { FiltroNivelEventos } from '@sis-leg/frontend-shared'
 import { useEstadoModeracion } from './composables/useEstadoModeracion'
 import CabeceraModeracion from './components/CabeceraModeracion.vue'
 import PanelSesionVotacion from './components/PanelSesionVotacion.vue'
 import PanelOrdenDelDia from './components/PanelOrdenDelDia.vue'
 import PanelRecintoPalabra from './components/PanelRecintoPalabra.vue'
 import PanelEventos from './components/PanelEventos.vue'
-import AvisoSuperficie from '@botonera2/frontend-shared/componentes/AvisoSuperficie.vue'
-import IndicadorCargaInicial from '@botonera2/frontend-shared/componentes/IndicadorCargaInicial.vue'
+import AvisoSuperficie from '@sis-leg/frontend-shared/componentes/AvisoSuperficie.vue'
+import IndicadorCargaInicial from '@sis-leg/frontend-shared/componentes/IndicadorCargaInicial.vue'
 
 // Conectamos con el composable reactivo de moderación
 const { estado, estadoConexion, estadoGlobal, revision, desactualizado, conectado, cliente } =

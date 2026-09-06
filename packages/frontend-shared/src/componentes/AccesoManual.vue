@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Acceso de ayuda al manual de usuario de SISLeg (WP-067).
+ * Acceso de ayuda al manual de usuario de SIS-Leg (WP-067).
  *
  * ## Qué es
  *

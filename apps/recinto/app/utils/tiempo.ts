@@ -7,7 +7,7 @@ export {
   calcularDuracionEnSnapshot,
   convertirMarcaBackend,
   formatearDuracion,
-} from '@botonera2/frontend-shared'
+} from '@sis-leg/frontend-shared'
 
 function rellenarConCeros(valor: number, ancho: number): string {
   return String(valor).padStart(ancho, '0')

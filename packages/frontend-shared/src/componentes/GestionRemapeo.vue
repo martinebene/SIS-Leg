@@ -31,7 +31,7 @@
  */
 
 import { computed, ref, watch } from 'vue'
-import type { ClienteRemapeo } from '@botonera2/api-client'
+import type { ClienteRemapeo } from '@sis-leg/api-client'
 import { extraerMensajeError } from '../errores'
 import { traducirMotivos } from '../motivos'
 import type { EstadoRemapeoCompartido } from '../contrato_remapeo'

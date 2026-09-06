@@ -30,21 +30,21 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from botonera2_backend.auditoria import (
+from sis_leg_backend.auditoria import (
     ENCABEZADO_CSV,
     ErrorAuditoria,
     EscritorAuditoriaCsv,
     NivelAuditoria,
 )
-from botonera2_backend.dominio.apoyo_tecnico import DestinoAvisoTecnico
-from botonera2_backend.dominio.estado import EstadoGlobal
-from botonera2_backend.servicios.apoyo_tecnico import (
+from sis_leg_backend.dominio.apoyo_tecnico import DestinoAvisoTecnico
+from sis_leg_backend.dominio.estado import EstadoGlobal
+from sis_leg_backend.servicios.apoyo_tecnico import (
     CODIGO_MARCADOR_FIN,
     CODIGO_MARCADOR_INICIO,
     ETIQUETA_EVENTO_PRINCIPAL,
     ServicioApoyoTecnico,
 )
-from botonera2_backend.servicios.fronteras_temporales import ServicioFronterasTemporales
+from sis_leg_backend.servicios.fronteras_temporales import ServicioFronterasTemporales
 
 from tests.backend.ayudas_proyecciones import (
     EntornoProyecciones,
@@ -629,7 +629,7 @@ async def test_el_ciclo_de_vida_inyecta_el_cierre_automatico() -> None:
     de cierre atada al servicio técnico real.
     """
 
-    from botonera2_backend import aplicacion as modulo_aplicacion
+    from sis_leg_backend import aplicacion as modulo_aplicacion
 
     capturado: dict[str, object] = {}
     original = modulo_aplicacion.ServicioFronterasTemporales

@@ -36,7 +36,7 @@ import type {
   ConcejalModeracion,
   EstadoQuorum,
   OpcionesSuscripcion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 
 /**
  * Vitest ejecuta este repositorio en entorno Node para conservar la infraestructura liviana.

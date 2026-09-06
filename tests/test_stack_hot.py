@@ -375,7 +375,7 @@ async function ejecutar() {
 
   // A. Probar índice
   const rIndice = await fetch(base + '/');
-  if (!rIndice.ok || !(await rIndice.text()).includes('Botonera2')) {
+  if (!rIndice.ok || !(await rIndice.text()).includes('SIS-Leg')) {
     throw new Error('Fallo en índice /');
   }
 

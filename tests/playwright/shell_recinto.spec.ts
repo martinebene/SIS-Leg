@@ -665,7 +665,7 @@ for (const viewport of [
    * | ancho de palabra      | 384 px (20 vw)       | 273 px (20 vw)      |
    * | eventos               | 127 px (11,8 %)      | 84 px (11,0 %)      |
    *
-   * Botonera2 retira la franja de eventos por decisión humana, así que su
+   * SIS-Leg retira la franja de eventos por decisión humana, así que su
    * altura debe aparecer en la zona principal: acá se exige que bancas+palabra
    * superen la proporción histórica en lugar de igualarla.
    */

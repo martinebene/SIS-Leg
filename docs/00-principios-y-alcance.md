@@ -2,7 +2,7 @@
 
 ## 1. Producto
 
-SISLeg es el sistema que asiste la preparación, desarrollo, votación, uso de la palabra y registro electrónico de una sesión del Concejo Deliberante de Puerto Madryn.
+SIS-Leg es el sistema que asiste la preparación, desarrollo, votación, uso de la palabra y registro electrónico de una sesión del Concejo Deliberante de Puerto Madryn.
 
 No reemplaza la documentación oficial del Concejo ni interpreta su contenido. Su función es gestionar interacciones operativas y registrar lo ocurrido.
 
@@ -43,7 +43,7 @@ El sistema solo necesita saber quién preside y permitir el voto extraordinario 
 
 ### Secretaría Legislativa
 
-Rol institucional informativo. Debe identificarse y sus cambios registrarse, pero no ejecuta acciones funcionales dentro de SISLeg.
+Rol institucional informativo. Debe identificarse y sus cambios registrarse, pero no ejecuta acciones funcionales dentro de SIS-Leg.
 
 ### Pantalla del Recinto
 
@@ -113,7 +113,7 @@ Los CSV persistidos hasta la caída permanecen como evidencia histórica y no se
 
 Número de sesión, número de votación, contenido y orden del Orden del Día son responsabilidad de la documentación oficial/física del Concejo.
 
-SISLeg:
+SIS-Leg:
 
 - recibe esos datos;
 - no valida secuencia ni unicidad;

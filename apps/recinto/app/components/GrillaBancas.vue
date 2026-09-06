@@ -2,7 +2,7 @@
 /** Construye la geometría física desde filas_bancas y el número de cada banca. */
 
 import { computed } from 'vue'
-import type { ConcejalPublico, VotoPublico } from '@botonera2/api-client'
+import type { ConcejalPublico, VotoPublico } from '@sis-leg/api-client'
 import BancaPublica from './BancaPublica.vue'
 
 interface BancaFisica {

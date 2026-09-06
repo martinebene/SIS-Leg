@@ -4,7 +4,7 @@
 ----------------------------
 WP-065 exige versionar sonidos **aptos para redistribución** y con procedencia
 documentada. En lugar de descargar archivos de terceros con licencias difíciles
-de auditar, SISLeg **sintetiza** sus propios sonidos: este script es la única
+de auditar, SIS-Leg **sintetiza** sus propios sonidos: este script es la única
 fuente de los 22 archivos versionados en
 ``apps/recinto/public/assets/sonidos/``. La procedencia queda demostrada por el
 propio repositorio y la licencia es la del proyecto.

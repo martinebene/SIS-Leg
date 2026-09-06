@@ -1,5 +1,5 @@
 /**
- * Pruebas E2E de interfaz de usuario para el Simulador Web (@botonera2/simulador).
+ * Pruebas E2E de interfaz de usuario para el Simulador Web (@sis-leg/simulador).
  *
  * Verificaciones obligatorias (WP-034 y WP-035):
  * 1. Resolución Full HD 1920×1080 sin scroll vertical ni horizontal para 12 dispositivos iniciales.

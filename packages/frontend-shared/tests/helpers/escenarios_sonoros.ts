@@ -20,7 +20,7 @@
  * build de las SPA lo incluye.
  */
 
-import type { EstadoRecinto, EstadoPalabraPublico, VotacionPublica } from '@botonera2/api-client'
+import type { EstadoRecinto, EstadoPalabraPublico, VotacionPublica } from '@sis-leg/api-client'
 import type { EventoSonoroRecinto } from '../../src/transiciones_sonoras'
 import {
   crearApoyoTecnicoPrueba,

@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Botonera2 Backend",
+    "title": "SIS-Leg Backend",
     "version": "0.1.0"
   },
   "paths": {
@@ -915,7 +915,7 @@
           "estado"
         ],
         "summary": "Seguir estados completos de Apoyo Técnico por SSE",
-        "description": "Comparte coordinador y revisiones con los otros dos streams.\n\nQue las tres proyecciones usen el mismo ``CoordinadorPublicacion`` es lo\nque garantiza que una cuenta regresiva que vence, o un aviso que expira,\ndespierte a la vez a Moderación, al Recinto y al puesto técnico sin que\nninguno pregunte periódicamente.\n\nDesde WP-074 éste es además el **único** stream que abre la SPA técnica.\nAntes abría también los de Moderación y Recinto, y con las cuatro\nsuperficies de SISLeg abiertas bajo el mismo origen HTTP/1.1 las seis\nconexiones persistentes resultantes dejaban sin cupo a los comandos REST.",
+        "description": "Comparte coordinador y revisiones con los otros dos streams.\n\nQue las tres proyecciones usen el mismo ``CoordinadorPublicacion`` es lo\nque garantiza que una cuenta regresiva que vence, o un aviso que expira,\ndespierte a la vez a Moderación, al Recinto y al puesto técnico sin que\nninguno pregunte periódicamente.\n\nDesde WP-074 éste es además el **único** stream que abre la SPA técnica.\nAntes abría también los de Moderación y Recinto, y con las cuatro\nsuperficies de SIS-Leg abiertas bajo el mismo origen HTTP/1.1 las seis\nconexiones persistentes resultantes dejaban sin cupo a los comandos REST.",
         "operationId": "transmitir_estado_tecnico_api_v1_estado_tecnico_stream_get",
         "responses": {
           "200": {

@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from botonera2_backend.aplicacion import crear_aplicacion
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sis_leg_backend.aplicacion import crear_aplicacion
 
 import scripts.iniciar_stack_desarrollo as modulo_stack
 from scripts.iniciar_stack_desarrollo import (

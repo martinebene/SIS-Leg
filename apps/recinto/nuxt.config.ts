@@ -1,7 +1,7 @@
 import tailwindcss from '@tailwindcss/vite'
 
-const shaConstruccion = process.env.BOTONERA2_SHA_CONSTRUCCION
-const instanteConstruccion = Number(process.env.BOTONERA2_INSTANTE_CONSTRUCCION ?? Date.now())
+const shaConstruccion = process.env.SIS_LEG_SHA_CONSTRUCCION
+const instanteConstruccion = Number(process.env.SIS_LEG_INSTANTE_CONSTRUCCION ?? Date.now())
 const patronInstantePrerender = /(\[\{"prerenderedAt":\d+,"serverRendered":\d+\},)\d+(,false\])/g
 /**
  * Prefijo público de la aplicación (WP-062).
@@ -39,11 +39,11 @@ export default defineNuxtConfig({
     // y los túneles SSH de forma transparente.
     baseURL: rutaBase,
     // Identidad visible de la pestaña del navegador (WP-062). El título nombra al
-    // producto —SISLeg— y a la pantalla concreta, porque el operador suele tener varias
+    // producto —SIS-Leg— y a la pantalla concreta, porque el operador suele tener varias
     // superficies abiertas a la vez. El icono es el isotipo aprobado, servido desde
     // `public/assets/marca/` de esta misma aplicación.
     head: {
-      title: 'SISLeg · Pantalla del Recinto',
+      title: 'SIS-Leg · Pantalla del Recinto',
       link: [
         { rel: 'icon', type: 'image/png', href: `${rutaBase}assets/marca/sisleg-isotipo.png` },
       ],

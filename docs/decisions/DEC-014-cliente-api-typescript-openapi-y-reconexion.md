@@ -28,7 +28,7 @@ El cliente compartido vive exclusivamente en:
 packages/api-client/
 ```
 
-El paquete es la frontera TypeScript común para consumir la API interna de Botonera2. No se duplicarán clientes REST/SSE independientes dentro de `apps/moderacion` y `apps/recinto`.
+El paquete es la frontera TypeScript común para consumir la API interna de SIS-Leg. No se duplicarán clientes REST/SSE independientes dentro de `apps/moderacion` y `apps/recinto`.
 
 ### 2. Fuente de verdad y generación de tipos
 

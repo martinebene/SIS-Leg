@@ -17,14 +17,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from botonera2_backend.configuracion.modelos import ConfiguracionSonidosRecinto
-from botonera2_backend.configuracion.sonidos_recinto import (
+from conftest import TOML_CANONICO
+from sis_leg_backend.configuracion.modelos import ConfiguracionSonidosRecinto
+from sis_leg_backend.configuracion.sonidos_recinto import (
     EVENTOS_SONIDO_RECINTO,
     MOTIVO_SONIDOS_INVALIDOS,
 )
-from botonera2_backend.dominio.estado import EstadoGlobal
-from botonera2_backend.recursos import crear_recursos_aplicacion
-from conftest import TOML_CANONICO
+from sis_leg_backend.dominio.estado import EstadoGlobal
+from sis_leg_backend.recursos import crear_recursos_aplicacion
 
 from tests.backend.ayudas_proyecciones import (
     abrir_sesion_prueba,

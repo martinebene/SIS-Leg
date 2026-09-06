@@ -6,13 +6,13 @@
 
 ## Contexto
 
-Botonera2 comenzó su implementación con un flujo local genérico pensado para terminales administradas manualmente. `DEC-002` estableció `scripts/iniciar_wp.py` para validar autorización, sincronizar `main`, crear rama/worktree y abrir directamente una CLI de agente. `DT-036` estableció además a Codex como implementador predeterminado, permitiendo otras herramientas por capacidad, disponibilidad o cuota.
+SIS-Leg comenzó su implementación con un flujo local genérico pensado para terminales administradas manualmente. `DEC-002` estableció `scripts/iniciar_wp.py` para validar autorización, sincronizar `main`, crear rama/worktree y abrir directamente una CLI de agente. `DT-036` estableció además a Codex como implementador predeterminado, permitiendo otras herramientas por capacidad, disponibilidad o cuota.
 
 El entorno operativo principal cambió posteriormente a **Orca**, utilizando un cliente conectado a un runtime `orca serve` en el entorno de desarrollo remoto. En este modo, crear un worktree con Git y lanzar el agente fuera de Orca obliga a importar/reabrir después ese trabajo para que Orca pueda administrar correctamente terminal, sesión, estado, notificaciones y demás integración del agente.
 
 El 20 de agosto de 2026 se verificó empíricamente sobre el runtime Orca disponible que:
 
-- el repositorio `Botonera2` está registrado nativamente en Orca;
+- el repositorio `SIS-Leg` está registrado nativamente en Orca;
 - `orca worktree create` admite `--repo`, `--name`, `--base-branch`, `--agent`, `--prompt`, `--setup`, `--no-parent`, `--activate` y salida `--json`;
 - un worktree creado desde `origin/main` parte exactamente del SHA solicitado y queda registrado por Orca;
 - Orca genera una rama local propia derivada del nombre del workspace; en el entorno probado adoptó la forma `<git-username>/wp-NNN-descripcion`;

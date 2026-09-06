@@ -1,5 +1,5 @@
 /**
- * Cliente TypeScript para la interfaz de Moderación de SISLeg.
+ * Cliente TypeScript para la interfaz de Moderación de SIS-Leg.
  *
  * Expone la superficie completa de lectura/sincronización y comandos mutantes
  * permitidos para el operador único de Moderación, encapsulando las rutas REST y SSE.

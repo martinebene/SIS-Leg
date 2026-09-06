@@ -6,7 +6,7 @@
 
 ## Contexto
 
-Botonera2 admite lotes de Work Packages independientes que conceptualmente pueden ejecutarse en paralelo mediante worktrees separados y `CURRENT.json.active_assignments`. En el VPS de desarrollo, sin embargo, ejecutar simultáneamente varios agentes de programación puede exceder la capacidad práctica de CPU, RAM o swap.
+SIS-Leg admite lotes de Work Packages independientes que conceptualmente pueden ejecutarse en paralelo mediante worktrees separados y `CURRENT.json.active_assignments`. En el VPS de desarrollo, sin embargo, ejecutar simultáneamente varios agentes de programación puede exceder la capacidad práctica de CPU, RAM o swap.
 
 El operador quiere conservar la ventaja de preparar varios worktrees y asignaciones de una sola vez, pero ejecutar los agentes pesados de forma estrictamente secuencial. También quiere reducir intervenciones manuales repetitivas sin delegar al entorno local decisiones propias del ORCHESTRATOR ni eliminar las puertas de revisión e integración.
 
@@ -199,7 +199,7 @@ Reglas:
 9. el coordinador no interpreta si una acción rutinaria "merece permiso": esa autorización ya viene dada por HUMAN_GATE y la asignación;
 10. si un worker intenta una acción **fuera del alcance** o una operación que la gobernanza reserva (force/rebase destructivo, merge/deploy no autorizado, secreto/credencial, decisión DT-038, etc.), los permisos completos no la vuelven válida: eso sí es una escalación real.
 
-Para REVIEWER, permisos completos de CLI no eliminan el modo de solo lectura sobre Botonera2: siguen prohibidas las modificaciones del producto y sólo puede escribir el handoff autorizado en Botonera2-Control.
+Para REVIEWER, permisos completos de CLI no eliminan el modo de solo lectura sobre SIS-Leg: siguen prohibidas las modificaciones del producto y sólo puede escribir el handoff autorizado en SIS-Leg-Control.
 
 ### 8 ter. Principio de completar el lote y clasificación de desvíos
 
@@ -332,13 +332,13 @@ Sólo en ese caso el COORDINADOR_LOCAL puede, si el lote lo autoriza expresament
 
 - reconstruir la asignación REVIEWER desde la plantilla preaprobada;
 - fijar en ella PR/base/candidate/tree SHA y CI exactos;
-- publicarla en Botonera2-Control;
+- publicarla en SIS-Leg-Control;
 - actualizar exclusivamente los campos operativos de `CURRENT.json` necesarios para volver elegible a ese REVIEWER;
 - iniciar el REVIEWER y esperar su handoff.
 
 No puede evaluar el contenido del review, convertir hallazgos en correcciones, habilitar re-revisión ni mergear. Esas decisiones vuelven al ORCHESTRATOR/HUMAN_GATE.
 
-La transición mecánica preautorizada debe aparecer además en un manifiesto de lote append-only en Botonera2-Control. Si falta el manifiesto, los datos no coinciden o la condición objetiva no se cumple, el coordinador se detiene.
+La transición mecánica preautorizada debe aparecer además en un manifiesto de lote append-only en SIS-Leg-Control. Si falta el manifiesto, los datos no coinciden o la condición objetiva no se cumple, el coordinador se detiene.
 
 ### 12. Sincronización Git mecánica delegada
 

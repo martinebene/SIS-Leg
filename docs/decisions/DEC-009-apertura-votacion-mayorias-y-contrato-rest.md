@@ -6,7 +6,7 @@
 
 ## Contexto
 
-WP-009 inicia el núcleo de votación de Botonera2. Su alcance funcional inmediato es abrir una votación dentro de una sesión ya abierta, validar sus datos y precondiciones, publicar una única votación activa e impedir que sus datos constitutivos cambien después de la apertura.
+WP-009 inicia el núcleo de votación de SIS-Leg. Su alcance funcional inmediato es abrir una votación dentro de una sesión ya abierta, validar sus datos y precondiciones, publicar una única votación activa e impedir que sus datos constitutivos cambien después de la apertura.
 
 Durante la planificación de WP-009 el operador cerró además una precisión de negocio necesaria para los WPs posteriores de cálculo de resultados: la palabra institucional `PRESENTES`, cuando se utiliza como base de una mayoría especial, refiere a quienes participaron efectivamente de esa votación emitiendo voto, independientemente de que su presencia dinámica cambie después. Técnicamente equivale a contar todos los votos ordinarios emitidos, incluidas las abstenciones.
 

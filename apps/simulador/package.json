@@ -1,5 +1,5 @@
 {
-  "name": "@botonera2/simulador",
+  "name": "@sis-leg/simulador",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,8 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
-    "@botonera2/api-client": "workspace:*",
-    "@botonera2/frontend-shared": "workspace:*",
+    "@sis-leg/api-client": "workspace:*",
+    "@sis-leg/frontend-shared": "workspace:*",
     "nuxt": "4.5.2",
     "vue": "3.5.41",
     "vue-router": "5.2.0"

@@ -165,7 +165,7 @@ if subcomando == "repo" and len(argumentos) > 1 and argumentos[1] == "list":
             "ok": True,
             "result": {{
                 "repos": [
-                    {{"id": "repo-123", "path": repo_path, "displayName": "Botonera2"}}
+                    {{"id": "repo-123", "path": repo_path, "displayName": "SIS-Leg"}}
                 ]
             }}
         }}))
@@ -196,7 +196,7 @@ if subcomando == "worktree" and len(argumentos) > 1 and argumentos[1] == "list":
                             "refs/heads/martinebene/wp-030-lanzador-orca-y-soporte-multi-entorno"
                         ),
                         "path": (
-                            "/home/dev/orca/workspaces/Botonera2/"
+                            "/home/dev/orca/workspaces/SIS-Leg/"
                             "wp-030-lanzador-orca-y-soporte-multi-entorno"
                         )
                     }}
@@ -275,8 +275,8 @@ if subcomando == "worktree" and len(argumentos) > 1 and argumentos[1] == "create
             "ok": True,
             "result": {{
                 "worktree": {{
-                    "id": "repo::/home/dev/orca/workspaces/Botonera2/wp-030-lanzador-orca",
-                    "path": "/home/dev/orca/workspaces/Botonera2/wp-030-lanzador-orca",
+                    "id": "repo::/home/dev/orca/workspaces/SIS-Leg/wp-030-lanzador-orca",
+                    "path": "/home/dev/orca/workspaces/SIS-Leg/wp-030-lanzador-orca",
                     "head": head,
                     "branch": "refs/heads/martinebene/wp-030-lanzador-orca",
                     "baseRef": "refs/remotes/origin/main",
@@ -293,8 +293,8 @@ if subcomando == "worktree" and len(argumentos) > 1 and argumentos[1] == "create
             "result": {{
                 "startupTerminal": {{"handle": "term_fallback_999"}},
                 "worktree": {{
-                    "id": "repo::/home/dev/orca/workspaces/Botonera2/wp-030-lanzador-orca",
-                    "path": "/home/dev/orca/workspaces/Botonera2/wp-030-lanzador-orca",
+                    "id": "repo::/home/dev/orca/workspaces/SIS-Leg/wp-030-lanzador-orca",
+                    "path": "/home/dev/orca/workspaces/SIS-Leg/wp-030-lanzador-orca",
                     "head": head,
                     "branch": "refs/heads/martinebene/wp-030-lanzador-orca",
                     "baseRef": "refs/remotes/origin/main",
@@ -348,8 +348,8 @@ if subcomando == "worktree" and len(argumentos) > 1 and argumentos[1] == "create
             "result": {{
                 "agentTerminalHandle": "term_12345",
                 "worktree": {{
-                    "id": "repo::/home/dev/orca/workspaces/Botonera2/wp-030-lanzador-orca",
-                    "path": "/home/dev/orca/workspaces/Botonera2/wp-030-lanzador-orca",
+                    "id": "repo::/home/dev/orca/workspaces/SIS-Leg/wp-030-lanzador-orca",
+                    "path": "/home/dev/orca/workspaces/SIS-Leg/wp-030-lanzador-orca",
                     "head": head,
                     "branch": "refs/heads/martinebene/wp-030-lanzador-orca",
                     "baseRef": "refs/remotes/origin/main",
@@ -381,7 +381,7 @@ def crear_repositorio_orca(
     semilla = tmp_path / "semilla"
     semilla.mkdir(parents=True, exist_ok=True)
     ejecutar("git", "init", "--initial-branch=main", cwd=semilla)
-    ejecutar("git", "config", "user.name", "Pruebas Botonera2", cwd=semilla)
+    ejecutar("git", "config", "user.name", "Pruebas SIS-Leg", cwd=semilla)
     ejecutar("git", "config", "user.email", "pruebas@example.invalid", cwd=semilla)
 
     (semilla / ".gitignore").write_text("__pycache__/\n*.pyc\n", encoding="utf-8")
@@ -547,13 +547,13 @@ def test_construir_prompt_inicial_no_existe() -> None:
 def test_construccion_correcta_de_comando_orca_sin_prompt(tmp_path: Path) -> None:
     """Demuestra que 'orca worktree create' incluye --agent y no incluye --prompt ni texto."""
     comando = construir_comando_creacion_orca(
-        raiz=Path("/workspace/Botonera2"),
+        raiz=Path("/workspace/SIS-Leg"),
         numero_wp="030",
         titulo="Lanzador Orca y soporte multi-entorno",
         agente="antigravity",
     )
     assert comando[:4] == ["orca", "worktree", "create", "--repo"]
-    assert comando[4] == "path:/workspace/Botonera2"
+    assert comando[4] == "path:/workspace/SIS-Leg"
     assert comando[5] == "--name"
     assert comando[6] == "wp/030-lanzador-orca-y-soporte-multi-entorno"
     assert "--base-branch" in comando

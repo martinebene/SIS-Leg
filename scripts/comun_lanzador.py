@@ -102,7 +102,7 @@ def validar_checkout_coordinador(raiz_esperada: Path) -> None:
     raiz_git = Path(resultado_raiz.stdout.strip()).resolve()
     if raiz_git != raiz_esperada.resolve():
         raise ErrorInicioWP(
-            "Ejecutá el lanzador desde la raíz del checkout coordinador de Botonera2."
+            "Ejecutá el lanzador desde la raíz del checkout coordinador de SIS-Leg."
         )
 
     rama = ejecutar_git(raiz_esperada, "branch", "--show-current").stdout.strip()

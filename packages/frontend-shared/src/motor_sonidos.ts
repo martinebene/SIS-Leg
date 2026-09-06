@@ -53,7 +53,7 @@
  * reintentar un archivo roto ante cada revisión sería un bucle silencioso.
  */
 
-import type { SonidoRecintoProyectado, SonidosRecintoProyectados } from '@botonera2/api-client'
+import type { SonidoRecintoProyectado, SonidosRecintoProyectados } from '@sis-leg/api-client'
 import type { EventoSonoroRecinto } from './transiciones_sonoras'
 
 /**

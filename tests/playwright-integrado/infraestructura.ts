@@ -137,7 +137,7 @@ export class ProcesoStackIntegrado {
     // fuera del árbol del repositorio. El backend reemplaza el CSV de forma
     // atómica escribiendo un temporal en el mismo directorio, así que necesita
     // un directorio propio y escribible, no sólo un archivo.
-    this.directorioBiblioteca = await archivos.mkdtemp(join(tmpdir(), 'botonera2-biblioteca-'))
+    this.directorioBiblioteca = await archivos.mkdtemp(join(tmpdir(), 'sis-leg-biblioteca-'))
     this.rutaBiblioteca = join(this.directorioBiblioteca, 'mensajes.csv')
     await archivos.copyFile(RUTA_BIBLIOTECA_EJEMPLO, this.rutaBiblioteca)
 
@@ -147,7 +147,7 @@ export class ProcesoStackIntegrado {
       [
         'run',
         '--package',
-        'botonera2-backend',
+        'sis-leg-backend',
         'python',
         'scripts/iniciar_stack_desarrollo.py',
         '--host',

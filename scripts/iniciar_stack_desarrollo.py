@@ -1,7 +1,7 @@
 """Servidor efímero que integra FastAPI con las tres SPA estáticas.
 
 Este módulo pertenece exclusivamente al tooling de desarrollo. La aplicación
-productiva continúa siendo ``botonera2_backend.main:app`` y, por lo tanto, no
+productiva continúa siendo ``sis_leg_backend.main:app`` y, por lo tanto, no
 adquiere mounts de archivos estáticos ni responsabilidades de Nginx.
 """
 
@@ -13,9 +13,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import uvicorn
-from botonera2_backend.aplicacion import crear_aplicacion
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from sis_leg_backend.aplicacion import crear_aplicacion
 from starlette.staticfiles import StaticFiles
 
 HOST_PREDETERMINADO = "127.0.0.1"
@@ -140,9 +140,9 @@ def crear_aplicacion_integrada(
 
         return """<!doctype html>
 <html lang="es">
-  <head><meta charset="utf-8"><title>Botonera2 · desarrollo</title></head>
+  <head><meta charset="utf-8"><title>SIS-Leg · desarrollo</title></head>
   <body>
-    <h1>Botonera2 · entorno de desarrollo</h1>
+    <h1>SIS-Leg · entorno de desarrollo</h1>
     <ul>
       <li><a href="/moderacion/">Moderación</a></li>
       <li><a href="/recinto/">Pantalla del Recinto</a></li>

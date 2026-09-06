@@ -16,16 +16,16 @@ import os
 from pathlib import Path
 
 import pytest
-from botonera2_backend.configuracion.errores import ErrorMensajesTecnicosInvalido
-from botonera2_backend.configuracion.mensajes_tecnicos import (
+from sis_leg_backend.configuracion.errores import ErrorMensajesTecnicosInvalido
+from sis_leg_backend.configuracion.mensajes_tecnicos import (
     LARGO_MAXIMO_TEXTO,
     cargar_mensajes_tecnicos,
     guardar_mensajes_tecnicos,
     interpretar_mensajes_tecnicos,
     serializar_mensajes_tecnicos,
 )
-from botonera2_backend.dominio.apoyo_tecnico import DestinoAvisoTecnico, MensajeTecnico
-from botonera2_backend.servicios.apoyo_tecnico import (
+from sis_leg_backend.dominio.apoyo_tecnico import DestinoAvisoTecnico, MensajeTecnico
+from sis_leg_backend.servicios.apoyo_tecnico import (
     MOTIVO_BIBLIOTECA_INVALIDA,
     leer_biblioteca_mensajes_tecnicos,
 )
@@ -239,7 +239,7 @@ def test_fallo_de_reemplazo_conserva_el_archivo_anterior(
 
     monkeypatch.setattr(os, "replace", reemplazo_fallido)
 
-    from botonera2_backend.dominio.apoyo_tecnico import ErrorPersistenciaMensajesTecnicos
+    from sis_leg_backend.dominio.apoyo_tecnico import ErrorPersistenciaMensajesTecnicos
 
     with pytest.raises(ErrorPersistenciaMensajesTecnicos):
         guardar_mensajes_tecnicos(ruta, (mensaje("nuevo", "Texto nuevo"),))

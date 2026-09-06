@@ -50,11 +50,11 @@ def verificar_reproducibilidad(raiz: Path = RAIZ_REPOSITORIO) -> str:
     """
 
     sha_commit = ejecutar_git("rev-parse", "HEAD", raiz=raiz)
-    nombre_paquete = f"botonera2-{sha_commit}.tar.gz"
+    nombre_paquete = f"sis-leg-{sha_commit}.tar.gz"
     paquete = raiz / "dist/produccion" / nombre_paquete
     sidecar = paquete.with_name(f"{nombre_paquete}.sha256")
 
-    with tempfile.TemporaryDirectory(prefix="botonera2-reproducibilidad-") as temporal:
+    with tempfile.TemporaryDirectory(prefix="sis-leg-reproducibilidad-") as temporal:
         temporal_path = Path(temporal)
         paquete_primero = temporal_path / nombre_paquete
         sidecar_primero = temporal_path / sidecar.name

@@ -15,7 +15,7 @@
  */
 
 import { computed, ref } from 'vue'
-import type { ClienteModeracion, EstadoModeracion } from '@botonera2/api-client'
+import type { ClienteModeracion, EstadoModeracion } from '@sis-leg/api-client'
 import { traducirMotivos } from '../utils/motivos'
 
 const props = defineProps<{

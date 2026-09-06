@@ -48,7 +48,7 @@ async def ejecutar_consola_interactiva(
         flujo_salida: Flujo donde escribir los mensajes y respuestas.
     """
     flujo_salida.write("=" * 60 + "\n")
-    flujo_salida.write("Botonera2 - Simulador CLI de Dispositivos (Modo Interactivo)\n")
+    flujo_salida.write("SIS-Leg - Simulador CLI de Dispositivos (Modo Interactivo)\n")
     flujo_salida.write(f"Conectado a URL base: {cliente.url_base}\n")
     flujo_salida.write(f"Endpoint: {cliente.url_endpoint}\n")
     flujo_salida.write("Escriba 'ayuda' para ver instrucciones o 'salir' para terminar.\n")

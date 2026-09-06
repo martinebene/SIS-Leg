@@ -8,7 +8,7 @@
  */
 
 import { computed } from 'vue'
-import type { ConcejalModeracion, VotoModeracion } from '@botonera2/api-client'
+import type { ConcejalModeracion, VotoModeracion } from '@sis-leg/api-client'
 import BancaConcejal from './BancaConcejal.vue'
 
 interface BancaFisica {

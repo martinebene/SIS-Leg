@@ -16,7 +16,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { compile, ssrContextKey, type Component } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
-import type { ConcejalModeracion, VotoModeracion } from '@botonera2/api-client'
+import type { ConcejalModeracion, VotoModeracion } from '@sis-leg/api-client'
 import BancaConcejal from '../app/components/BancaConcejal.vue'
 import fuenteBancaConcejal from '../app/components/BancaConcejal.vue?raw'
 import GrillaRecinto from '../app/components/GrillaRecinto.vue'

@@ -9,8 +9,8 @@
  */
 
 import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
-import type { EstadoModeracion, VotoModeracion } from '@botonera2/api-client'
-import { resultadoIndividualVisible } from '@botonera2/frontend-shared'
+import type { EstadoModeracion, VotoModeracion } from '@sis-leg/api-client'
+import { resultadoIndividualVisible } from '@sis-leg/frontend-shared'
 
 const INTERVALO_RELOJ_MS = 250
 

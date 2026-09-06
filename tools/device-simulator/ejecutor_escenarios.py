@@ -88,7 +88,7 @@ def imprimir_resultado_envio(
 
 
 class EjecutorEscenarios:
-    """Ejecutor de escenarios declarativos de pulsaciones para Botonera2.
+    """Ejecutor de escenarios declarativos de pulsaciones para SIS-Leg.
 
     Coordina el envio secuencial, las pausas temporales y los grupos concurrentes,
     contrastando cada respuesta con las expectativas declaradas en el escenario.

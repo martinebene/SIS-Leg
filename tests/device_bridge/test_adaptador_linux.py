@@ -17,14 +17,14 @@ Verifica:
 from __future__ import annotations
 
 import pytest
-from botonera2_device_bridge.adaptador_linux import (
+from sis_leg_device_bridge.adaptador_linux import (
     AdaptadorEvdevLinux,
     AdaptadorFalso,
     DispositivoFisico,
     ErrorDispositivoDesconectado,
     ErrorExclusividadNoDisponible,
 )
-from botonera2_device_bridge.modelos import EventoTeclaFisica
+from sis_leg_device_bridge.modelos import EventoTeclaFisica
 
 try:
     from evdev import ecodes

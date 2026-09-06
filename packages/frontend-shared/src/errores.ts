@@ -1,5 +1,5 @@
 /**
- * Lectura del rechazo devuelto por `@botonera2/api-client`.
+ * Lectura del rechazo devuelto por `@sis-leg/api-client`.
  *
  * Cuando el backend rechaza un comando, el cliente REST lanza un error que puede traer el
  * mensaje institucional en `mensajeBackend`, un texto propio del transporte en `mensaje`, o

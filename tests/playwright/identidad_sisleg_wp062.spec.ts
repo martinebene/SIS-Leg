@@ -1,5 +1,5 @@
 /**
- * Identidad SISLeg en el navegador real (WP-062).
+ * Identidad SIS-Leg en el navegador real (WP-062).
  *
  * Las pruebas de DOM comprueban que el marcado pide el logo correcto, pero no pueden
  * comprobar lo que el WP realmente exige: que la imagen **se descargue**, que **entre** en
@@ -58,28 +58,28 @@ const SUPERFICIES = [
     nombre: 'Moderación',
     url: URL_MODERACION,
     prefijo: '/moderacion/',
-    titulo: 'SISLeg · Moderación',
+    titulo: 'SIS-Leg · Moderación',
     estados: { '/api/v1/estado/moderacion': estadoModeracion() },
   },
   {
     nombre: 'Recinto',
     url: URL_RECINTO,
     prefijo: '/recinto/',
-    titulo: 'SISLeg · Pantalla del Recinto',
+    titulo: 'SIS-Leg · Pantalla del Recinto',
     estados: { '/api/v1/estado/recinto': estadoRecinto() },
   },
   {
     nombre: 'Simulador',
     url: URL_SIMULADOR,
     prefijo: '/simulador/',
-    titulo: 'SISLeg · Simulador de Dispositivos',
+    titulo: 'SIS-Leg · Simulador de Dispositivos',
     estados: { '/api/v1/estado/moderacion': estadoModeracion() },
   },
   {
     nombre: 'Apoyo Técnico',
     url: URL_TECNICO,
     prefijo: '/tecnico/',
-    titulo: 'SISLeg · Apoyo Técnico',
+    titulo: 'SIS-Leg · Apoyo Técnico',
     estados: {
       '/api/v1/estado/tecnico': estadoTecnico(),
       '/api/v1/estado/moderacion': estadoModeracion(),
@@ -178,7 +178,7 @@ function esperarDentroDelViewport(
 
 for (const superficie of SUPERFICIES) {
   for (const viewport of RESOLUCIONES) {
-    test(`${superficie.nombre} muestra el logo SISLeg antes de hidratar en ${viewport.width}×${viewport.height}`, async ({
+    test(`${superficie.nombre} muestra el logo SIS-Leg antes de hidratar en ${viewport.width}×${viewport.height}`, async ({
       page,
     }) => {
       await page.setViewportSize(viewport)
@@ -210,7 +210,7 @@ for (const superficie of SUPERFICIES) {
       // 3. No hay marca escrita duplicando el logo ni resto de la marca anterior.
       const textoIndicador = (await indicador.textContent()) ?? ''
       expect(textoIndicador).not.toContain('Botonera2')
-      expect(textoIndicador).not.toContain('SISLeg')
+      expect(textoIndicador).not.toContain('SIS-Leg')
 
       // 4. El PNG es transparente: las cuatro esquinas tienen alfa 0, así que el azul
       //    institucional se ve a través y no aparece un rectángulo blanco.
@@ -234,7 +234,7 @@ for (const superficie of SUPERFICIES) {
 // =============================================================================
 
 for (const superficie of SUPERFICIES) {
-  test(`${superficie.nombre} publica título y favicon de SISLeg`, async ({ page }) => {
+  test(`${superficie.nombre} publica título y favicon de SIS-Leg`, async ({ page }) => {
     await instalarBackend(page, superficie.estados)
     await page.goto(superficie.url)
 
@@ -305,7 +305,7 @@ for (const viewport of RESOLUCIONES) {
     const texto = (await bloque.textContent()) ?? ''
     expect(texto).toContain('Recinto sin preparar')
     expect(texto).not.toContain('Sala')
-    expect(texto).not.toContain('SISLeg')
+    expect(texto).not.toContain('SIS-Leg')
 
     // 5. El WP prohíbe introducir scroll global: se mide el documento completo.
     esperarSinScrollGlobal(await medirDocumento(page))

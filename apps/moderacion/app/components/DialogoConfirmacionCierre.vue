@@ -23,7 +23,7 @@
  */
 
 import { ref, computed, watch, nextTick } from 'vue'
-import type { EstadoPalabraModeracion } from '@botonera2/api-client'
+import type { EstadoPalabraModeracion } from '@sis-leg/api-client'
 
 const props = defineProps<{
   /** Estado del uso de la palabra proyectado por el backend */

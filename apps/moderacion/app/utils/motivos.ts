@@ -11,4 +11,4 @@
  * necesitan conocer la estructura interna del paquete compartido.
  */
 
-export { traducirMotivo, traducirMotivos, type ContextoMotivo } from '@botonera2/frontend-shared'
+export { traducirMotivo, traducirMotivos, type ContextoMotivo } from '@sis-leg/frontend-shared'

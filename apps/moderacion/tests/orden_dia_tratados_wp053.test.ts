@@ -22,7 +22,7 @@ import type {
   ClienteModeracion,
   EstadoModeracion,
   PuntoOrdenDelDiaProyectado,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import PanelContenedor from '../app/components/PanelContenedor.vue'
 import fuentePanelContenedor from '../app/components/PanelContenedor.vue?raw'
 import PanelOrdenDelDia from '../app/components/PanelOrdenDelDia.vue'

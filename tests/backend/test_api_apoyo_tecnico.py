@@ -20,9 +20,9 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from botonera2_backend.aplicacion import crear_aplicacion
-from botonera2_backend.recursos import obtener_recursos_aplicacion
 from httpx import ASGITransport, AsyncClient
+from sis_leg_backend.aplicacion import crear_aplicacion
+from sis_leg_backend.recursos import obtener_recursos_aplicacion
 
 pytestmark = pytest.mark.anyio
 
@@ -404,7 +404,7 @@ async def test_stream_tecnico_publica_snapshot_inicial_y_cada_comando(
 
     async with aplicacion.router.lifespan_context(aplicacion):
         recursos = obtener_recursos_aplicacion(aplicacion)
-        from botonera2_backend.api.estado import generar_stream_estado
+        from sis_leg_backend.api.estado import generar_stream_estado
 
         flujo = generar_stream_estado(
             recursos.servicio_proyecciones.obtener_estado_tecnico,
@@ -470,7 +470,7 @@ async def test_la_frontera_temporal_republica_sin_ningun_comando(
             demora_observada.append(demora)
             await asyncio.sleep(0)
 
-        from botonera2_backend.servicios.fronteras_temporales import (
+        from sis_leg_backend.servicios.fronteras_temporales import (
             ServicioFronterasTemporales,
         )
 

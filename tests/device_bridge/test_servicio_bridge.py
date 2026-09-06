@@ -24,12 +24,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from botonera2_device_bridge.adaptador_linux import AdaptadorFalso
-from botonera2_device_bridge.cliente_http import ClienteHttpBackend
-from botonera2_device_bridge.configuracion import ConfiguracionBridge
-from botonera2_device_bridge.modelos import EventoTeclaFisica
-from botonera2_device_bridge.remapeo import PersistenciaRemapeo
-from botonera2_device_bridge.servicio import ServicioDeviceBridge
+from sis_leg_device_bridge.adaptador_linux import AdaptadorFalso
+from sis_leg_device_bridge.cliente_http import ClienteHttpBackend
+from sis_leg_device_bridge.configuracion import ConfiguracionBridge
+from sis_leg_device_bridge.modelos import EventoTeclaFisica
+from sis_leg_device_bridge.remapeo import PersistenciaRemapeo
+from sis_leg_device_bridge.servicio import ServicioDeviceBridge
 
 FINGERPRINT_DEV01 = "lin|vendor=1111|product=2222|version=0001|phys=usb-1|uniq=|name=Teclado 1"
 FINGERPRINT_DEV02 = "lin|vendor=3333|product=4444|version=0001|phys=usb-2|uniq=|name=Teclado 2"
@@ -48,7 +48,7 @@ class FakeClienteHttp(ClienteHttpBackend):
         self.proximo_codigo_http: int | None = 200
 
     def enviar_pulsacion(self, solicitud: Any) -> Any:
-        from botonera2_device_bridge.modelos import RespuestaEnvioBackend
+        from sis_leg_device_bridge.modelos import RespuestaEnvioBackend
 
         self.peticiones_enviadas.append(
             {
@@ -576,7 +576,7 @@ def test_remapeo_temporal_reconcilia_quien_queda_capturado(
     """Demuestra que un remapeo libera el teclado reemplazado y toma el nuevo.
 
     Escenario: 'dev01' se rompe y se reemplaza por un teclado de repuesto. Después de
-    confirmar el remapeo, el repuesto queda dedicado a SISLeg y el teclado anterior deja de
+    confirmar el remapeo, el repuesto queda dedicado a SIS-Leg y el teclado anterior deja de
     estar capturado, sin que dos dispositivos se apropien del mismo 'dev01'.
     """
     servicio, adaptador, cliente_http = entorno_bridge

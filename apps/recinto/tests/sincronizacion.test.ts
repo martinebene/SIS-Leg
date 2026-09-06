@@ -1,7 +1,7 @@
 /** Pruebas de la frontera Vue sobre el ciclo REST + SSE del ClienteRecinto. */
 
 import { describe, expect, it, vi } from 'vitest'
-import type { ClienteRecinto, EstadoRecinto, OpcionesSuscripcion } from '@botonera2/api-client'
+import type { ClienteRecinto, EstadoRecinto, OpcionesSuscripcion } from '@sis-leg/api-client'
 import { crearSincronizacionRecinto } from '../app/composables/useEstadoRecinto'
 import { crearEstadoRecintoPrueba } from './datos_prueba'
 

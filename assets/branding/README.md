@@ -1,4 +1,4 @@
-# Assets de marca SISLeg
+# Assets de marca SIS-Leg
 
 Estos PNG son los derivados listos para repositorio de los archivos suministrados por
 HUMAN_GATE. El isotipo proviene de la entrega del 03/09/2026 (WP-062); el logo completo fue

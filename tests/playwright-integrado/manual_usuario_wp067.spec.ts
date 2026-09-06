@@ -112,8 +112,8 @@ test.describe.serial('WP-067 · Manual de usuario sobre el stack real', () => {
     expect(page.url()).toBe(`${URL_STACK}/moderacion/`)
     await expect(page.getByTestId('cabecera-moderacion')).toBeVisible()
 
-    // El documento se identifica como SISLeg y presenta sus trece capítulos.
-    await expect(manual).toHaveTitle(/SISLeg/)
+    // El documento se identifica como SIS-Leg y presenta sus trece capítulos.
+    await expect(manual).toHaveTitle(/SIS-Leg/)
     for (const capitulo of CAPITULOS) {
       await expect(manual.locator(`#${capitulo}`)).toHaveCount(1)
     }
@@ -131,7 +131,7 @@ test.describe.serial('WP-067 · Manual de usuario sobre el stack real', () => {
       page,
     }) => {
       /*
-        WP-069 lleva el logo completo de SISLeg a la cabecera del manual, incrustado como
+        WP-069 lleva el logo completo de SIS-Leg a la cabecera del manual, incrustado como
         `data:` para que el documento siga siendo un único archivo sin recursos externos.
 
         Que el atributo esté escrito no alcanza: un `data:` truncado, con un carácter
@@ -164,7 +164,7 @@ test.describe.serial('WP-067 · Manual de usuario sobre el stack real', () => {
       expect(medidas.esquema).toBe('data:image/png;base64,')
       expect(medidas.anchoNatural).toBe(ANCHO_LOGO)
       expect(medidas.altoNatural).toBe(ALTO_LOGO)
-      expect(medidas.alternativo).toBe('SISLeg')
+      expect(medidas.alternativo).toBe('SIS-Leg')
 
       // Conserva la proporción del archivo: nadie lo está deformando con un alto fijo.
       expect(medidas.ancho / medidas.alto).toBeCloseTo(ANCHO_LOGO / ALTO_LOGO, 1)

@@ -44,7 +44,7 @@ import type {
   EstadoModeracion,
   ClienteModeracion,
   PuntoOrdenDelDiaProyectado,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import { useEstadoModeracion } from '../composables/useEstadoModeracion'
 import { useAvisoEfimero } from '../composables/useAvisoEfimero'
 import PanelContenedor from './PanelContenedor.vue'

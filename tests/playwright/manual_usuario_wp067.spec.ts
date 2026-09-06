@@ -36,7 +36,7 @@ import {
   URL_TECNICO,
 } from './soporte/apoyo_tecnico'
 
-/** Ruta canónica del manual, la misma que declara `@botonera2/frontend-shared`. */
+/** Ruta canónica del manual, la misma que declara `@sis-leg/frontend-shared`. */
 const RUTA_MANUAL = '/manual/'
 
 /**

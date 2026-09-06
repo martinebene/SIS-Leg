@@ -10,10 +10,10 @@ import { execFileSync } from 'node:child_process'
 import process from 'node:process'
 
 const PAQUETES_FRONTEND = [
-  '@botonera2/moderacion',
-  '@botonera2/recinto',
-  '@botonera2/simulador',
-  '@botonera2/tecnico',
+  '@sis-leg/moderacion',
+  '@sis-leg/recinto',
+  '@sis-leg/simulador',
+  '@sis-leg/tecnico',
 ]
 
 /** Ejecuta una consulta Git de solo lectura y normaliza su salida. */
@@ -47,8 +47,8 @@ if (!/^[0-9a-f]{40}$/.test(shaConstruccion) || !/^\d+$/.test(instanteConstruccio
 
 const entornoConstruccion = {
   ...process.env,
-  BOTONERA2_SHA_CONSTRUCCION: shaConstruccion,
-  BOTONERA2_INSTANTE_CONSTRUCCION: instanteConstruccion,
+  SIS_LEG_SHA_CONSTRUCCION: shaConstruccion,
+  SIS_LEG_INSTANTE_CONSTRUCCION: instanteConstruccion,
 }
 
 for (const nombrePaquete of PAQUETES_FRONTEND) {

@@ -19,7 +19,7 @@ import {
   reiniciarInstanciaCompartidaParaPruebas,
   obtenerCantidadConsumidoresParaPruebas,
 } from '../app/composables/useEstadoModeracion'
-import type { ClienteModeracion, Suscripcion } from '@botonera2/api-client'
+import type { ClienteModeracion, Suscripcion } from '@sis-leg/api-client'
 
 describe('Lifecycle y Reference Counting síncrono de useEstadoModeracion (R-1)', () => {
   beforeEach(() => {

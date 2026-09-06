@@ -48,7 +48,7 @@ const DEMORA_SCRIPTS_MS = 2_500
 const TOLERANCIA = 1
 
 /**
- * Las cuatro superficies frontend servidas por Botonera2, con los snapshots que cada una
+ * Las cuatro superficies frontend servidas por SIS-Leg, con los snapshots que cada una
  * consume. Apoyo Técnico necesita dos proyecciones a la vez; el Simulador consume la de
  * Moderación, que es la única que le interesa para su panel de diagnóstico.
  */

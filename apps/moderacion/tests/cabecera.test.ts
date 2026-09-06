@@ -2,7 +2,7 @@
  * Pruebas dedicadas de la cabecera compacta de Moderación (WP-047).
  *
  * Cobertura:
- * 1. Densidad: el distintivo `BOTONERA2` desapareció y `Moderación` sigue siendo la identidad.
+ * 1. Densidad: el distintivo `SIS-LEG` desapareció y `Moderación` sigue siendo la identidad.
  * 2. Reloj local: se muestra la fecha/hora del equipo y avanza con el paso del tiempo,
  *    verificado con un reloj falso (sin depender del reloj real de la máquina de CI).
  * 3. Tiempo de sesión: se ancla con `generado_en - fecha_hora_apertura`, dos marcas
@@ -32,7 +32,7 @@ import {
   calcularDuracionEnSnapshot,
   convertirMarcaBackend,
 } from '../app/utils/tiempo'
-import type { EstadoQuorum } from '@botonera2/api-client'
+import type { EstadoQuorum } from '@sis-leg/api-client'
 
 /**
  * Vitest ejecuta este paquete en entorno Node, donde el plugin de Vue produce `ssrRender`.
@@ -150,8 +150,8 @@ describe('CabeceraModeracion (WP-047)', () => {
       const html = await renderizarSSR(propsBase())
 
       expect(html).toContain('Moderación')
-      expect(html).not.toContain('Botonera2')
-      expect(html).not.toContain('BOTONERA2')
+      expect(html).not.toContain('SIS-Leg')
+      expect(html).not.toContain('SIS-LEG')
       expect(html).not.toContain('data-testid="estado-global"')
       expect(html).not.toContain('Sesión abierta')
       expect(html).not.toContain('data-testid="revision-estado"')

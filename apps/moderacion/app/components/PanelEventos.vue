@@ -37,13 +37,13 @@
  */
 
 import { computed, nextTick, ref, watch } from 'vue'
-import type { EstadoModeracion } from '@botonera2/api-client'
+import type { EstadoModeracion } from '@sis-leg/api-client'
 import {
   filtrarEventosPorNivel,
   hayActividadNueva,
   seqMaximoEventos,
   type FiltroNivelEventos,
-} from '@botonera2/frontend-shared'
+} from '@sis-leg/frontend-shared'
 import PanelContenedor from './PanelContenedor.vue'
 
 const props = withDefaults(
@@ -73,7 +73,7 @@ const emit = defineEmits<{
 // auditoría. L3 es la vista inicial acordada para la operación cotidiana.
 //
 // WP-056: la tabla de niveles acumulativos y las derivaciones sobre la colección
-// viven en `@botonera2/frontend-shared` porque el puesto de Apoyo Técnico muestra
+// viven en `@sis-leg/frontend-shared` porque el puesto de Apoyo Técnico muestra
 // exactamente la misma franja segura. Compartir las funciones puras evita que las
 // dos pantallas puedan divergir en qué considera visible cada nivel.
 const filtroSeleccionado = ref<FiltroNivelEventos>(props.nivelInicial)

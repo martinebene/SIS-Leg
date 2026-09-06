@@ -93,7 +93,7 @@ Cuando el WP dependa de APIs/configuración de librerías o frameworks externos:
 
 ## Consulta a producción si existe ambigüedad funcional/UX/visual
 
-Si durante el WP aparece una regla de negocio, experiencia de usuario o decisión de diseño visual no claramente definida por Botonera2:
+Si durante el WP aparece una regla de negocio, experiencia de usuario o decisión de diseño visual no claramente definida por SIS-Leg:
 
 1. verificar primero las fuentes canónicas del WP;
 2. si siguen siendo insuficientes, consultar únicamente el código necesario de `martinebene/Botonera/main` vigente;

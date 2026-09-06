@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from botonera2_device_bridge.cli import construir_parser_argumentos, ejecutar_cli
+from sis_leg_device_bridge.cli import construir_parser_argumentos, ejecutar_cli
 
 
 def test_parser_argumentos_defaults() -> None:
@@ -81,7 +81,7 @@ def test_cli_ejecucion_valida(tmp_path: Path) -> None:
     fp = "lin|vendor=1a2c|product=2d43|version=0110|phys=usb-1|uniq=|name=USB Keyboard"
     ruta_valida.write_text(f'{{"{fp}": "dev01"}}', encoding="utf-8")
 
-    patch_servicio = patch("botonera2_device_bridge.cli.ServicioDeviceBridge.ejecutar_servicio")
+    patch_servicio = patch("sis_leg_device_bridge.cli.ServicioDeviceBridge.ejecutar_servicio")
     with patch_servicio as mock_servicio:
         mock_servicio.return_value = None
         codigo = ejecutar_cli(["--config", str(ruta_valida)])

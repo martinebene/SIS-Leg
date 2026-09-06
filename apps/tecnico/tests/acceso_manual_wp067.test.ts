@@ -10,7 +10,7 @@
 
 import { mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
-import { RUTA_MANUAL } from '@botonera2/frontend-shared'
+import { RUTA_MANUAL } from '@sis-leg/frontend-shared'
 import CabeceraTecnico from '../app/components/CabeceraTecnico.vue'
 
 const montados: VueWrapper[] = []

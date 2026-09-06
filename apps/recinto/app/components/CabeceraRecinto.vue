@@ -31,7 +31,7 @@
  */
 
 import { computed, toRef } from 'vue'
-import type { EstadoRecinto } from '@botonera2/api-client'
+import type { EstadoRecinto } from '@sis-leg/api-client'
 import type { EstadoConexionRecinto } from '../composables/useEstadoRecinto'
 import { useRelojLocal } from '../composables/useRelojLocal'
 import { formatearFechaHoraLocal } from '../utils/tiempo'

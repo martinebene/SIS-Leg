@@ -19,7 +19,7 @@
 
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { ApoyoTecnicoProyectado, EstadoRecinto } from '@botonera2/api-client'
+import type { ApoyoTecnicoProyectado, EstadoRecinto } from '@sis-leg/api-client'
 import BloqueTransmisionPublico from '../app/components/BloqueTransmisionPublico.vue'
 import PantallaRecinto from '../app/components/PantallaRecinto.vue'
 import {

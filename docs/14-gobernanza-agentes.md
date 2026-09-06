@@ -6,7 +6,7 @@ Las decisiones técnicas DT-001 a DT-038 están cerradas. Cualquier decisión tr
 
 ## DT-033 - Modelo de ramas
 
-Botonera2 utilizará un modelo **trunk-based simple** con `main` como única rama estable de integración.
+SIS-Leg utilizará un modelo **trunk-based simple** con `main` como única rama estable de integración.
 
 ### Reglas
 

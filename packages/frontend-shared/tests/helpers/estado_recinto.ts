@@ -19,7 +19,7 @@ import type {
   SonidosRecintoProyectados,
   SonorizacionRecintoProyectada,
   VotacionPublica,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import { EVENTOS_SONOROS_RECINTO } from '../../src/transiciones_sonoras'
 
 /**

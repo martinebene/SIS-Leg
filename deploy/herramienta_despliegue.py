@@ -27,9 +27,9 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Protocol, cast
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-MARCADOR_PREPARADA = ".botonera2-preparada.json"
-SERVICIO_BACKEND = "botonera2-backend.service"
-SERVICIO_BRIDGE = "botonera2-device-bridge.service"
+MARCADOR_PREPARADA = ".sis-leg-preparada.json"
+SERVICIO_BACKEND = "sis-leg-backend.service"
+SERVICIO_BRIDGE = "sis-leg-device-bridge.service"
 URL_ESTADO = "http://127.0.0.1:8000/api/v1/estado/moderacion"
 URL_HEALTH = "http://127.0.0.1:8000/api/v1/health"
 URL_NGINX_HEALTH = "http://127.0.0.1/api/v1/health"
@@ -185,7 +185,7 @@ def validar_manifest(
 ) -> dict[str, tuple[str, int]]:
     """Valida identidad y convierte el inventario en una allowlist exacta."""
 
-    if manifest.get("formato") != "botonera2-release" or manifest.get("version_formato") != 1:
+    if manifest.get("formato") != "sis-leg-release" or manifest.get("version_formato") != 1:
         raise ErrorDespliegue("Formato o versión de release no soportados.")
     if manifest.get("commit_sha") != sha_solicitado:
         raise ErrorDespliegue("El SHA solicitado no coincide con release.json.")
@@ -204,8 +204,8 @@ def validar_manifest(
     if manifest.get("manual") != "web/manual/index.html":
         raise ErrorDespliegue("release.json no declara el manual de usuario canónico.")
     if manifest.get("paquetes_python") != [
-        "botonera2-backend",
-        "botonera2-device-bridge",
+        "sis-leg-backend",
+        "sis-leg-device-bridge",
     ]:
         raise ErrorDespliegue("release.json no declara los paquetes Python canónicos.")
     archivos = manifest.get("archivos")
@@ -245,9 +245,9 @@ def validar_manifest(
         "web/simulador/index.html",
         "web/tecnico/index.html",
         "web/manual/index.html",
-        "deploy/systemd/botonera2-backend.service",
-        "deploy/systemd/botonera2-device-bridge.service",
-        "deploy/nginx/botonera2.conf",
+        "deploy/systemd/sis-leg-backend.service",
+        "deploy/systemd/sis-leg-device-bridge.service",
+        "deploy/nginx/sis-leg.conf",
         "deploy/herramienta_despliegue.py",
         "deploy/validar_configuracion.py",
     }
@@ -424,19 +424,19 @@ def plan_permisos() -> tuple[PlanPermiso, ...]:
     return (
         PlanPermiso(".", "root", "root", 0o755),
         PlanPermiso("releases", "root", "root", 0o755),
-        PlanPermiso("config", "root", "botonera2-backend", 0o751),
-        PlanPermiso("config/system.toml", "root", "botonera2-backend", 0o640),
-        PlanPermiso("config/concejales.csv", "root", "botonera2-backend", 0o640),
-        PlanPermiso("config/bridge", "botonera2-bridge", "botonera2-bridge", 0o750),
-        PlanPermiso("config/bridge/devices.json", "botonera2-bridge", "botonera2-bridge", 0o640),
-        PlanPermiso("config/apoyo-tecnico", "botonera2-backend", "botonera2-backend", 0o750),
+        PlanPermiso("config", "root", "sis-leg-backend", 0o751),
+        PlanPermiso("config/system.toml", "root", "sis-leg-backend", 0o640),
+        PlanPermiso("config/concejales.csv", "root", "sis-leg-backend", 0o640),
+        PlanPermiso("config/bridge", "sis-leg-bridge", "sis-leg-bridge", 0o750),
+        PlanPermiso("config/bridge/devices.json", "sis-leg-bridge", "sis-leg-bridge", 0o640),
+        PlanPermiso("config/apoyo-tecnico", "sis-leg-backend", "sis-leg-backend", 0o750),
         PlanPermiso(
             "config/apoyo-tecnico/mensajes.csv",
-            "botonera2-backend",
-            "botonera2-backend",
+            "sis-leg-backend",
+            "sis-leg-backend",
             0o640,
         ),
-        PlanPermiso("logs", "botonera2-backend", "botonera2-backend", 0o750),
+        PlanPermiso("logs", "sis-leg-backend", "sis-leg-backend", 0o750),
     )
 
 
@@ -445,18 +445,18 @@ class GestorDespliegue:
 
     def __init__(
         self,
-        raiz: Path = Path("/opt/botonera2"),
+        raiz: Path = Path("/opt/sis-leg"),
         *,
         ejecutor: EjecutorComandos | None = None,
         consultor_json: Callable[[str, float], dict[str, Any]] = consultar_json,
         consultor_texto: Callable[[str, float], str] = consultar_texto,
         directorio_systemd: Path = Path("/etc/systemd/system"),
-        ruta_nginx: Path = Path("/etc/nginx/conf.d/botonera2.conf"),
+        ruta_nginx: Path = Path("/etc/nginx/conf.d/sis-leg.conf"),
         python_base: Path | None = None,
     ) -> None:
         raiz_absoluta = raiz.resolve()
         if raiz_absoluta == Path("/"):
-            raise ErrorDespliegue("La raíz de Botonera2 no puede ser /.")
+            raise ErrorDespliegue("La raíz de SIS-Leg no puede ser /.")
         self.raiz = raiz_absoluta
         self.releases = self.raiz / "releases"
         self.current = self.raiz / "current"
@@ -482,7 +482,7 @@ class GestorDespliegue:
         """
 
         if aplicar_usuarios:
-            for usuario in ("botonera2-backend", "botonera2-bridge"):
+            for usuario in ("sis-leg-backend", "sis-leg-bridge"):
                 existe_grupo = (
                     self.ejecutor.ejecutar(["getent", "group", usuario], comprobar=False).codigo
                     == 0
@@ -509,7 +509,7 @@ class GestorDespliegue:
                     )
                 else:
                     self.ejecutor.ejecutar(["usermod", "--gid", usuario, usuario])
-            self.ejecutor.ejecutar(["usermod", "--append", "--groups", "input", "botonera2-bridge"])
+            self.ejecutor.ejecutar(["usermod", "--append", "--groups", "input", "sis-leg-bridge"])
 
         self.releases.mkdir(parents=True, exist_ok=True)
         (self.config / "bridge").mkdir(parents=True, exist_ok=True)
@@ -587,11 +587,11 @@ class GestorDespliegue:
                 [
                     python.as_posix(),
                     "-c",
-                    "import botonera2_backend.main, botonera2_device_bridge.cli, uvicorn",
+                    "import sis_leg_backend.main, sis_leg_device_bridge.cli, uvicorn",
                 ]
             )
             self.ejecutor.ejecutar(
-                [destino.joinpath(".venv/bin/botonera2-device-bridge").as_posix(), "--help"]
+                [destino.joinpath(".venv/bin/sis-leg-device-bridge").as_posix(), "--help"]
             )
             self._validar_estructura_release(destino)
             marcador.write_text(
@@ -618,15 +618,15 @@ class GestorDespliegue:
 
         requeridas = (
             release / ".venv/bin/uvicorn",
-            release / ".venv/bin/botonera2-device-bridge",
+            release / ".venv/bin/sis-leg-device-bridge",
             release / "web/moderacion/index.html",
             release / "web/recinto/index.html",
             release / "web/simulador/index.html",
             release / "web/tecnico/index.html",
             release / "web/manual/index.html",
-            release / "deploy/systemd/botonera2-backend.service",
-            release / "deploy/systemd/botonera2-device-bridge.service",
-            release / "deploy/nginx/botonera2.conf",
+            release / "deploy/systemd/sis-leg-backend.service",
+            release / "deploy/systemd/sis-leg-device-bridge.service",
+            release / "deploy/nginx/sis-leg.conf",
             release / "deploy/validar_configuracion.py",
         )
         faltantes = [str(ruta) for ruta in requeridas if not ruta.is_file()]
@@ -762,103 +762,103 @@ class GestorDespliegue:
 
         pruebas = (
             (
-                "botonera2-backend",
+                "sis-leg-backend",
                 ("-x", str(self.config)),
                 "config debe ser atravesable",
             ),
             (
-                "botonera2-backend",
+                "sis-leg-backend",
                 ("-r", str(self.config / "system.toml")),
                 "system.toml debe ser legible",
             ),
             (
-                "botonera2-backend",
+                "sis-leg-backend",
                 ("-r", str(self.config / "concejales.csv")),
                 "concejales.csv debe ser legible",
             ),
             (
-                "botonera2-backend",
+                "sis-leg-backend",
                 ("!", "-w", str(self.config)),
                 "config no debe ser escribible",
             ),
             (
-                "botonera2-backend",
+                "sis-leg-backend",
                 ("!", "-w", str(self.config / "system.toml")),
                 "system.toml no debe ser escribible",
             ),
             (
-                "botonera2-backend",
+                "sis-leg-backend",
                 ("!", "-w", str(self.config / "concejales.csv")),
                 "concejales.csv no debe ser escribible",
             ),
             (
-                "botonera2-backend",
+                "sis-leg-backend",
                 ("!", "-r", str(self.config / "bridge/devices.json")),
                 "devices.json no debe ser legible",
             ),
             (
-                "botonera2-backend",
+                "sis-leg-backend",
                 ("-w", str(self.logs)),
                 "logs debe ser escribible",
             ),
             (
-                "botonera2-backend",
+                "sis-leg-backend",
                 ("-x", str(self.logs)),
                 "logs debe ser atravesable",
             ),
             (
-                "botonera2-backend",
+                "sis-leg-backend",
                 ("-x", str(release / ".venv/bin/uvicorn")),
                 "Uvicorn debe ser ejecutable",
             ),
             (
-                "botonera2-bridge",
+                "sis-leg-bridge",
                 ("-x", str(self.config)),
                 "config debe ser atravesable",
             ),
             (
-                "botonera2-bridge",
+                "sis-leg-bridge",
                 ("!", "-r", str(self.config)),
                 "config no debe poder enumerarse",
             ),
             (
-                "botonera2-bridge",
+                "sis-leg-bridge",
                 ("!", "-w", str(self.config)),
                 "config no debe ser escribible",
             ),
             (
-                "botonera2-bridge",
+                "sis-leg-bridge",
                 ("!", "-r", str(self.config / "system.toml")),
                 "system.toml no debe ser legible",
             ),
             (
-                "botonera2-bridge",
+                "sis-leg-bridge",
                 ("!", "-r", str(self.config / "concejales.csv")),
                 "concejales.csv no debe ser legible",
             ),
             (
-                "botonera2-bridge",
+                "sis-leg-bridge",
                 ("-r", str(self.config / "bridge/devices.json")),
                 "devices.json debe ser legible",
             ),
             (
-                "botonera2-bridge",
+                "sis-leg-bridge",
                 ("-w", str(self.config / "bridge/devices.json")),
                 "devices.json debe ser escribible",
             ),
             (
-                "botonera2-bridge",
+                "sis-leg-bridge",
                 ("-w", str(self.config / "bridge")),
                 "config/bridge debe ser escribible para reemplazos atómicos",
             ),
             (
-                "botonera2-bridge",
+                "sis-leg-bridge",
                 ("-x", str(self.config / "bridge")),
                 "config/bridge debe ser atravesable",
             ),
             (
-                "botonera2-bridge",
-                ("-x", str(release / ".venv/bin/botonera2-device-bridge")),
+                "sis-leg-bridge",
+                ("-x", str(release / ".venv/bin/sis-leg-device-bridge")),
                 "device-bridge debe ser ejecutable",
             ),
         )
@@ -869,7 +869,7 @@ class GestorDespliegue:
         # un archivo interno podría dejar una porción de la release escribible.
         # ``find -writable -quit`` evalúa cada entrada con la identidad real y
         # entrega como máximo una ruta diagnóstica.
-        for usuario in ("botonera2-backend", "botonera2-bridge"):
+        for usuario in ("sis-leg-backend", "sis-leg-bridge"):
             resultado = self.ejecutor.ejecutar(
                 [
                     "runuser",
@@ -891,15 +891,15 @@ class GestorDespliegue:
                 )
 
         grupos_backend = self.ejecutor.ejecutar(
-            ["id", "--groups", "--name", "botonera2-backend"], comprobar=False
+            ["id", "--groups", "--name", "sis-leg-backend"], comprobar=False
         )
         grupos_bridge = self.ejecutor.ejecutar(
-            ["id", "--groups", "--name", "botonera2-bridge"], comprobar=False
+            ["id", "--groups", "--name", "sis-leg-bridge"], comprobar=False
         )
         if grupos_backend.codigo != 0 or grupos_bridge.codigo != 0:
             raise ErrorDespliegue("No se pudieron verificar los grupos de los usuarios runtime.")
         if "input" in grupos_backend.salida.split() or "input" not in grupos_bridge.salida.split():
-            raise ErrorDespliegue("El grupo input debe pertenecer únicamente a botonera2-bridge.")
+            raise ErrorDespliegue("El grupo input debe pertenecer únicamente a sis-leg-bridge.")
 
     def guard_institucional(self) -> None:
         """Permite solo SIN_PREPARAR y falla cerrado ante runtime inconsistente."""
@@ -996,7 +996,7 @@ class GestorDespliegue:
                 self.directorio_systemd / SERVICIO_BRIDGE,
                 release / "deploy/systemd" / SERVICIO_BRIDGE,
             ),
-            (self.ruta_nginx, release / "deploy/nginx/botonera2.conf"),
+            (self.ruta_nginx, release / "deploy/nginx/sis-leg.conf"),
         )
         respaldos: dict[Path, RespaldoArchivo] = {}
         try:
@@ -1182,8 +1182,8 @@ class GestorDespliegue:
 def crear_parser() -> argparse.ArgumentParser:
     """Construye la CLI pública sin ofrecer bypass del guard institucional."""
 
-    parser = argparse.ArgumentParser(description="Administra releases productivas de Botonera2.")
-    parser.add_argument("--raiz", type=Path, default=Path("/opt/botonera2"))
+    parser = argparse.ArgumentParser(description="Administra releases productivas de SIS-Leg.")
+    parser.add_argument("--raiz", type=Path, default=Path("/opt/sis-leg"))
     sub = parser.add_subparsers(dest="comando", required=True)
     sub.add_parser("preflight")
     bootstrap = sub.add_parser("bootstrap")

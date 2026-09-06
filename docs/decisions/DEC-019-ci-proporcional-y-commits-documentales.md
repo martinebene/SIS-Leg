@@ -6,7 +6,7 @@
 
 ## Contexto
 
-La CI vigente de Botonera2 ejecuta ocho jobs costosos ante toda Pull Request y ante todo `push` a `main`, sin distinguir si el cambio modifica código ejecutable o solamente documentación Markdown.
+La CI vigente de SIS-Leg ejecuta ocho jobs costosos ante toda Pull Request y ante todo `push` a `main`, sin distinguir si el cambio modifica código ejecutable o solamente documentación Markdown.
 
 DEC-005 autoriza al ORCHESTRATOR, con aprobación humana explícita, a mantener directamente en `main` documentación canónica como PLAN, WPs, DEC, AGENTS y cierres administrativos. En la práctica, cada uno de esos commits puramente documentales vuelve a ejecutar backend, frontend, Playwright, E2E integrado, build y empaquetado productivo aunque el árbol ejecutable sea idéntico al ya validado.
 
@@ -16,7 +16,7 @@ HUMAN_GATE decide reducir esa redundancia sin debilitar las puertas aplicables a
 
 ### 1. Pull Requests
 
-Toda `pull_request` de Botonera2 continúa disparando la CI completa vigente.
+Toda `pull_request` de SIS-Leg continúa disparando la CI completa vigente.
 
 No se aplican exclusiones por rutas a PRs. Esto preserva una validación uniforme del candidato exacto sometido a revisión independiente.
 
@@ -80,9 +80,9 @@ Después de una integración funcional ya validada por CI post-merge, los commit
 
 El primer cierre documental realizado después de integrar WP-068 se usará además como verificación operativa del filtro: no debe crearse una nueva run de Product para ese SHA.
 
-### 7. Botonera2-Control
+### 7. SIS-Leg-Control
 
-Botonera2-Control conserva su validación propia. Handoffs, `CURRENT.json`, `FINAL_DECISION` y demás transporte operativo no requieren ni disparan la CI de Product.
+SIS-Leg-Control conserva su validación propia. Handoffs, `CURRENT.json`, `FINAL_DECISION` y demás transporte operativo no requieren ni disparan la CI de Product.
 
 ## Consecuencias
 

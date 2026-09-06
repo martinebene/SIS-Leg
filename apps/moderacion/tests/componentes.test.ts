@@ -24,7 +24,7 @@ import PanelSesionVotacion from '../app/components/PanelSesionVotacion.vue'
 import PanelOrdenDelDia from '../app/components/PanelOrdenDelDia.vue'
 import PanelRecintoPalabra from '../app/components/PanelRecintoPalabra.vue'
 import PanelEventos from '../app/components/PanelEventos.vue'
-import type { EstadoModeracion } from '@botonera2/api-client'
+import type { EstadoModeracion } from '@sis-leg/api-client'
 
 async function renderizarComponente(
   componente: Component,
@@ -138,7 +138,7 @@ describe('Componentes del Shell de Moderación', () => {
       })
 
       // WP-047: identidad, reloj y conexión permanecen; estado y número no se inventan.
-      expect(html).not.toContain('Botonera2')
+      expect(html).not.toContain('SIS-Leg')
       expect(html).toContain('Moderación')
       expect(html).not.toContain('data-testid="estado-global"')
       expect(html).not.toContain('data-testid="cabecera-numero-sesion"')

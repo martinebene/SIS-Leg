@@ -1,5 +1,5 @@
 /**
- * Cliente TypeScript para el Simulador Web de Dispositivos Lógicos de SISLeg.
+ * Cliente TypeScript para el Simulador Web de Dispositivos Lógicos de SIS-Leg.
  *
  * Responsabilidades:
  * 1. Proporcionar un canal tipado y seguro para la emisión de pulsaciones lógicas

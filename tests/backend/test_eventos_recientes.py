@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from botonera2_backend.auditoria import (
+from sis_leg_backend.auditoria import (
     ErrorAuditoria,
     EscritorAuditoriaCsv,
     NivelAuditoria,

@@ -1,4 +1,4 @@
-"""Pruebas del manual de usuario estático de SISLeg (WP-067).
+"""Pruebas del manual de usuario estático de SIS-Leg (WP-067).
 
 El manual es un entregable de contenido, no de código, así que lo que puede comprobarse
 automáticamente no es «que esté bien escrito» sino tres propiedades verificables que, si
@@ -72,14 +72,20 @@ EVENTOS_SONOROS = (
     "concejal_presente",
 )
 
-# Términos que identificarían a la institución concreta o reintroducirían la marca técnica
-# en un documento que debe presentarse como SISLeg y ser reutilizable por otro cliente.
+# Términos que identificarían a la institución concreta en un documento que debe poder
+# entregarse tal cual a otro cliente.
 TERMINOS_PROHIBIDOS = (
     "Madryn",
     "Concejo Deliberante",
     "Chubut",
-    "Botonera2",
 )
+
+# Nombre histórico del producto, retirado por WP-077. Presentarlo como marca sería una
+# regresión, pero el capítulo de migración necesita nombrar la instalación anterior y sus
+# rutas para que quien opera sepa qué está convirtiendo. La regla verificable es de
+# ubicación, no de ausencia: el nombre legado sólo puede aparecer dentro de ese apartado.
+MARCA_LEGADA = "botonera2"
+TITULO_MIGRACION = "12.7 Migración desde una instalación con el nombre anterior"
 
 
 class AnalizadorManual(HTMLParser):
@@ -244,9 +250,9 @@ def test_documenta_el_requisito_de_reproduccion_automatica(texto_manual: str) ->
 
 
 def test_usa_la_marca_sisleg_y_la_terminologia_recinto(texto_manual: str) -> None:
-    """La marca visible es SISLeg y el ámbito se llama recinto, nunca «sala»."""
+    """La marca visible es SIS-Leg y el ámbito se llama recinto, nunca «sala»."""
 
-    assert "SISLeg" in texto_manual
+    assert "SIS-Leg" in texto_manual
     assert "recinto" in texto_manual.lower()
     # `sala` aparecería como sinónimo indebido; se busca como palabra completa para no
     # confundirla con otra que la contenga.
@@ -258,6 +264,25 @@ def test_no_particulariza_la_institucion(texto_manual: str) -> None:
 
     encontrados = [termino for termino in TERMINOS_PROHIBIDOS if termino in texto_manual]
     assert not encontrados, f"El manual incluye referencias específicas: {encontrados}"
+
+
+def test_la_marca_legada_solo_aparece_en_el_apartado_de_migracion(texto_manual: str) -> None:
+    """El nombre anterior sobrevive únicamente donde explica qué se está migrando."""
+
+    inicio = texto_manual.find(TITULO_MIGRACION)
+    assert inicio != -1, "Falta el apartado de migración desde la instalación anterior."
+    # El apartado termina donde empieza el enlace de cierre del capítulo.
+    fin = texto_manual.find('<a class="volver"', inicio)
+    assert fin != -1, "El apartado de migración no cierra con el enlace al índice."
+
+    apartado = texto_manual[inicio:fin]
+    total = texto_manual.lower().count(MARCA_LEGADA)
+    dentro = apartado.lower().count(MARCA_LEGADA)
+
+    assert dentro > 0, "El apartado de migración debe nombrar la instalación anterior."
+    assert total == dentro, (
+        f"La marca legada aparece {total - dentro} vez/veces fuera del apartado de migración."
+    )
 
 
 def test_no_expone_datos_del_padron_instalado(texto_manual: str) -> None:
@@ -304,4 +329,4 @@ def test_la_cabecera_muestra_el_logo_canonico_incrustado(texto_manual: str) -> N
 
     # Donde se ve el logo no se repite la marca como texto, así que el nombre accesible lo
     # aporta el texto alternativo de la imagen.
-    assert alternativo == "SISLeg"
+    assert alternativo == "SIS-Leg"

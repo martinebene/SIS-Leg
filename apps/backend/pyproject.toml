@@ -1,7 +1,7 @@
 [project]
-name = "botonera2-backend"
+name = "sis-leg-backend"
 version = "0.0.0"
-description = "Runtime base FastAPI del backend de Botonera2"
+description = "Runtime base FastAPI del backend de SIS-Leg"
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "fastapi>=0.116,<1",

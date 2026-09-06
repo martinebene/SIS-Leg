@@ -18,18 +18,26 @@ from pathlib import Path
 from typing import TypeVar
 
 import pytest
-from botonera2_backend.auditoria import ErrorAuditoria, EscritorAuditoriaCsv, NivelAuditoria
-from botonera2_backend.dominio.entrada import Pulsacion
-from botonera2_backend.dominio.errores import (
+from conftest import (
+    LINEA_LOGS,
+    LINEA_QUORUM,
+    TOML_CANONICO,
+    escribir_padron,
+    escribir_system_toml,
+    filas_padron_valido,
+)
+from sis_leg_backend.auditoria import ErrorAuditoria, EscritorAuditoriaCsv, NivelAuditoria
+from sis_leg_backend.dominio.entrada import Pulsacion
+from sis_leg_backend.dominio.errores import (
     ErrorDesempateYaEmitido,
     ErrorEstadoIncompatible,
     ErrorQuorumInsuficiente,
     ErrorVotacionNoCoincide,
     ErrorVotacionNoEmpatada,
 )
-from botonera2_backend.dominio.estado import EstadoGlobal, EstadoOperativo
-from botonera2_backend.dominio.sesion import ActualizacionDatosInstitucionales
-from botonera2_backend.dominio.votacion import (
+from sis_leg_backend.dominio.estado import EstadoGlobal, EstadoOperativo
+from sis_leg_backend.dominio.sesion import ActualizacionDatosInstitucionales
+from sis_leg_backend.dominio.votacion import (
     BaseMayoria,
     DatosAperturaVotacion,
     EstadoVotacion,
@@ -40,20 +48,12 @@ from botonera2_backend.dominio.votacion import (
     Votacion,
     VotoOrdinario,
 )
-from botonera2_backend.hechos_operativos import ReferenciaHechoOperativo
-from botonera2_backend.servicios.entrada import ServicioEntradaTecla
-from botonera2_backend.servicios.preparacion import ServicioPreparacion
-from botonera2_backend.servicios.serializacion import EjecutorMutaciones
-from botonera2_backend.servicios.sesion import ServicioSesion
-from botonera2_backend.servicios.votacion import ServicioVotacion
-from conftest import (
-    LINEA_LOGS,
-    LINEA_QUORUM,
-    TOML_CANONICO,
-    escribir_padron,
-    escribir_system_toml,
-    filas_padron_valido,
-)
+from sis_leg_backend.hechos_operativos import ReferenciaHechoOperativo
+from sis_leg_backend.servicios.entrada import ServicioEntradaTecla
+from sis_leg_backend.servicios.preparacion import ServicioPreparacion
+from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.sesion import ServicioSesion
+from sis_leg_backend.servicios.votacion import ServicioVotacion
 
 pytestmark = pytest.mark.anyio
 

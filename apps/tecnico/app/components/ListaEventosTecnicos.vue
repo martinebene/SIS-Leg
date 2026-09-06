@@ -21,13 +21,13 @@
  */
 
 import { computed, nextTick, ref, watch } from 'vue'
-import type { EventoRecienteProyectado } from '@botonera2/api-client'
+import type { EventoRecienteProyectado } from '@sis-leg/api-client'
 import {
   filtrarEventosPorNivel,
   hayActividadNueva,
   seqMaximoEventos,
   type FiltroNivelEventos,
-} from '@botonera2/frontend-shared'
+} from '@sis-leg/frontend-shared'
 
 const props = defineProps<{
   /** Colección segura tal como la proyecta el backend. */

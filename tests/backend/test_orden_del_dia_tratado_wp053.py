@@ -18,8 +18,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from botonera2_backend.dominio.orden_del_dia import PuntoOrdenDelDia
-from botonera2_backend.dominio.votacion import BaseMayoria, TipoMayoria
+from sis_leg_backend.dominio.orden_del_dia import PuntoOrdenDelDia
+from sis_leg_backend.dominio.votacion import BaseMayoria, TipoMayoria
 
 from tests.backend.ayudas_proyecciones import (
     EntornoProyecciones,

@@ -3,7 +3,7 @@
 ¿Por qué existe este script?
 ----------------------------
 
-Botonera2 distingue dos cosas que antes vivían en el mismo archivo:
+SIS-Leg distingue dos cosas que antes vivían en el mismo archivo:
 
 - la **plantilla versionada** (`config/system.example.toml`, por ejemplo), que
   es contenido de referencia revisable en cada Pull Request;

@@ -1,4 +1,4 @@
-"""Cliente HTTP asincrono para la comunicacion con el backend de Botonera2 (WP-007).
+"""Cliente HTTP asincrono para la comunicacion con el backend de SIS-Leg (WP-007).
 
 Este modulo implementa el `ClienteBackend`, encargado de:
 1. Construir la URL canonica del endpoint de entrada (`/api/v1/entradas/tecla`).

@@ -62,7 +62,7 @@ import { crearMotorSonidos, type MotorSonidosRecinto } from './motor_sonidos'
 import { detectarTransicionesSonoras, type InstantaneaSonora } from './transiciones_sonoras'
 
 /**
- * Vocabulario de conexión que comparten las pantallas de SISLeg.
+ * Vocabulario de conexión que comparten las pantallas de SIS-Leg.
  *
  * Recinto y Apoyo Técnico ya declaraban cada uno esta misma unión para su propio
  * indicador. Acá se nombra una vez porque este composable sólo necesita distinguir

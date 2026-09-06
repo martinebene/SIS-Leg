@@ -55,10 +55,10 @@
  */
 
 import { computed, shallowRef } from 'vue'
-import { usePresentacionTecnica, useSonidosRecinto } from '@botonera2/frontend-shared'
-import GestionRemapeo from '@botonera2/frontend-shared/componentes/GestionRemapeo.vue'
-import IndicadorCargaInicial from '@botonera2/frontend-shared/componentes/IndicadorCargaInicial.vue'
-import type { DestinoAvisoTecnico } from '@botonera2/api-client'
+import { usePresentacionTecnica, useSonidosRecinto } from '@sis-leg/frontend-shared'
+import GestionRemapeo from '@sis-leg/frontend-shared/componentes/GestionRemapeo.vue'
+import IndicadorCargaInicial from '@sis-leg/frontend-shared/componentes/IndicadorCargaInicial.vue'
+import type { DestinoAvisoTecnico } from '@sis-leg/api-client'
 import { useEstadoTecnico } from './composables/useEstadoTecnico'
 import { resolverRutaAsset } from './utils/rutas'
 import CabeceraTecnico from './components/CabeceraTecnico.vue'

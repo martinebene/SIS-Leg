@@ -20,7 +20,7 @@
 
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ClienteApoyoTecnico } from '@botonera2/api-client'
+import type { ClienteApoyoTecnico } from '@sis-leg/api-client'
 import CabeceraTecnico from '../app/components/CabeceraTecnico.vue'
 import ControlAvisos from '../app/components/ControlAvisos.vue'
 import { crearAvisoPrueba, crearMensajePrueba } from './datos_prueba'

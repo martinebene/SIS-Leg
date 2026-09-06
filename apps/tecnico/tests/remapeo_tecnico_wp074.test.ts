@@ -20,8 +20,8 @@
 
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import GestionRemapeo from '@botonera2/frontend-shared/componentes/GestionRemapeo.vue'
-import type { ClienteRemapeo, EstadoRemapeoModeracion } from '@botonera2/api-client'
+import GestionRemapeo from '@sis-leg/frontend-shared/componentes/GestionRemapeo.vue'
+import type { ClienteRemapeo, EstadoRemapeoModeracion } from '@sis-leg/api-client'
 import { crearRemapeoTecnicoPrueba } from './datos_prueba'
 
 const montados: VueWrapper[] = []

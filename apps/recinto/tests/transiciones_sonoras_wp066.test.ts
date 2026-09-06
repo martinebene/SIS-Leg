@@ -17,8 +17,8 @@ import type {
   EstadoRecinto,
   EstadoTransmision,
   PersonaPalabraPublica,
-} from '@botonera2/api-client'
-import { detectarTransicionesSonoras } from '@botonera2/frontend-shared'
+} from '@sis-leg/api-client'
+import { detectarTransicionesSonoras } from '@sis-leg/frontend-shared'
 import {
   crearApoyoTecnicoPrueba,
   crearConcejalesPublicos,

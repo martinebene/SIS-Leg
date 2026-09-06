@@ -1,5 +1,5 @@
 /**
- * Ubicación y rótulos del manual de usuario de SISLeg (WP-067).
+ * Ubicación y rótulos del manual de usuario de SIS-Leg (WP-067).
  *
  * El manual es un único documento HTML estático que se publica bajo el mismo origen que
  * las aplicaciones, en `/manual/`. No pertenece a ninguna SPA: Nginx lo sirve desde

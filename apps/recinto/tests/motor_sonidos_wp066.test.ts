@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { crearMotorSonidos, type InstanciaAudioRecinto } from '@botonera2/frontend-shared'
+import { crearMotorSonidos, type InstanciaAudioRecinto } from '@sis-leg/frontend-shared'
 import { crearSonidosRecintoPrueba } from './datos_prueba'
 
 /** Instancia de audio de prueba: recuerda todo lo que el motor le hizo. */

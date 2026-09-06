@@ -1,5 +1,5 @@
 /**
- * Generador reproducible del logo completo de SISLeg (WP-069).
+ * Generador reproducible del logo completo de SIS-Leg (WP-069).
  *
  * ## Por qué existe este script
  *

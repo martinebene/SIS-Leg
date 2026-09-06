@@ -25,7 +25,7 @@
   colisionar con las utilidades de Tailwind de las aplicaciones que sí lo usan.
 
   WP-062 reemplaza la palabra «Botonera2» que se mostraba como marca por el logo completo
-  de SISLeg. Dos consecuencias de diseño que conviene entender:
+  de SIS-Leg. Dos consecuencias de diseño que conviene entender:
 
   1. La imagen se pide con una URL **relativa** (`assets/marca/sisleg-logo.png`). Este
      mismo archivo lo incrustan las cuatro aplicaciones, y cada una se sirve bajo su
@@ -33,7 +33,7 @@
      absoluta obligaría a escribir cuatro variantes; una relativa se resuelve sola contra
      el documento que la contiene. Por eso el PNG está copiado en el `public/assets/marca/`
      de cada aplicación: es el mismo archivo canónico de `assets/branding/`.
-  2. Donde se ve el logo no se repite «SISLeg» como texto, según decidió HUMAN_GATE. El
+  2. Donde se ve el logo no se repite «SIS-Leg» como texto, según decidió HUMAN_GATE. El
      nombre accesible lo aporta el `aria-label` del contenedor, así que la imagen va con
      `alt` vacío para que un lector de pantalla no lo anuncie dos veces.
 -->
@@ -41,7 +41,7 @@
   class="carga-inicial"
   role="status"
   aria-live="polite"
-  aria-label="Cargando la interfaz de SISLeg"
+  aria-label="Cargando la interfaz de SIS-Leg"
   data-testid="carga-inicial-previa"
 >
   <div class="carga-inicial__barra">

@@ -12,18 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from botonera2_backend.aplicacion import crear_aplicacion
-from botonera2_backend.auditoria import ErrorAuditoria, NivelAuditoria
-from botonera2_backend.dominio.estado import EstadoGlobal
-from botonera2_backend.dominio.votacion import (
-    BaseMayoria,
-    EstadoVotacion,
-    ResultadoVotacion,
-    SentidoVotoDesempate,
-    TipoMayoria,
-)
-from botonera2_backend.recursos import obtener_recursos_aplicacion
-from botonera2_backend.servicios.votacion import ServicioVotacion
 from conftest import (
     LINEA_LOGS,
     LINEA_QUORUM,
@@ -35,6 +23,18 @@ from conftest import (
 )
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sis_leg_backend.aplicacion import crear_aplicacion
+from sis_leg_backend.auditoria import ErrorAuditoria, NivelAuditoria
+from sis_leg_backend.dominio.estado import EstadoGlobal
+from sis_leg_backend.dominio.votacion import (
+    BaseMayoria,
+    EstadoVotacion,
+    ResultadoVotacion,
+    SentidoVotoDesempate,
+    TipoMayoria,
+)
+from sis_leg_backend.recursos import obtener_recursos_aplicacion
+from sis_leg_backend.servicios.votacion import ServicioVotacion
 
 pytestmark = pytest.mark.anyio
 

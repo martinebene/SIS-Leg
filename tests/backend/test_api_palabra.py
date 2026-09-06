@@ -6,9 +6,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from botonera2_backend.aplicacion import crear_aplicacion
-from botonera2_backend.recursos import obtener_recursos_aplicacion
-from botonera2_backend.servicios.palabra import ServicioPalabra
 from conftest import (
     LINEA_LOGS,
     LINEA_QUORUM,
@@ -18,6 +15,9 @@ from conftest import (
     filas_padron_valido,
 )
 from httpx import ASGITransport, AsyncClient
+from sis_leg_backend.aplicacion import crear_aplicacion
+from sis_leg_backend.recursos import obtener_recursos_aplicacion
+from sis_leg_backend.servicios.palabra import ServicioPalabra
 
 pytestmark = pytest.mark.anyio
 

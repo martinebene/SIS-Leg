@@ -29,7 +29,7 @@ de Moderación en CSS o JavaScript.
 
 Debe mostrar un estado neutro/sin sesión y limpiar cualquier información transitoria de la ejecución anterior.
 
-Desde `WP-062` ese estado presenta el **logo completo de SISLeg** sobre el fondo institucional, acompañado de la identificación de la pantalla y de la aclaración de que la próxima sesión todavía no fue preparada. El nombre del producto no se repite como texto donde ya está el logo.
+Desde `WP-062` ese estado presenta el **logo completo de SIS-Leg** sobre el fondo institucional, acompañado de la identificación de la pantalla y de la aclaración de que la próxima sesión todavía no fue preparada. El nombre del producto no se repite como texto donde ya está el logo.
 
 ## 4. PREPARANDO
 

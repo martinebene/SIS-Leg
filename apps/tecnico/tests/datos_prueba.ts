@@ -17,7 +17,7 @@ import type {
   RemapeoTecnicoProyectado,
   SonorizacionRecintoProyectada,
   TransmisionProyectada,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import {
   crearEstadoRecintoPrueba,
   proyectarSonorizacionTecnica,

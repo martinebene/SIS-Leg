@@ -6,7 +6,7 @@
  * 2. Gestionar los estados visuales de conexión: INICIAL, CONECTADO, RECONECTANDO, DESCONECTADO.
  * 3. Preservar el último estado confirmado durante una desconexión o proceso de reconexión.
  * 4. Reflejar si el estado visual puede estar desactualizado durante una pérdida de conexión.
- * 5. Consumir exclusivamente @botonera2/api-client y su método ClienteModeracion.suscribirEstado.
+ * 5. Consumir exclusivamente @sis-leg/api-client y su método ClienteModeracion.suscribirEstado.
  * 6. Evitar suscripciones duplicadas y garantizar la cancelación determinista al desmontar componentes
  *    mediante un conteo de referencias (reference counting) síncrono por consumidor activo.
  */
@@ -27,7 +27,7 @@ import {
   type EstadoGlobal,
   type Suscripcion,
   type ConfiguracionCliente,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 
 /**
  * Estados posibles del canal de sincronización y transporte:

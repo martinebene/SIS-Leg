@@ -14,7 +14,6 @@ from pathlib import Path
 
 import httpx
 import pytest
-from botonera2_backend.aplicacion import crear_aplicacion
 from cliente import ClienteBackend
 from conftest import (
     LINEA_LOGS,
@@ -25,6 +24,7 @@ from conftest import (
 )
 from ejecutor_escenarios import EjecutorEscenarios
 from parseador import parsear_escenario_json
+from sis_leg_backend.aplicacion import crear_aplicacion
 
 pytestmark = pytest.mark.anyio
 

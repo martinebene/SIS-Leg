@@ -45,6 +45,8 @@ jobs:
       - run: uv run pyright
       # Comprueba que el snapshot OpenAPI versionado coincide con el backend actual (sin drift)
       - run: uv run python scripts/exportar_openapi.py --check
+      # Falla si reaparece el nombre legado del proyecto fuera de la allowlist histórica (WP-077)
+      - run: uv run python scripts/auditar_identidad_legada.py
 
   backend-tests:
     name: Backend · pruebas
@@ -198,16 +200,16 @@ jobs:
         run: |
           SHA="$(git rev-parse HEAD)"
           uv run python scripts/validar_release_produccion.py \
-            "dist/produccion/botonera2-${SHA}.tar.gz" \
-            --checksum "dist/produccion/botonera2-${SHA}.tar.gz.sha256" \
+            "dist/produccion/sis-leg-${SHA}.tar.gz" \
+            --checksum "dist/produccion/sis-leg-${SHA}.tar.gz.sha256" \
             --sha "${SHA}"
       - name: Publicar paquete y checksum
         uses: actions/upload-artifact@v7
         with:
-          name: botonera2-release-${{ github.event.pull_request.head.sha || github.sha }}
+          name: sis-leg-release-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            dist/produccion/botonera2-*.tar.gz
-            dist/produccion/botonera2-*.tar.gz.sha256
+            dist/produccion/sis-leg-*.tar.gz
+            dist/produccion/sis-leg-*.tar.gz.sha256
             deploy/herramienta_despliegue.py
           if-no-files-found: error
           retention-days: 30

@@ -12,12 +12,6 @@ import csv
 from pathlib import Path
 
 import pytest
-from botonera2_backend.aplicacion import crear_aplicacion
-from botonera2_backend.auditoria import ErrorAuditoria, NivelAuditoria
-from botonera2_backend.dominio.votacion import ResultadoVotacion
-from botonera2_backend.hechos_operativos import ReferenciaHechoOperativo
-from botonera2_backend.recursos import obtener_recursos_aplicacion
-from botonera2_backend.servicios.entrada import ServicioEntradaTecla
 from conftest import (
     LINEA_LOGS,
     LINEA_QUORUM,
@@ -28,6 +22,12 @@ from conftest import (
     filas_padron_valido,
 )
 from httpx import ASGITransport, AsyncClient
+from sis_leg_backend.aplicacion import crear_aplicacion
+from sis_leg_backend.auditoria import ErrorAuditoria, NivelAuditoria
+from sis_leg_backend.dominio.votacion import ResultadoVotacion
+from sis_leg_backend.hechos_operativos import ReferenciaHechoOperativo
+from sis_leg_backend.recursos import obtener_recursos_aplicacion
+from sis_leg_backend.servicios.entrada import ServicioEntradaTecla
 
 pytestmark = pytest.mark.anyio
 

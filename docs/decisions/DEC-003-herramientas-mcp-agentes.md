@@ -6,13 +6,13 @@
 
 ## Contexto
 
-Botonera2 se implementará con agentes de código intercambiables, principalmente Codex, Claude Code y OpenCode. Para reducir errores por conocimiento desactualizado, mejorar la consulta de documentación oficial y facilitar validaciones de interfaz, el proyecto adopta un conjunto pequeño de herramientas MCP con responsabilidades explícitas.
+SIS-Leg se implementará con agentes de código intercambiables, principalmente Codex, Claude Code y OpenCode. Para reducir errores por conocimiento desactualizado, mejorar la consulta de documentación oficial y facilitar validaciones de interfaz, el proyecto adopta un conjunto pequeño de herramientas MCP con responsabilidades explícitas.
 
 La disponibilidad de un MCP no modifica la autoridad documental del proyecto ni amplía el alcance de un Work Package. Los MCP son herramientas auxiliares: nunca reemplazan `AGENTS.md`, el WP asignado, las decisiones canónicas, los criterios de aceptación ni las pruebas versionadas.
 
 ## Decisión
 
-Los MCP estándar recomendados para el entorno de desarrollo de Botonera2 son:
+Los MCP estándar recomendados para el entorno de desarrollo de SIS-Leg son:
 
 - Context7;
 - Nuxt MCP;
@@ -54,7 +54,7 @@ El agente debe invocarlo automáticamente cuando:
 
 No es obligatorio invocarlo para cada edición trivial ni para lógica puramente interna ya definida por contratos propios del repositorio.
 
-Context7 es una fuente técnica externa, no una fuente de reglas de Botonera2. Si la documentación externa ofrece varias alternativas, el agente solo puede escoger entre las compatibles con las decisiones canónicas. Si una alternativa requiere cambiar arquitectura, dependencia, stack, contrato o una decisión reservada por DT-038, debe escalarla.
+Context7 es una fuente técnica externa, no una fuente de reglas de SIS-Leg. Si la documentación externa ofrece varias alternativas, el agente solo puede escoger entre las compatibles con las decisiones canónicas. Si una alternativa requiere cambiar arquitectura, dependencia, stack, contrato o una decisión reservada por DT-038, debe escalarla.
 
 ## 2. Nuxt MCP - fuente oficial específica para Nuxt
 

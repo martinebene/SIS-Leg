@@ -1,5 +1,5 @@
 /**
- * Pruebas Playwright para el Shell y la UI de Moderación de Botonera2 (WP-021 a WP-023).
+ * Pruebas Playwright para el Shell y la UI de Moderación de SIS-Leg (WP-021 a WP-023).
  *
  * Cobertura de pruebas E2E deterministas (H3, N1, WP-036):
  * 1. Contrato de Shell 2×2 completo en 1920×1080 y 1366×768:

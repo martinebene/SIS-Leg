@@ -41,25 +41,25 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'pnpm --filter @botonera2/moderacion dev --port 3000',
+      command: 'pnpm --filter @sis-leg/moderacion dev --port 3000',
       url: 'http://localhost:3000/moderacion/',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
     },
     {
-      command: 'pnpm --filter @botonera2/recinto dev --port 3001',
+      command: 'pnpm --filter @sis-leg/recinto dev --port 3001',
       url: 'http://localhost:3001/recinto/',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
     },
     {
-      command: 'pnpm --filter @botonera2/simulador dev --port 3002',
+      command: 'pnpm --filter @sis-leg/simulador dev --port 3002',
       url: 'http://localhost:3002/simulador/',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
     },
     {
-      command: 'pnpm --filter @botonera2/tecnico dev --port 3003',
+      command: 'pnpm --filter @sis-leg/tecnico dev --port 3003',
       url: 'http://localhost:3003/tecnico/',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,

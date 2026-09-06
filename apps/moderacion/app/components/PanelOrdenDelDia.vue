@@ -16,7 +16,7 @@
  * `nro_votacion` durante la sesión. Este componente se limita a atenuarlo: no lo calcula,
  * no lo recuerda entre snapshots y no lo deshabilita. Un punto atenuado conserva hover,
  * click, toast y precarga exactamente igual que cualquier otro, porque la marca es
- * asistencial y SISLeg permite reutilizar un número. Como el dato llega en cada
+ * asistencial y SIS-Leg permite reutilizar un número. Como el dato llega en cada
  * snapshot, una reconexión o un reload reconstruyen la atenuación sin estado local.
  *
  * WP-044 concentra en este cuadrante el único acuse visual de la copia asistencial:
@@ -42,10 +42,10 @@ import type {
   ClienteModeracion,
   EstadoModeracion,
   PuntoOrdenDelDiaProyectado,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 // WP-063: el factor del punto se muestra con dos decimales truncados. El punto proyectado
 // conserva su valor real: acá sólo se cambia cómo se escribe en el rótulo.
-import { formatearFactorMayoria } from '@botonera2/frontend-shared'
+import { formatearFactorMayoria } from '@sis-leg/frontend-shared'
 import { useEstadoModeracion } from '../composables/useEstadoModeracion'
 import { useAvisoEfimero } from '../composables/useAvisoEfimero'
 import { traducirMotivos } from '../utils/motivos'

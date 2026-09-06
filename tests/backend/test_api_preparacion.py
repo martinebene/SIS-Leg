@@ -19,9 +19,6 @@ import json
 from pathlib import Path
 
 import pytest
-from botonera2_backend.aplicacion import crear_aplicacion
-from botonera2_backend.dominio.estado import EstadoGlobal
-from botonera2_backend.recursos import obtener_recursos_aplicacion
 from conftest import (
     LINEA_LOGS,
     TOML_CANONICO,
@@ -30,6 +27,9 @@ from conftest import (
     filas_padron_valido,
 )
 from httpx import ASGITransport, AsyncClient
+from sis_leg_backend.aplicacion import crear_aplicacion
+from sis_leg_backend.dominio.estado import EstadoGlobal
+from sis_leg_backend.recursos import obtener_recursos_aplicacion
 
 pytestmark = pytest.mark.anyio
 
@@ -269,7 +269,7 @@ async def test_error_inesperado_devuelve_500_sin_filtrar_detalles(
 ) -> None:
     """Un fallo no clasificado llega al manejador genérico ERROR_INTERNO."""
 
-    import botonera2_backend.servicios.preparacion as modulo_preparacion
+    import sis_leg_backend.servicios.preparacion as modulo_preparacion
 
     def cargar_con_fallo_inesperado(_ruta: Path) -> None:
         raise RuntimeError("detalle interno que no debe exponerse")

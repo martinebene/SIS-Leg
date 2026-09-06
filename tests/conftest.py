@@ -18,13 +18,13 @@ import csv
 from pathlib import Path
 
 import pytest
-from botonera2_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
-from botonera2_backend.configuracion.modelos import (
+from sis_leg_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
+from sis_leg_backend.configuracion.modelos import (
     ConfiguracionSistema,
     ConfiguracionSonidosRecinto,
     SonidoRecinto,
 )
-from botonera2_backend.configuracion.sonidos_recinto import EVENTOS_SONIDO_RECINTO
+from sis_leg_backend.configuracion.sonidos_recinto import EVENTOS_SONIDO_RECINTO
 
 # Encabezado canónico exacto del padrón aprobado en WP-003.
 ENCABEZADO_CANONICO = "dni,nombre,apellido,bloque,banca,dispositivo_votacion,ruta_imagen"

@@ -6,7 +6,7 @@
 
 ## Contexto
 
-Botonera2 utiliza una conversación de ChatGPT Web como orquestador operativo con acceso independiente al repositorio GitHub. DEC-004 formalizó ese rol para coordinación, verificación remota, sincronización y algunos cambios administrativos mínimos de `PLAN.md`.
+SIS-Leg utiliza una conversación de ChatGPT Web como orquestador operativo con acceso independiente al repositorio GitHub. DEC-004 formalizó ese rol para coordinación, verificación remota, sincronización y algunos cambios administrativos mínimos de `PLAN.md`.
 
 Durante el inicio de la Fase 2 se decidió ampliar ese modelo: la misma conversación de orquestación será también la superficie principal de **planificación documental**. El objetivo es que los Work Packages y demás definiciones canónicas se elaboren junto con el operador humano antes de delegar implementación a agentes locales, aprovechando que el orquestador puede consultar directamente el repositorio, detectar decisiones reservadas por DT-038 y mantener continuidad entre planificación y ejecución.
 

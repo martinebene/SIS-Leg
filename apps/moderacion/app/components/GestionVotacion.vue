@@ -47,11 +47,11 @@ import type {
   EstadoModeracion,
   PuntoOrdenDelDiaProyectado,
   SolicitudAperturaVotacion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 // WP-063: sólo el rótulo de la regla vigente usa el formato truncado. El campo editable
 // del formulario sigue trabajando con el texto real que tipeó el operador o que copió el
 // Orden del Día, porque ese es el valor que después se envía al backend.
-import { formatearFactorMayoria } from '@botonera2/frontend-shared'
+import { formatearFactorMayoria } from '@sis-leg/frontend-shared'
 import { traducirMotivos } from '../utils/motivos'
 import DialogoConfirmacionApertura from './DialogoConfirmacionApertura.vue'
 

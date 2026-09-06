@@ -24,15 +24,15 @@ import type {
   ApoyoTecnicoProyectado,
   ClienteModeracion,
   EstadoModeracion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import App from '../app/app.vue'
 import fuenteApp from '../app/app.vue?raw'
 import PanelContenedor from '../app/components/PanelContenedor.vue'
 import fuentePanelContenedor from '../app/components/PanelContenedor.vue?raw'
 import PanelEventos from '../app/components/PanelEventos.vue'
 import fuentePanelEventos from '../app/components/PanelEventos.vue?raw'
-import AvisoSuperficie from '@botonera2/frontend-shared/componentes/AvisoSuperficie.vue'
-import fuenteAvisoSuperficie from '@botonera2/frontend-shared/componentes/AvisoSuperficie.vue?raw'
+import AvisoSuperficie from '@sis-leg/frontend-shared/componentes/AvisoSuperficie.vue'
+import fuenteAvisoSuperficie from '@sis-leg/frontend-shared/componentes/AvisoSuperficie.vue?raw'
 import {
   reiniciarInstanciaCompartidaParaPruebas,
   useEstadoModeracion,

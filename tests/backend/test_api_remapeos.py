@@ -6,13 +6,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from botonera2_backend.aplicacion import crear_aplicacion
-from botonera2_backend.recursos import obtener_recursos_aplicacion
-from botonera2_backend.servicios.cliente_bridge import (
-    ErrorRespuestaBridge,
-    ErrorTransporteBridge,
-    EstadoControlBridge,
-)
 from conftest import (
     LINEA_LOGS,
     TOML_CANONICO,
@@ -21,6 +14,13 @@ from conftest import (
     filas_padron_valido,
 )
 from httpx import ASGITransport, AsyncClient
+from sis_leg_backend.aplicacion import crear_aplicacion
+from sis_leg_backend.recursos import obtener_recursos_aplicacion
+from sis_leg_backend.servicios.cliente_bridge import (
+    ErrorRespuestaBridge,
+    ErrorTransporteBridge,
+    EstadoControlBridge,
+)
 
 pytestmark = pytest.mark.anyio
 

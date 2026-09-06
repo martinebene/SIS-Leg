@@ -1,5 +1,5 @@
 {
-  "name": "@botonera2/frontend-shared",
+  "name": "@sis-leg/frontend-shared",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     "./componentes/*": "./src/componentes/*"
   },
   "dependencies": {
-    "@botonera2/api-client": "workspace:*",
+    "@sis-leg/api-client": "workspace:*",
     "vue": "3.5.41"
   }
 }

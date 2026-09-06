@@ -5,7 +5,7 @@ del Recinto es la única aplicación que los reproduce y Nuxt publica ese
 directorio tal cual bajo el prefijo `/recinto/`. Este README documenta su
 procedencia desde fuera de la salida servida, igual que `assets/branding/`.
 
-Los 22 archivos WAV son **originales de SISLeg**: los sintetiza
+Los 22 archivos WAV son **originales de SIS-Leg**: los sintetiza
 `scripts/generar_sonidos_recinto.py` a partir de recetas versionadas,
 sin ninguna grabación ni biblioteca de terceros. No hay obra ajena involucrada,
 así que se redistribuyen bajo la misma licencia que el resto del repositorio y

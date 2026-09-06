@@ -1,6 +1,6 @@
 # 13 - Despliegue y operación
 
-Este documento registra las decisiones técnicas cerradas para el despliegue inicial de SISLeg.
+Este documento registra las decisiones técnicas cerradas para el despliegue inicial de SIS-Leg.
 
 Complementa `12-decisiones-tecnicas.md`. Las decisiones todavía abiertas permanecen en `10-preguntas-abiertas.md`.
 
@@ -18,8 +18,8 @@ La primera versión se desplegará de forma nativa mediante **systemd**, sin Doc
 
 Servicios principales previstos:
 
-- `botonera2-backend.service`;
-- `botonera2-device-bridge.service`;
+- `sis-leg-backend.service`;
+- `sis-leg-device-bridge.service`;
 - Nginx como servicio del sistema.
 
 El backend mantiene un único proceso/worker según DT-005.
@@ -35,7 +35,7 @@ Principios:
 - no habrá servidores Node/Nitro permanentes en producción para estos frontends;
 - Nginx servirá los archivos HTML/CSS/JS generados;
 - Moderación y Recinto consumirán FastAPI mediante REST + SSE;
-- no se necesita SSR para el objetivo institucional de SISLeg.
+- no se necesita SSR para el objetivo institucional de SIS-Leg.
 
 La configuración concreta de build debe respetar Nuxt 4 y el funcionamiento bajo subrutas definido en DT-030.
 
@@ -69,7 +69,7 @@ Producción no se actualizará mediante `git pull` sobre el árbol activo.
 Estructura objetivo conceptual:
 
 ```text
-/opt/botonera2/
+/opt/sis-leg/
 ├── releases/
 │   ├── <release-A>/
 │   ├── <release-B>/
@@ -91,9 +91,11 @@ Procedimiento general:
 6. ejecutar verificaciones de salud;
 7. si la nueva versión falla, volver al enlace de la release anterior y reiniciar.
 
-No se despliega ni reinicia deliberadamente SISLeg durante `PREPARANDO` o `SESION_ABIERTA`, porque el estado activo es volátil y una interrupción obliga reglamentariamente a comenzar nuevamente.
+No se despliega ni reinicia deliberadamente SIS-Leg durante `PREPARANDO` o `SESION_ABIERTA`, porque el estado activo es volátil y una interrupción obliga reglamentariamente a comenzar nuevamente.
 
 Configuración y registros viven fuera de `releases/` para que actualización y rollback no los sustituyan ni eliminen.
+
+Una instalación desplegada con la identidad anterior del proyecto se convierte una sola vez siguiendo `docs/MIGRACION-A-SIS-LEG.md`, que preserva esos mismos archivos byte a byte y documenta el rollback.
 
 ## DT-032 - Registros conservados solo localmente en la primera versión
 
@@ -140,7 +142,7 @@ uv sync --frozen --all-packages
 pnpm empaquetar:produccion
 ```
 
-La salida es `dist/produccion/botonera2-<sha-completo>.tar.gz` y su sidecar
+La salida es `dist/produccion/sis-leg-<sha-completo>.tar.gz` y su sidecar
 `.sha256`. El artifact de CI agrega una copia de
 `deploy/herramienta_despliegue.py` del mismo checkout, necesaria para preparar
 la primera release sin Git ni una instalación previa. `release.json` identifica
@@ -188,8 +190,8 @@ python3.14 deploy/herramienta_despliegue.py preflight
    ```
 
 3. Provisionar manualmente `system.toml`, `concejales.csv` y
-   `bridge/devices.json` bajo `/opt/botonera2/config/`. `paths.logs_dir` debe
-   resolver exactamente a `/opt/botonera2/logs`. El repositorio publica una
+   `bridge/devices.json` bajo `/opt/sis-leg/config/`. `paths.logs_dir` debe
+   resolver exactamente a `/opt/sis-leg/logs`. El repositorio publica una
    plantilla por cada archivo (`*.example.*`) que sirve de punto de partida y de
    referencia del formato; el artefacto no las incluye y `scripts/preparar_config_local.py`
    es exclusivamente un bootstrap de desarrollo, sin ningún papel en el despliegue
@@ -201,7 +203,7 @@ python3.14 deploy/herramienta_despliegue.py preflight
    sudo python3.14 deploy/herramienta_despliegue.py bootstrap --aplicar-usuarios
    ```
 
-   El plan deja `/opt/botonera2` atravesable, releases administrativas;
+   El plan deja `/opt/sis-leg` atravesable, releases administrativas;
    `logs/` escribible solo por backend; configuración institucional de solo lectura para backend; y
    `config/bridge/` escribible solo por bridge. El modo `0751` del directorio
    padre `config/` es deliberado: permite que bridge lo atraviese para llegar a
@@ -211,15 +213,15 @@ python3.14 deploy/herramienta_despliegue.py preflight
 
    ```bash
    sudo python3.14 deploy/herramienta_despliegue.py preparar \
-     botonera2-<sha>.tar.gz \
-     --checksum botonera2-<sha>.tar.gz.sha256 \
+     sis-leg-<sha>.tar.gz \
+     --checksum sis-leg-<sha>.tar.gz.sha256 \
      --sha <sha>
    ```
 
 6. Confirmar que el estado institucional permite la intervención y activar:
 
    ```bash
-   sudo python3.14 /opt/botonera2/releases/<sha>/deploy/herramienta_despliegue.py \
+   sudo python3.14 /opt/sis-leg/releases/<sha>/deploy/herramienta_despliegue.py \
      activar <sha>
    ```
 
@@ -261,8 +263,8 @@ El rollback por defecto activa `previous`; también puede señalar una release
 preparada concreta:
 
 ```bash
-sudo python3.14 /opt/botonera2/current/deploy/herramienta_despliegue.py rollback
-sudo python3.14 /opt/botonera2/current/deploy/herramienta_despliegue.py rollback --sha <sha>
+sudo python3.14 /opt/sis-leg/current/deploy/herramienta_despliegue.py rollback
+sudo python3.14 /opt/sis-leg/current/deploy/herramienta_despliegue.py rollback --sha <sha>
 ```
 
 Aplica el mismo guard institucional y las mismas verificaciones que una
@@ -287,16 +289,16 @@ persona interactúa con la página. Frente al monitor del recinto no hay nadie q
 la pantalla se proyecta y se deja funcionando. En el puesto técnico hay una persona, pero
 puede pasar toda la sesión sin tocar la pantalla, así que tampoco puede confiarse en un
 gesto previo. Por eso los dos equipos deben estar configurados para permitir autoplay en el
-origen donde se sirve SISLeg.
+origen donde se sirve SIS-Leg.
 
 Cuál de los dos alimenta la amplificación es una decisión operativa de cada sesión. Si
 suenan los dos a la vez y sus salidas llegan al mismo amplificador se oirá un eco, así que
 lo habitual será silenciar por sistema operativo el equipo que no se esté usando como
-fuente. SISLeg no ofrece ni mute ni selector de salida: esa elección se hace en el equipo.
+fuente. SIS-Leg no ofrece ni mute ni selector de salida: esa elección se hace en el equipo.
 
 Requisitos de cada puesto que deba sonar:
 
-- el navegador debe permitir reproducción automática de audio para el origen de SISLeg;
+- el navegador debe permitir reproducción automática de audio para el origen de SIS-Leg;
 - la salida de audio del sistema operativo debe estar activa, sin silenciar y con volumen
   audible en el destino que corresponda;
 - el volumen relativo de cada evento se ajusta en `config/system.toml` (`[sonidos]`), nunca
@@ -317,7 +319,7 @@ Mecanismos habituales, a confirmar contra la versión instalada del navegador:
   no se abre en modo kiosco porque es una pantalla que se opera.
 
 - **Chromium/Chrome administrado por políticas**: habilitar el sonido para el origen de
-  SISLeg mediante la política de autoplay/allowlist correspondiente a la versión instalada,
+  SIS-Leg mediante la política de autoplay/allowlist correspondiente a la versión instalada,
   o dar permiso de sonido al sitio desde la configuración del navegador.
 
 - **Firefox**: `media.autoplay.default = 0` en el perfil del puesto.
@@ -338,7 +340,7 @@ prefijo en tiempo de construcción, sin una segunda copia que pudiera quedar atr
 ### Manual de usuario publicado con la release
 
 Desde WP-067 la release incluye `web/manual/index.html`, un único documento HTML
-autocontenido con el manual de operación, configuración e instalación de SISLeg. Nginx lo
+autocontenido con el manual de operación, configuración e instalación de SIS-Leg. Nginx lo
 publica en `/manual/` bajo el mismo origen que las aplicaciones y sin restricción de red,
 porque es el destino del icono de ayuda que muestran las cabeceras de Moderación y de
 Apoyo Técnico.
@@ -355,11 +357,11 @@ Consecuencias operativas:
 ### Diagnóstico de solo lectura
 
 ```bash
-python3.14 /opt/botonera2/current/deploy/herramienta_despliegue.py estado
-readlink -f /opt/botonera2/current
-readlink -f /opt/botonera2/previous
-systemctl status botonera2-backend.service botonera2-device-bridge.service
-journalctl -u botonera2-backend.service -u botonera2-device-bridge.service
+python3.14 /opt/sis-leg/current/deploy/herramienta_despliegue.py estado
+readlink -f /opt/sis-leg/current
+readlink -f /opt/sis-leg/previous
+systemctl status sis-leg-backend.service sis-leg-device-bridge.service
+journalctl -u sis-leg-backend.service -u sis-leg-device-bridge.service
 nginx -t
 curl --fail http://127.0.0.1:8000/api/v1/health
 curl --fail http://127.0.0.1/api/v1/health

@@ -23,8 +23,8 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
-from botonera2_device_bridge.cliente_http import ClienteHttpBackend
-from botonera2_device_bridge.modelos import SolicitudEntradaLogica
+from sis_leg_device_bridge.cliente_http import ClienteHttpBackend
+from sis_leg_device_bridge.modelos import SolicitudEntradaLogica
 
 
 class ServidorPruebaHandler(http.server.BaseHTTPRequestHandler):

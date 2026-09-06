@@ -27,7 +27,7 @@ import type {
   ConcejalModeracion,
   EstadoModeracion,
   VotacionModeracion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import PanelContenedor from '../app/components/PanelContenedor.vue'
 import fuentePanelContenedor from '../app/components/PanelContenedor.vue?raw'
 import PanelSesionVotacion from '../app/components/PanelSesionVotacion.vue'

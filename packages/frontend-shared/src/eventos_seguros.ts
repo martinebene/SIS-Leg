@@ -17,7 +17,7 @@
  * interfaces quedan obligadas a comportarse igual.
  */
 
-import type { EventoRecienteProyectado } from '@botonera2/api-client'
+import type { EventoRecienteProyectado } from '@sis-leg/api-client'
 
 /** Nivel elegido por el operador en el selector visual. */
 export type FiltroNivelEventos = 'L1' | 'L2' | 'L3'

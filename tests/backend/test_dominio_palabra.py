@@ -1,7 +1,7 @@
 """Pruebas unitarias de las invariantes estructurales de palabra (WP-015)."""
 
 import pytest
-from botonera2_backend.dominio.sesion import EstadoPalabra
+from sis_leg_backend.dominio.sesion import EstadoPalabra
 
 
 def test_cola_fifo_sin_duplicados_y_excluye_al_orador() -> None:

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Aplicación principal del Simulador Web de Dispositivos Lógicos (SISLeg).
+ * Aplicación principal del Simulador Web de Dispositivos Lógicos (SIS-Leg).
  *
  * Responsabilidades (WP-034 y WP-035):
  * 1. Inicializar la sincronización diagnóstica mediante useSimulador().
@@ -18,7 +18,7 @@ import CabeceraSimulador from './components/CabeceraSimulador.vue'
 import PanelGeneralSimulador from './components/PanelGeneralSimulador.vue'
 import TarjetaDispositivo from './components/TarjetaDispositivo.vue'
 import LogPulsaciones from './components/LogPulsaciones.vue'
-import IndicadorCargaInicial from '@botonera2/frontend-shared/componentes/IndicadorCargaInicial.vue'
+import IndicadorCargaInicial from '@sis-leg/frontend-shared/componentes/IndicadorCargaInicial.vue'
 
 const {
   estado,
