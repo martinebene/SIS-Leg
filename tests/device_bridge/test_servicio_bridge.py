@@ -12,6 +12,9 @@ Verifica:
 8. Descubrimiento dinámico de hardware conectado posteriormente.
 9. Manejo de desconexión en caliente y limpieza de recursos.
 10. Parada limpia del servicio.
+11. Política de captura exclusiva (WP-075): un dispositivo mapeado toma exclusividad antes
+    de despachar, uno no mapeado nunca la recibe, un fallo de exclusividad no despacha,
+    la reconexión vuelve a adquirirla, el remapeo la reconcilia y la parada la libera.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from botonera2_device_bridge.adaptador_linux import AdaptadorFalso
 from botonera2_device_bridge.cliente_http import ClienteHttpBackend
 from botonera2_device_bridge.configuracion import ConfiguracionBridge
 from botonera2_device_bridge.modelos import EventoTeclaFisica
+from botonera2_device_bridge.remapeo import PersistenciaRemapeo
 from botonera2_device_bridge.servicio import ServicioDeviceBridge
 
 FINGERPRINT_DEV01 = "lin|vendor=1111|product=2222|version=0001|phys=usb-1|uniq=|name=Teclado 1"
@@ -436,3 +440,195 @@ def test_prevencion_replay_interrupcion_lote_python_en_memoria(
     # El siguiente paso no tiene eventos residuales
     assert len(servicio.ejecutar_paso()) == 0
     assert len(cliente_http.peticiones_enviadas) == 1
+
+
+# ---------------------------------------------------------------------------
+# Captura exclusiva de los numpads de banca (WP-075)
+#
+# La exclusividad se aplica exclusivamente a los fingerprints del mapping
+# efectivo y es requisito previo al despacho funcional: mientras un dispositivo
+# mapeado no esté tomado en exclusiva, sus pulsaciones también las estaría
+# recibiendo el escritorio, así que no se envían al backend.
+# ---------------------------------------------------------------------------
+
+
+def _pulsacion(fingerprint: str, nombre_tecla: str = "KEY_1") -> EventoTeclaFisica:
+    """Construye un keydown mínimo para las pruebas de exclusividad."""
+    return EventoTeclaFisica(
+        fingerprint=fingerprint,
+        codigo_tecla=2,
+        nombre_tecla=nombre_tecla,
+        es_bajada=True,
+    )
+
+
+def test_dispositivo_mapeado_adquiere_exclusividad_antes_de_despachar(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """Demuestra que el numpad mapeado queda tomado en exclusiva y luego sí despacha."""
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    disp = adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    servicio.ejecutar_ciclo_descubrimiento()
+
+    assert adaptador.tiene_exclusividad(disp) is True
+    assert FINGERPRINT_DEV01 in servicio.fingerprints_exclusivos
+
+    adaptador.simular_evento("/dev/input/event0", _pulsacion(FINGERPRINT_DEV01))
+    servicio.ejecutar_paso()
+
+    assert cliente_http.peticiones_enviadas == [{"dispositivo": "dev01", "tecla": "1"}]
+    # La reconciliación repetida de cada paso no vuelve a llamar al grab del sistema.
+    assert adaptador.conteo_adquisiciones["/dev/input/event0"] == 1
+
+
+def test_dispositivo_no_mapeado_nunca_recibe_captura_exclusiva(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """Demuestra que el teclado del moderador no es secuestrado por ser un teclado."""
+    servicio, adaptador, _cliente_http = entorno_bridge
+
+    teclado_moderador = adaptador.agregar_dispositivo(
+        "/dev/input/event9",
+        FINGERPRINT_DESCONOCIDO,
+        nombre="Teclado del moderador",
+    )
+    servicio.ejecutar_ciclo_descubrimiento()
+    servicio.ejecutar_paso()
+
+    assert adaptador.tiene_exclusividad(teclado_moderador) is False
+    assert servicio.fingerprints_exclusivos == set()
+    assert "/dev/input/event9" not in adaptador.conteo_adquisiciones
+
+
+def test_fallo_de_exclusividad_impide_todo_post_funcional(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """Demuestra la política fail-safe: sin exclusividad no hay despacho, ni degradación."""
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    disp = adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    adaptador.simular_fallo_exclusividad("/dev/input/event0")
+    servicio.ejecutar_ciclo_descubrimiento()
+
+    assert adaptador.tiene_exclusividad(disp) is False
+    assert FINGERPRINT_DEV01 not in servicio.fingerprints_exclusivos
+
+    adaptador.simular_evento("/dev/input/event0", _pulsacion(FINGERPRINT_DEV01))
+    respuestas = servicio.ejecutar_paso()
+
+    assert respuestas == []
+    assert cliente_http.peticiones_enviadas == []
+
+
+def test_recuperar_exclusividad_habilita_nuevamente_el_despacho(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """Demuestra que al conseguirse la exclusividad el dispositivo vuelve a despachar."""
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    adaptador.simular_fallo_exclusividad("/dev/input/event0")
+    servicio.ejecutar_ciclo_descubrimiento()
+
+    adaptador.simular_evento("/dev/input/event0", _pulsacion(FINGERPRINT_DEV01))
+    assert servicio.ejecutar_paso() == []
+
+    # Desaparece la causa del fallo (por ejemplo, se cerró el proceso que lo capturaba).
+    adaptador.simular_fallo_exclusividad("/dev/input/event0", falla=False)
+    adaptador.simular_evento("/dev/input/event0", _pulsacion(FINGERPRINT_DEV01, "KEY_9"))
+    respuestas = servicio.ejecutar_paso()
+
+    assert len(respuestas) == 1
+    assert cliente_http.peticiones_enviadas == [{"dispositivo": "dev01", "tecla": "9"}]
+
+
+def test_reconexion_de_numpad_mapeado_vuelve_a_adquirir_exclusividad(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """Demuestra que tras un desconectar/reconectar físico se vuelve a tomar el dispositivo."""
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    servicio.ejecutar_ciclo_descubrimiento()
+    assert FINGERPRINT_DEV01 in servicio.fingerprints_exclusivos
+
+    # Desconexión física: el servicio cierra el descriptor y olvida la exclusividad.
+    adaptador.simular_desconexion("/dev/input/event0")
+    servicio.ejecutar_paso()
+    assert servicio.fingerprints_exclusivos == set()
+
+    # Reconexión: el kernel puede asignar otro nodo, pero el fingerprint es el mismo.
+    reconectado = adaptador.agregar_dispositivo("/dev/input/event7", FINGERPRINT_DEV01)
+    servicio.ejecutar_ciclo_descubrimiento()
+
+    assert adaptador.tiene_exclusividad(reconectado) is True
+    assert FINGERPRINT_DEV01 in servicio.fingerprints_exclusivos
+
+    adaptador.simular_evento("/dev/input/event7", _pulsacion(FINGERPRINT_DEV01))
+    servicio.ejecutar_paso()
+    assert cliente_http.peticiones_enviadas == [{"dispositivo": "dev01", "tecla": "1"}]
+
+
+def test_remapeo_temporal_reconcilia_quien_queda_capturado(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """Demuestra que un remapeo libera el teclado reemplazado y toma el nuevo.
+
+    Escenario: 'dev01' se rompe y se reemplaza por un teclado de repuesto. Después de
+    confirmar el remapeo, el repuesto queda dedicado a SISLeg y el teclado anterior deja de
+    estar capturado, sin que dos dispositivos se apropien del mismo 'dev01'.
+    """
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    original = adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    repuesto = adaptador.agregar_dispositivo("/dev/input/event5", FINGERPRINT_DESCONOCIDO)
+    servicio.ejecutar_ciclo_descubrimiento()
+
+    assert adaptador.tiene_exclusividad(original) is True
+    assert adaptador.tiene_exclusividad(repuesto) is False
+
+    # Coordinación completa del remapeo TEMPORAL sobre el mismo identificador lógico.
+    servicio.coordinador_remapeo.iniciar_captura("remapeo-dev01", "dev01")
+    assert (
+        servicio.coordinador_remapeo.considerar_candidato(_pulsacion(FINGERPRINT_DESCONOCIDO))
+        is not None
+    )
+    servicio.coordinador_remapeo.confirmar(
+        "remapeo-dev01",
+        FINGERPRINT_DESCONOCIDO,
+        PersistenciaRemapeo.TEMPORAL,
+    )
+
+    servicio.ejecutar_paso()
+
+    assert adaptador.tiene_exclusividad(repuesto) is True
+    assert adaptador.tiene_exclusividad(original) is False
+    assert servicio.fingerprints_exclusivos == {FINGERPRINT_DESCONOCIDO}
+    assert adaptador.conteo_liberaciones["/dev/input/event0"] == 1
+
+    # El repuesto despacha como 'dev01' y el teclado anterior ya no despacha nada.
+    adaptador.simular_evento("/dev/input/event5", _pulsacion(FINGERPRINT_DESCONOCIDO))
+    adaptador.simular_evento("/dev/input/event0", _pulsacion(FINGERPRINT_DEV01, "KEY_9"))
+    servicio.ejecutar_paso()
+
+    assert cliente_http.peticiones_enviadas == [{"dispositivo": "dev01", "tecla": "1"}]
+
+
+def test_detener_libera_la_exclusividad_de_todos_los_dispositivos(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """Demuestra que la parada del bridge devuelve los numpads al sistema operativo."""
+    servicio, adaptador, _cliente_http = entorno_bridge
+
+    disp_01 = adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    disp_02 = adaptador.agregar_dispositivo("/dev/input/event1", FINGERPRINT_DEV02)
+    servicio.ejecutar_ciclo_descubrimiento()
+    assert servicio.fingerprints_exclusivos == {FINGERPRINT_DEV01, FINGERPRINT_DEV02}
+
+    servicio.detener()
+
+    assert adaptador.tiene_exclusividad(disp_01) is False
+    assert adaptador.tiene_exclusividad(disp_02) is False
+    assert adaptador.dispositivos_exclusivos == set()
+    assert servicio.fingerprints_exclusivos == set()

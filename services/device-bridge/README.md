@@ -38,6 +38,8 @@ POST /api/v1/entradas/tecla (FastAPI)
 - Despacha a lo sumo **un intento HTTP** por pulsación.
 - Loguea diagnósticos locales (stdout/stderr y journald).
 - Se recupera automáticamente de desconexiones y reconexiones de hardware en caliente.
+- **Toma en exclusiva los numpads mapeados** (`EVIOCGRAB`) para que sus pulsaciones no
+  lleguen al escritorio ni al navegador de Moderación.
 
 ### Lo que NO hace el Bridge:
 - **No evalúa reglas de negocio**: No decide presencia, quórum, validez de votos, irreversibilidad, pedidos de palabra ni resultados. Toda la semántica institucional reside en FastAPI.
@@ -45,6 +47,7 @@ POST /api/v1/entradas/tecla (FastAPI)
 - **No reintenta peticiones**: No realiza retries automáticos ante timeouts o errores de red.
 - **No acumula eventos (cero replay)**: No utiliza colas durables ni reintentos automáticos. Ante caídas de red, timeouts o fallos de transporte, interrumpe el procesamiento del lote y purga activamente los búferes de hardware para evitar ráfagas tardías de eventos antiguos cuando se restablece la conexión.
 - **No asigna dispositivos no mapeados**: Un fingerprint desconocido nunca se asigna automáticamente a un `devXX` libre.
+- **No captura teclados ajenos**: Nunca toma en exclusiva un dispositivo que no pertenezca al mapping efectivo. El teclado y el mouse del moderador siguen funcionando con normalidad aunque el bridge esté activo.
 
 ---
 
@@ -189,6 +192,77 @@ uv run botonera2-device-bridge \
 
 ---
 
+## Captura exclusiva de los numpads de banca
+
+La instalación real usa una sola PC para Moderación, el bridge y los hubs USB de las
+botoneras. Sin captura exclusiva, una pulsación de banca llega a la vez al bridge y al
+escritorio, de modo que un `3` de voto también se escribiría en el campo de texto que
+tenga el foco en el navegador.
+
+Para evitarlo, el bridge toma cada dispositivo del **mapping efectivo** con
+`InputDevice.grab()` de `python-evdev`, que usa la capacidad `EVIOCGRAB` del kernel. Solo
+un proceso puede sostener ese grab: mientras el bridge lo conserva, ninguna otra aplicación
+recibe eventos de ese teclado. La liberación se hace con `InputDevice.ungrab()`.
+
+### Qué se captura y qué no
+
+| Dispositivo | Captura exclusiva |
+| :--- | :--- |
+| Fingerprint presente en el mapping efectivo (`devXX`) | Sí, mientras el bridge esté activo |
+| Teclado y mouse del moderador | No |
+| Teclado descubierto pero no mapeado | No |
+| Candidato de un reemplazo todavía no confirmado | No, hasta que el remapeo se aplique |
+
+La decisión se toma exclusivamente por pertenencia al mapping efectivo. No se usa el
+nombre, el vendor/product ni la mera capacidad `EV_KEY` como heurística, para que ningún
+teclado del operador quede secuestrado por parecerse a una botonera.
+
+### Política fail-safe
+
+La exclusividad es **requisito previo** al despacho funcional. Si `grab()` falla sobre un
+dispositivo mapeado —por ejemplo porque otro proceso ya lo tomó o porque faltan permisos
+sobre `/dev/input`—, el bridge:
+
+- registra un diagnóstico de nivel `ERROR` con la ruta, el nombre del dispositivo y la
+  causa devuelta por el sistema operativo;
+- **no** despacha ninguna pulsación de ese dispositivo al backend, para no operar en modo
+  compartido de forma silenciosa;
+- reintenta la adquisición en cada ciclo, de modo que el dispositivo vuelve a operar apenas
+  se consigue la exclusividad, sin reiniciar el servicio.
+
+Los demás dispositivos mapeados siguen funcionando normalmente: el fallo es por
+dispositivo, no global.
+
+### Ciclo de vida
+
+- **Descubrimiento y reconexión**: cada dispositivo mapeado recién abierto adquiere la
+  exclusividad antes de poder despachar; una reconexión física la vuelve a adquirir aunque
+  el kernel le asigne otro nodo `/dev/input/eventN`.
+- **Remapeo TEMPORAL o PERSISTENTE**: al cambiar el mapping efectivo, el fingerprint nuevo
+  adquiere la exclusividad y el reemplazado la libera, de modo que nunca quedan dos
+  dispositivos apropiándose del mismo `devXX`.
+- **Cierre normal**: la parada del servicio libera la exclusividad de cada dispositivo antes
+  de cerrar su descriptor. Cerrar el descriptor sigue siendo la última garantía de
+  liberación, así que una caída abrupta también devuelve los teclados al sistema.
+
+Adquirir y liberar son idempotentes desde la perspectiva del bridge: el adaptador lleva un
+registro local de qué rutas están tomadas, porque el contrato oficial de `python-evdev`
+indica que liberar un dispositivo que no fue tomado provoca un `OSError`.
+
+### Verificación humana sobre Linux real
+
+Con el bridge en ejecución y Moderación abierta con el foco en un campo editable:
+
+- pulsar teclas funcionales en un numpad mapeado **no** debe escribir ningún carácter en la
+  pantalla, y sí debe producir el efecto funcional correspondiente;
+- el teclado del moderador debe escribir con normalidad.
+
+Si el numpad escribe en el campo, la exclusividad no se adquirió: revisar el diagnóstico
+del servicio (`journalctl -u botonera2-device-bridge.service`) buscando el error de captura
+exclusiva.
+
+---
+
 ## Remapeo coordinado y API local de control
 
 La separación permanece siempre:
@@ -216,6 +290,10 @@ resolver si una respuesta de confirmación se perdió después de que el cambio 
 había sido aplicado.
 
 ### Captura sin bloquear otros teclados
+
+El teclado candidato de un reemplazo todavía no pertenece al mapping efectivo, así que no
+se toma en exclusiva mientras dura la captura. Recién al confirmar el remapeo el nuevo
+fingerprint queda dedicado a SISLeg y el reemplazado vuelve al sistema.
 
 El loop físico resuelve primero el mapping efectivo bajo un `RLock`. Si el
 fingerprint está mapeado, su keydown sigue inmediatamente por el flujo normal

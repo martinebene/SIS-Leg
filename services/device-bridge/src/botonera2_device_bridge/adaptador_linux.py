@@ -17,8 +17,26 @@ Responsabilidades:
      `event.value == 1`. Ignora `keyup` (`value == 0`) y repeat/hold (`value == 2`).
    - Detecta desconexiones físicas (cuando `dev.read()` lanza `OSError` por `ENODEV`)
      y limpia descriptores.
+   - CAPTURA EXCLUSIVA (WP-075): puede tomar un dispositivo en forma exclusiva mediante
+     `InputDevice.grab()` (`EVIOCGRAB`). Mientras un dispositivo está tomado así, ninguna
+     otra aplicación del sistema (escritorio, navegador, terminal) recibe sus pulsaciones.
+     La liberación se hace con `InputDevice.ungrab()`.
 2. `AdaptadorFalso`: Implementación simulada en memoria para pruebas unitarias deterministas
    en entornos de CI sin hardware real ni permisos especiales.
+
+Sobre la exclusividad conviene recordar dos reglas del contrato oficial de `python-evdev`:
+
+- solo un proceso puede sostener el `grab()` de un dispositivo; si otro ya lo tomó, la
+  llamada falla con `OSError`;
+- liberar un dispositivo que no está tomado también falla con `OSError`.
+
+Por eso el adaptador lleva un registro propio de qué rutas están tomadas y expone
+operaciones idempotentes desde la perspectiva del bridge: adquirir dos veces no vuelve a
+llamar a `grab()` y liberar dos veces no vuelve a llamar a `ungrab()`.
+
+La decisión de *qué* dispositivos merecen exclusividad no pertenece a este módulo: el
+servicio solo pide capturar los fingerprints del mapping efectivo, de modo que el teclado
+y el mouse del moderador nunca quedan secuestrados.
 """
 
 from __future__ import annotations
@@ -44,6 +62,16 @@ logger = logging.getLogger(__name__)
 
 class ErrorDispositivoDesconectado(Exception):
     """Excepción lanzada cuando un dispositivo físico se desconecta o su descriptor se invalida."""
+
+
+class ErrorExclusividadNoDisponible(Exception):
+    """Excepción lanzada cuando no se puede tomar un dispositivo en forma exclusiva.
+
+    Se produce, por ejemplo, cuando otro proceso ya sostiene el `EVIOCGRAB` del mismo
+    dispositivo o cuando el descriptor dejó de ser válido. El servicio la trata como una
+    condición fail-safe: el dispositivo afectado no despacha pulsaciones funcionales hasta
+    conseguir la exclusividad.
+    """
 
 
 @dataclass
@@ -82,12 +110,35 @@ class AdaptadorEntradaFisica(Protocol):
         """Drena y descarta eventos pendientes para evitar replay tardío."""
         ...
 
+    def adquirir_exclusividad(self, dispositivo: DispositivoFisico) -> None:
+        """Toma el dispositivo en forma exclusiva para este proceso.
+
+        Debe ser idempotente: pedirla dos veces sobre el mismo dispositivo no repite la
+        llamada al sistema operativo.
+
+        Raises:
+            ErrorExclusividadNoDisponible: Si no puede adquirirse la exclusividad.
+        """
+        ...
+
+    def liberar_exclusividad(self, dispositivo: DispositivoFisico) -> None:
+        """Devuelve el dispositivo al resto del sistema.
+
+        Debe ser idempotente y no debe propagar errores: liberar algo que no estaba tomado
+        es una operación válida desde la perspectiva del bridge.
+        """
+        ...
+
+    def tiene_exclusividad(self, dispositivo: DispositivoFisico) -> bool:
+        """Indica si este proceso sostiene actualmente la exclusividad del dispositivo."""
+        ...
+
     def cerrar_dispositivo(self, dispositivo: DispositivoFisico) -> None:
-        """Cierra el descriptor asociado al dispositivo."""
+        """Cierra el descriptor asociado al dispositivo, liberando antes su exclusividad."""
         ...
 
     def cerrar_todo(self) -> None:
-        """Cierra todos los descriptores abiertos."""
+        """Cierra todos los descriptores abiertos, liberando antes sus exclusividades."""
         ...
 
 
@@ -100,6 +151,9 @@ class AdaptadorEvdevLinux:
                 "La librería 'evdev' no está disponible. Verifique que esté instalada bajo Linux."
             )
         self._dispositivos_abiertos: dict[str, evdev.InputDevice] = {}
+        # Trazabilidad local de la exclusividad: contiene las rutas cuyo `grab()` fue
+        # aceptado por el kernel y todavía no fue liberado por este proceso.
+        self._dispositivos_exclusivos: set[str] = set()
 
     def descubrir_dispositivos(self) -> list[DispositivoFisico]:
         """Lista las rutas /dev/input/event* y abre aquellas con capacidad EV_KEY."""
@@ -281,8 +335,89 @@ class AdaptadorEvdevLinux:
 
         return total_descartados
 
+    def adquirir_exclusividad(self, dispositivo: DispositivoFisico) -> None:
+        """Toma el dispositivo con `EVIOCGRAB` para que nadie más reciba sus pulsaciones.
+
+        Es la operación que impide que un numpad de banca escriba en el escritorio o en el
+        navegador de Moderación. Solo un proceso puede sostener el grab de un dispositivo,
+        así que un segundo intento externo fallará mientras el bridge lo conserve.
+
+        Args:
+            dispositivo: Dispositivo ya descubierto y abierto por este adaptador.
+
+        Raises:
+            ErrorExclusividadNoDisponible: Si el descriptor no existe o el kernel rechaza
+                la adquisición (por ejemplo, si otro proceso ya lo tomó).
+        """
+        if dispositivo.ruta in self._dispositivos_exclusivos:
+            # Idempotencia: ya la tenemos, no repetimos la llamada al sistema operativo.
+            return
+
+        dev = self._dispositivos_abiertos.get(dispositivo.ruta)
+        if dev is None:
+            raise ErrorExclusividadNoDisponible(
+                f"No hay descriptor abierto para {dispositivo.ruta}; "
+                "no puede adquirirse la captura exclusiva."
+            )
+
+        try:
+            dev.grab()
+        except Exception as exc:
+            raise ErrorExclusividadNoDisponible(
+                f"No se pudo adquirir la captura exclusiva de {dispositivo.ruta} "
+                f"('{dispositivo.nombre}'): {exc}"
+            ) from exc
+
+        self._dispositivos_exclusivos.add(dispositivo.ruta)
+        logger.info(
+            "Captura exclusiva adquirida en %s ('%s'). "
+            "El dispositivo queda dedicado a SISLeg mientras el bridge esté activo.",
+            dispositivo.ruta,
+            dispositivo.nombre,
+        )
+
+    def liberar_exclusividad(self, dispositivo: DispositivoFisico) -> None:
+        """Devuelve el dispositivo al resto del sistema con `ungrab()`.
+
+        Es idempotente desde la perspectiva del bridge: si la ruta no figura en el registro
+        local, no se llama a `ungrab()` (hacerlo sobre un dispositivo no tomado provocaría
+        un `OSError` espurio). Un fallo del kernel se registra y no se propaga, porque el
+        cierre del descriptor sigue siendo la última garantía de liberación del recurso.
+        """
+        if dispositivo.ruta not in self._dispositivos_exclusivos:
+            return
+
+        # Retiramos la marca antes de intentar: aunque `ungrab()` falle, el bridge deja de
+        # considerar suyo ese dispositivo y no volverá a intentar liberarlo dos veces.
+        self._dispositivos_exclusivos.discard(dispositivo.ruta)
+
+        dev = self._dispositivos_abiertos.get(dispositivo.ruta)
+        if dev is None:
+            return
+
+        try:
+            dev.ungrab()
+        except Exception as exc:
+            logger.debug(
+                "Error liberando la captura exclusiva de %s: %s",
+                dispositivo.ruta,
+                exc,
+            )
+            return
+
+        logger.info(
+            "Captura exclusiva liberada en %s ('%s').",
+            dispositivo.ruta,
+            dispositivo.nombre,
+        )
+
+    def tiene_exclusividad(self, dispositivo: DispositivoFisico) -> bool:
+        """Informa si este proceso sostiene la exclusividad del dispositivo indicado."""
+        return dispositivo.ruta in self._dispositivos_exclusivos
+
     def cerrar_dispositivo(self, dispositivo: DispositivoFisico) -> None:
-        """Cierra el descriptor evdev y lo remueve del registro."""
+        """Libera la exclusividad, cierra el descriptor evdev y lo remueve del registro."""
+        self.liberar_exclusividad(dispositivo)
         dev = self._dispositivos_abiertos.pop(dispositivo.ruta, None)
         if dev is not None:
             try:
@@ -291,13 +426,20 @@ class AdaptadorEvdevLinux:
                 logger.debug("Error cerrando descriptor %s: %s", dispositivo.ruta, exc)
 
     def cerrar_todo(self) -> None:
-        """Cierra todos los descriptores evdev abiertos."""
+        """Libera toda exclusividad pendiente y cierra los descriptores evdev abiertos."""
         for ruta, dev in list(self._dispositivos_abiertos.items()):
+            if ruta in self._dispositivos_exclusivos:
+                self._dispositivos_exclusivos.discard(ruta)
+                try:
+                    dev.ungrab()
+                except Exception as exc:
+                    logger.debug("Error liberando exclusividad de %s: %s", ruta, exc)
             try:
                 dev.close()
             except Exception as exc:
                 logger.debug("Error cerrando %s: %s", ruta, exc)
         self._dispositivos_abiertos.clear()
+        self._dispositivos_exclusivos.clear()
 
 
 class AdaptadorFalso:
@@ -308,6 +450,13 @@ class AdaptadorFalso:
         self.eventos_pendientes: dict[str, list[EventoTeclaFisica]] = {}
         self.dispositivos_cerrados: list[str] = []
         self.dispositivos_a_desconectar: set[str] = set()
+        # Estado de exclusividad simulada. `rutas_que_fallan_exclusividad` permite probar la
+        # política fail-safe sin hardware ni privilegios, y los contadores permiten
+        # demostrar que no hay doble grab ni doble ungrab.
+        self.dispositivos_exclusivos: set[str] = set()
+        self.rutas_que_fallan_exclusividad: set[str] = set()
+        self.conteo_adquisiciones: dict[str, int] = {}
+        self.conteo_liberaciones: dict[str, int] = {}
 
     def agregar_dispositivo(
         self,
@@ -351,6 +500,39 @@ class AdaptadorFalso:
         self.eventos_pendientes[dispositivo.ruta] = []
         return cola
 
+    def simular_fallo_exclusividad(self, ruta: str, falla: bool = True) -> None:
+        """Marca (o desmarca) una ruta para que su adquisición exclusiva falle."""
+        if falla:
+            self.rutas_que_fallan_exclusividad.add(ruta)
+        else:
+            self.rutas_que_fallan_exclusividad.discard(ruta)
+
+    def adquirir_exclusividad(self, dispositivo: DispositivoFisico) -> None:
+        """Simula `grab()` respetando idempotencia y fallos configurados."""
+        if dispositivo.ruta in self.dispositivos_exclusivos:
+            return
+        if dispositivo.ruta in self.rutas_que_fallan_exclusividad:
+            raise ErrorExclusividadNoDisponible(
+                f"Exclusividad simulada no disponible en {dispositivo.ruta}"
+            )
+        self.dispositivos_exclusivos.add(dispositivo.ruta)
+        self.conteo_adquisiciones[dispositivo.ruta] = (
+            self.conteo_adquisiciones.get(dispositivo.ruta, 0) + 1
+        )
+
+    def liberar_exclusividad(self, dispositivo: DispositivoFisico) -> None:
+        """Simula `ungrab()` sin fallar cuando el dispositivo no estaba tomado."""
+        if dispositivo.ruta not in self.dispositivos_exclusivos:
+            return
+        self.dispositivos_exclusivos.discard(dispositivo.ruta)
+        self.conteo_liberaciones[dispositivo.ruta] = (
+            self.conteo_liberaciones.get(dispositivo.ruta, 0) + 1
+        )
+
+    def tiene_exclusividad(self, dispositivo: DispositivoFisico) -> bool:
+        """Indica si el dispositivo simulado está tomado en exclusiva."""
+        return dispositivo.ruta in self.dispositivos_exclusivos
+
     def descartar_eventos_pendientes(self, dispositivo: DispositivoFisico | None = None) -> int:
         """Drena y descarta los eventos acumulados en memoria."""
         total = 0
@@ -364,7 +546,8 @@ class AdaptadorFalso:
         return total
 
     def cerrar_dispositivo(self, dispositivo: DispositivoFisico) -> None:
-        """Marca el dispositivo simulado como cerrado."""
+        """Libera la exclusividad simulada y marca el dispositivo como cerrado."""
+        self.liberar_exclusividad(dispositivo)
         if dispositivo.ruta not in self.dispositivos_cerrados:
             self.dispositivos_cerrados.append(dispositivo.ruta)
         self.eventos_pendientes.pop(dispositivo.ruta, None)
