@@ -122,7 +122,7 @@ WP-018 quedó integrado mediante squash merge de PR #24 sobre el candidato final
 |---|---|---|---|---|
 | WP-032 | Corregir pérdida de cancelación en fronteras temporales y estabilizar teardown/CI del backend | INTEGRADO | WP-017 | - |
 | WP-074 | Consolidar Apoyo Técnico en una única proyección SSE para evitar starvation HTTP/1.1 | INTEGRADO | WP-056, WP-071 | - |
-| WP-075 | Capturar exclusivamente los numpads mapeados para que no escriban en el escritorio del moderador | PENDIENTE | WP-019, WP-020 | claude |
+| WP-075 | Capturar exclusivamente los numpads mapeados para que no escriban en el escritorio del moderador | EN_CURSO | WP-019, WP-020 | claude |
 | WP-076 | Alinear destino a la izquierda y acciones a la derecha en mensajes precargados | PENDIENTE | WP-070 | claude |
 | WP-078 | Registrar mensajes al Recinto como eventos principales INICIO/FIN | PENDIENTE | WP-055, WP-056 | claude |
 | WP-077 | Renombrar repositorios, código y referencias vigentes de Botonera2 a SIS-Leg | PENDIENTE | WP-074, WP-075, WP-076, WP-078 | claude |
@@ -454,3 +454,6 @@ HUMAN_GATE agregó WP-078 a la cuarta ronda: todo aviso técnico que alcance Rec
 
 
 WP-074 quedó integrado mediante PR #83 sobre el candidato `36206974ff13f2b08e32801e6119e23d63a06b85` / tree `ac0aa70f1a61205c44fe63c92c2ef96ceb00e060`, implementado por Claude Code / Claude Opus 5 (High) y revisado independientemente por Antigravity/AGY / Gemini 3.8 Flash (High), con 0 BLOQUEANTES, 0 IMPORTANTES y 0 MENORES y veredicto `LISTA PARA INTEGRAR`. La auditoría sustantiva pre-merge del ORCHESTRATOR concluyó `APROBADO_PARA_MERGE`. El squash `3fa88d83190aec55ac1b7c95133502c2028dc959` conserva exactamente el tree revisado. CI candidata #478 y CI post-merge #479 terminaron `success` 8/8. Queda pendiente únicamente el cleanup verificable del worktree/rama de WP-074 antes de activar WP-075. WP-029 permanece BLOQUEADO.
+
+
+WP-074 completó cleanup verificable: worktree Orca eliminado, rama local y remota ausentes, único worktree restante `main`, y checkout coordinador limpio/sincronizado en `6ee9ef607c697eb0f3b44fc1cea0cf9a39860036`. Con ese gate satisfecho, HUMAN_GATE/ORCHESTRATOR activa WP-075 con Claude Code / Claude Opus 5 (High) como IMPLEMENTER y Antigravity/AGY / Gemini 3.8 Flash (High) como REVIEWER independiente. WP-075 debe capturar exclusivamente mediante EVIOCGRAB sólo los numpads pertenecientes al mapping efectivo, preservando teclado/mouse del moderador y aplicando política fail-safe si un dispositivo mapeado no puede adquirir exclusividad. max_concurrency=1 continúa vigente; WP-076, WP-078 y WP-077 permanecen PENDIENTES, y WP-077 continúa reservado como último corte de identidad.
