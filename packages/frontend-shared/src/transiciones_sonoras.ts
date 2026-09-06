@@ -41,7 +41,7 @@ import type {
   EstadoGlobal,
   EstadoTransmision,
   SonidosRecintoProyectados,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 
 /**
  * Contrato mínimo que necesita esta comparación para deducir un sonido (WP-074).
@@ -50,7 +50,7 @@ import type {
  *
  * Hasta WP-074 esta función recibía el `EstadoRecinto` completo, porque la única pantalla
  * que sonorizaba era la del salón y el puesto técnico se suscribía a esa misma proyección.
- * Ese segundo stream, sumado a los otros cinco que abrían las cuatro superficies de SISLeg
+ * Ese segundo stream, sumado a los otros cinco que abrían las cuatro superficies de SIS-Leg
  * bajo el mismo origen, agotaba el cupo de conexiones de HTTP/1.1 y dejaba los comandos
  * REST esperando indefinidamente.
  *

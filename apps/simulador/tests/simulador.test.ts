@@ -1,5 +1,5 @@
 /**
- * Pruebas unitarias e integradas de componentes para el Simulador Web (@botonera2/simulador).
+ * Pruebas unitarias e integradas de componentes para el Simulador Web (@sis-leg/simulador).
  *
  * Cobertura obligatoria de WP-034:
  * 1. Renderizado simultáneo de las 12 tarjetas dev01..dev12.
@@ -25,7 +25,7 @@ import {
   type ClienteSimulador,
   type EstadoModeracion,
   type RespuestaTecla,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import PanelGeneralSimulador from '../app/components/PanelGeneralSimulador.vue'
 import TarjetaDispositivo from '../app/components/TarjetaDispositivo.vue'
 import SelectorCantidad from '../app/components/SelectorCantidad.vue'

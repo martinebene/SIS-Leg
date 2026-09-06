@@ -13,7 +13,7 @@
 
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
-import type { EventoPublicoProyectado } from '@botonera2/api-client'
+import type { EventoPublicoProyectado } from '@sis-leg/api-client'
 import PanelEventosPublicos from '../app/components/PanelEventosPublicos.vue'
 import PantallaRecinto from '../app/components/PantallaRecinto.vue'
 import { crearConcejalesPublicos, crearEstadoRecintoPrueba } from './datos_prueba'

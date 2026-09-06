@@ -6,7 +6,7 @@
 
 ## Contexto
 
-La gobernanza de Botonera2 exige que cada Work Package (WP) en ejecución utilice una rama, un `git worktree` y una sesión de agente propios. Hacer manualmente esa preparación en cada WP agrega pasos repetitivos y aumenta el riesgo de iniciar un agente en `main` o en un directorio incorrecto.
+La gobernanza de SIS-Leg exige que cada Work Package (WP) en ejecución utilice una rama, un `git worktree` y una sesión de agente propios. Hacer manualmente esa preparación en cada WP agrega pasos repetitivos y aumenta el riesgo de iniciar un agente en `main` o en un directorio incorrecto.
 
 Se necesita un mecanismo local, reproducible y simple que automatice la preparación mecánica del entorno sin adquirir autoridad para aprobar WPs, modificar reglas de planificación o integrar cambios.
 
@@ -34,7 +34,7 @@ El README debe documentar el comando exacto y el modo recomendado de invocarlo c
 
 Antes de crear un entorno nuevo debe:
 
-1. verificar que se ejecuta desde el checkout coordinador del repositorio Botonera2 y que la rama actual es `main`;
+1. verificar que se ejecuta desde el checkout coordinador del repositorio SIS-Leg y que la rama actual es `main`;
 2. verificar que `main` no contiene cambios locales sin confirmar;
 3. actualizar referencias remotas y exigir que `main` pueda quedar actualizado mediante fast-forward, sin merges automáticos ni reescritura de historia;
 4. comprobar que existe `docs/work-packages/WP-NNN.md` y que su estado documental es `APROBADO`;
@@ -56,7 +56,7 @@ El mapeo utiliza las CLI instaladas en el entorno local. Si la CLI solicitada no
 
 - La rama debe respetar `wp/NNN-descripcion-corta`.
 - La descripción puede derivarse de forma determinista del título del WP, normalizada para Git, o de otra regla simple y documentada dentro de WP-001.
-- El worktree debe quedar fuera del checkout `main`, como directorio hermano, con nombre fácilmente identificable por WP, por ejemplo `Botonera2-wp002`.
+- El worktree debe quedar fuera del checkout `main`, como directorio hermano, con nombre fácilmente identificable por WP, por ejemplo `SIS-Leg-wp002`.
 
 El detalle reversible de slugificación pertenece a la autonomía local de WP-001 siempre que produzca nombres estables, legibles y compatibles con la convención anterior.
 

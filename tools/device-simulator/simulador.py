@@ -46,7 +46,7 @@ def construir_argumentos_cli() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="simulador.py",
         description=(
-            "Botonera2 - Simulador CLI reproducible de dispositivos y escenarios.\n"
+            "SIS-Leg - Simulador CLI reproducible de dispositivos y escenarios.\n"
             "Permite enviar pulsaciones logicas reales al endpoint POST /api/v1/entradas/tecla."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

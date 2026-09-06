@@ -54,4 +54,4 @@ export {
   calcularDuracionEnSnapshot,
   convertirMarcaBackend,
   formatearDuracion,
-} from '@botonera2/frontend-shared'
+} from '@sis-leg/frontend-shared'

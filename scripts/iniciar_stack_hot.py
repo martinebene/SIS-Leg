@@ -156,7 +156,7 @@ def crear_analizador_argumentos() -> argparse.ArgumentParser:
     """Define los argumentos de línea de comandos del stack interactivo."""
 
     analizador = argparse.ArgumentParser(
-        description=("Inicia el stack interactivo de desarrollo de Botonera2 con HMR y autoreload.")
+        description=("Inicia el stack interactivo de desarrollo de SIS-Leg con HMR y autoreload.")
     )
     analizador.add_argument(
         "--host",

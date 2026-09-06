@@ -35,10 +35,10 @@ importers:
 
   apps/moderacion:
     dependencies:
-      '@botonera2/api-client':
+      '@sis-leg/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@botonera2/frontend-shared':
+      '@sis-leg/frontend-shared':
         specifier: workspace:*
         version: link:../../packages/frontend-shared
       nuxt:
@@ -66,10 +66,10 @@ importers:
 
   apps/recinto:
     dependencies:
-      '@botonera2/api-client':
+      '@sis-leg/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@botonera2/frontend-shared':
+      '@sis-leg/frontend-shared':
         specifier: workspace:*
         version: link:../../packages/frontend-shared
       nuxt:
@@ -97,10 +97,10 @@ importers:
 
   apps/simulador:
     dependencies:
-      '@botonera2/api-client':
+      '@sis-leg/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@botonera2/frontend-shared':
+      '@sis-leg/frontend-shared':
         specifier: workspace:*
         version: link:../../packages/frontend-shared
       nuxt:
@@ -128,10 +128,10 @@ importers:
 
   apps/tecnico:
     dependencies:
-      '@botonera2/api-client':
+      '@sis-leg/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@botonera2/frontend-shared':
+      '@sis-leg/frontend-shared':
         specifier: workspace:*
         version: link:../../packages/frontend-shared
       nuxt:
@@ -165,7 +165,7 @@ importers:
 
   packages/frontend-shared:
     dependencies:
-      '@botonera2/api-client':
+      '@sis-leg/api-client':
         specifier: workspace:*
         version: link:../api-client
       vue:

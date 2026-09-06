@@ -18,7 +18,7 @@
  * por sí misma, ni siquiera cuando el contador visual llega a cero.
  */
 
-import type { TransmisionProyectada } from '@botonera2/api-client'
+import type { TransmisionProyectada } from '@sis-leg/api-client'
 
 defineProps<{
   /** Estado autoritativo de la transmisión proyectado por el backend. */

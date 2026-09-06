@@ -14,7 +14,7 @@ def test_generacion_esquema_openapi_valida() -> None:
     """Verifica que el esquema generado contenga la estructura y metadatos esperados."""
     esquema = generar_esquema_openapi()
     assert esquema["openapi"] == "3.1.0"
-    assert esquema["info"]["title"] == "Botonera2 Backend"
+    assert esquema["info"]["title"] == "SIS-Leg Backend"
     assert "/api/v1/estado/moderacion" in esquema["paths"]
     assert "/api/v1/estado/recinto" in esquema["paths"]
     assert "/api/v1/votaciones" in esquema["paths"]

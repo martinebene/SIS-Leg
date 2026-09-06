@@ -8,27 +8,27 @@ from datetime import datetime, timedelta
 from itertools import count
 from pathlib import Path
 
-from botonera2_backend.auditoria import EscritorAuditoriaCsv
-from botonera2_backend.configuracion.modelos import (
+from sis_leg_backend.auditoria import EscritorAuditoriaCsv
+from sis_leg_backend.configuracion.modelos import (
     Concejal,
     ConfiguracionSistema,
     ConfiguracionSonidosRecinto,
     Padron,
     SonidoRecinto,
 )
-from botonera2_backend.configuracion.sonidos_recinto import EVENTOS_SONIDO_RECINTO
-from botonera2_backend.dominio.estado import EstadoGlobal, EstadoOperativo
-from botonera2_backend.dominio.preparacion import Preparacion
-from botonera2_backend.dominio.sesion import Sesion
-from botonera2_backend.dominio.votacion import (
+from sis_leg_backend.configuracion.sonidos_recinto import EVENTOS_SONIDO_RECINTO
+from sis_leg_backend.dominio.estado import EstadoGlobal, EstadoOperativo
+from sis_leg_backend.dominio.preparacion import Preparacion
+from sis_leg_backend.dominio.sesion import Sesion
+from sis_leg_backend.dominio.votacion import (
     BaseMayoria,
     TipoMayoria,
     Votacion,
 )
-from botonera2_backend.servicios.apoyo_tecnico import ServicioApoyoTecnico
-from botonera2_backend.servicios.proyecciones import ServicioProyecciones
-from botonera2_backend.servicios.publicacion import CoordinadorPublicacion
-from botonera2_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.apoyo_tecnico import ServicioApoyoTecnico
+from sis_leg_backend.servicios.proyecciones import ServicioProyecciones
+from sis_leg_backend.servicios.publicacion import CoordinadorPublicacion
+from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
 
 
 def sonidos_de_prueba() -> ConfiguracionSonidosRecinto:

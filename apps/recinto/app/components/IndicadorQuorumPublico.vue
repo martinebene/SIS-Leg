@@ -29,7 +29,7 @@
  */
 
 import { computed } from 'vue'
-import type { EstadoQuorum } from '@botonera2/api-client'
+import type { EstadoQuorum } from '@sis-leg/api-client'
 
 const props = defineProps<{
   /** Proyección de quórum del backend, o null mientras no hay contexto preparado. */

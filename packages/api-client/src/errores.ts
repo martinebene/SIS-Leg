@@ -1,5 +1,5 @@
 /**
- * Modelo uniforme y discriminado de errores para el cliente API de SISLeg.
+ * Modelo uniforme y discriminado de errores para el cliente API de SIS-Leg.
  *
  * Permite distinguir de forma tipada entre:
  * 1. ErrorHttp: Respuestas HTTP no exitosas devueltas por FastAPI (4xx, 5xx),

@@ -1,6 +1,6 @@
-# @botonera2/api-client
+# @sis-leg/api-client
 
-Paquete TypeScript compartido del monorepo Botonera2 que encapsula la comunicación con el backend FastAPI mediante REST y Server-Sent Events (SSE).
+Paquete TypeScript compartido del monorepo SIS-Leg que encapsula la comunicación con el backend FastAPI mediante REST y Server-Sent Events (SSE).
 
 ## Principios y responsabilidades
 
@@ -61,7 +61,7 @@ pnpm check:contrato
 
 # O por separado:
 pnpm check:openapi      # uv run python scripts/exportar_openapi.py --check
-pnpm check:types        # pnpm --filter @botonera2/api-client check:types
+pnpm check:types        # pnpm --filter @sis-leg/api-client check:types
 ```
 
 ---
@@ -71,7 +71,7 @@ pnpm check:types        # pnpm --filter @botonera2/api-client check:types
 ### Cliente de Moderación
 
 ```typescript
-import { crearClienteModeracion } from "@botonera2/api-client";
+import { crearClienteModeracion } from "@sis-leg/api-client";
 
 const cliente = crearClienteModeracion({ baseUrl: "http://localhost:8000" });
 
@@ -109,7 +109,7 @@ suscripcion.cancelar();
 ### Cliente de Recinto
 
 ```typescript
-import { crearClienteRecinto } from "@botonera2/api-client";
+import { crearClienteRecinto } from "@sis-leg/api-client";
 
 const recinto = crearClienteRecinto({ baseUrl: "http://localhost:8000" });
 

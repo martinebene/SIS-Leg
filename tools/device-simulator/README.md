@@ -1,6 +1,6 @@
 # Simulador CLI de Dispositivos y Escenarios (tools/device-simulator)
 
-Herramienta de desarrollo y diagnostico por linea de comandos (CLI) de **Botonera2** para emitir pulsaciones logicas y ejecutar escenarios declarativos reproducibles sin requerir hardware fisico.
+Herramienta de desarrollo y diagnostico por linea de comandos (CLI) de **SIS-Leg** para emitir pulsaciones logicas y ejecutar escenarios declarativos reproducibles sin requerir hardware fisico.
 
 ---
 
@@ -31,7 +31,7 @@ con el cuerpo JSON:
 
 ### Convivencia con el Simulador Web (WP-034)
 
-Botonera2 dispone de dos herramientas complementarias de simulación que comparten el mismo principio arquitectónico (envío directo a `POST /api/v1/entradas/tecla` sin atravesar el `device-bridge`):
+SIS-Leg dispone de dos herramientas complementarias de simulación que comparten el mismo principio arquitectónico (envío directo a `POST /api/v1/entradas/tecla` sin atravesar el `device-bridge`):
 
 1. **Simulador CLI (`tools/device-simulator/`)**: enfocado en terminal, CI, automatización de pruebas y ejecución reproducible de escenarios JSON con temporización y concurrencia controlada.
 2. **Simulador Web (`apps/simulador/` en `/simulador/`)**: SPA interactiva en Nuxt 4 para prueba humana y diagnóstico visual, que presenta los 12 dispositivos simultáneamente en pantalla con botones individuales, panel de estado y log en tiempo real.
@@ -42,7 +42,7 @@ Ambas herramientas son clientes equivalentes y ninguna de las dos impone reglas 
 
 ## 2. Requisitos previos
 
-El simulador es un cliente HTTP puro: requiere que el servidor backend de Botonera2 YA se encuentre en ejecucion y sea accesible en la red (por defecto en `http://127.0.0.1:8000`, o en la direccion que se indique mediante `--url-base`).
+El simulador es un cliente HTTP puro: requiere que el servidor backend de SIS-Leg YA se encuentre en ejecucion y sea accesible en la red (por defecto en `http://127.0.0.1:8000`, o en la direccion que se indique mediante `--url-base`).
 
 El procedimiento de despliegue, configuracion e inicio del proceso del backend pertenece al procedimiento y runtime propio del backend, y queda fuera del alcance de este simulador (WP-007).
 
@@ -75,7 +75,7 @@ uv run python tools/device-simulator/simulador.py --url http://127.0.0.1:8000
 
 ```text
 ============================================================
-Botonera2 - Simulador CLI de Dispositivos (Modo Interactivo)
+SIS-Leg - Simulador CLI de Dispositivos (Modo Interactivo)
 Conectado a URL base: http://127.0.0.1:8000
 Endpoint: http://127.0.0.1:8000/api/v1/entradas/tecla
 Escriba 'ayuda' para ver instrucciones o 'salir' para terminar.

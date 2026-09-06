@@ -25,14 +25,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from botonera2_backend.aplicacion import crear_aplicacion
-from botonera2_backend.recursos import obtener_recursos_aplicacion
-from botonera2_backend.servicios.apoyo_tecnico import RUTA_MENSAJES_TECNICOS_POR_DEFECTO
-from botonera2_backend.servicios.preparacion import (
+from httpx import ASGITransport, AsyncClient
+from sis_leg_backend.aplicacion import crear_aplicacion
+from sis_leg_backend.recursos import obtener_recursos_aplicacion
+from sis_leg_backend.servicios.apoyo_tecnico import RUTA_MENSAJES_TECNICOS_POR_DEFECTO
+from sis_leg_backend.servicios.preparacion import (
     RUTA_CONFIGURACION_POR_DEFECTO,
     RUTA_PADRON_POR_DEFECTO,
 )
-from httpx import ASGITransport, AsyncClient
 
 pytestmark = pytest.mark.anyio
 

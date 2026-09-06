@@ -37,7 +37,7 @@ Las rutas que el sistema lee en ejecución son las cuatro sin `.example`, en des
 - el repositorio versiona únicamente las plantillas `*.example.*`, que son el contenido revisable en cada Pull Request;
 - los cuatro archivos operativos están declarados en `.gitignore` y nunca se versionan, porque son estado real de cada instalación: una prueba humana, un remapeo de hardware o un ajuste de volumen no deben ensuciar el checkout ni bloquear el lanzador de Work Packages;
 - `uv run python scripts/preparar_config_local.py` (alias `pnpm preparar:config`) crea desde su plantilla cada archivo operativo que falte y **nunca sobrescribe** uno existente;
-- producción sigue provisionando su configuración fuera de las releases, bajo `/opt/botonera2/config/`, conforme a DT-031 y `docs/13-despliegue-y-operacion.md`. El bootstrap local no interviene en el despliegue productivo.
+- producción sigue provisionando su configuración fuera de las releases, bajo `/opt/sis-leg/config/`, conforme a DT-031 y `docs/13-despliegue-y-operacion.md`. El bootstrap local no interviene en el despliegue productivo.
 
 ## 3. Configuración mínima de `system.toml`
 
@@ -114,7 +114,7 @@ Son configuración de instalación y no constantes de negocio.
 
 ## 5. Padrón de concejales
 
-Contrato canónico de SISLeg:
+Contrato canónico de SIS-Leg:
 
 ```text
 dni,nombre,apellido,bloque,banca,dispositivo_votacion,ruta_imagen
@@ -132,7 +132,7 @@ Reglas:
 
 La presencia **no forma parte del archivo de padrón**: es un dato operativo dinámico y toda preparación comienza con todos los concejales ausentes.
 
-La plantilla `concejales.example.csv` contiene los datos de instalación tomados del sistema histórico en producción (`martinebene/Botonera`, SHA `537823b4a0045853c74a388058fa3739cf7457a5`). Esa procedencia determina las identidades, bloques, bancas y dispositivos lógicos instalados, pero no modifica el contrato estable de SISLeg: las filas se ordenan por banca, `ruta_imagen` permanece explícita y la columna histórica `presente` se omite porque la presencia sigue siendo estado dinámico.
+La plantilla `concejales.example.csv` contiene los datos de instalación tomados del sistema histórico en producción (`martinebene/Botonera`, SHA `537823b4a0045853c74a388058fa3739cf7457a5`). Esa procedencia determina las identidades, bloques, bancas y dispositivos lógicos instalados, pero no modifica el contrato estable de SIS-Leg: las filas se ordenan por banca, `ruta_imagen` permanece explícita y la columna histórica `presente` se omite porque la presencia sigue siendo estado dinámico.
 
 La cantidad de filas del padrón debe coincidir exactamente con la cantidad total de bancas definida por la disposición configurada en `system.toml` (suma de `room.rows`). Las bancas deben ser únicas, estar dentro de esa capacidad y cubrir completamente la disposición configurada.
 
@@ -186,9 +186,9 @@ Valores iniciales acordados:
 
 Su función es exclusivamente asistencial. Moderación envía el archivo al backend y el backend es el único componente que lo parsea.
 
-### Formato canónico de SISLeg
+### Formato canónico de SIS-Leg
 
-SISLeg acepta **únicamente** el nuevo CSV explícito:
+SIS-Leg acepta **únicamente** el nuevo CSV explícito:
 
 ```text
 nro_votacion,tipo,tema,tipo_mayoria,factor,base
@@ -219,7 +219,7 @@ El formato histórico de producción utilizaba cinco columnas:
 nro_votacion,tipo,tema,factor_de_mayoria,respecto
 ```
 
-Ese formato **no es aceptado por SISLeg**. Debe convertirse al formato canónico antes de la importación.
+Ese formato **no es aceptado por SIS-Leg**. Debe convertirse al formato canónico antes de la importación.
 
 No se implementará un adaptador automático que interprete `factor=0` o vacío como mayoría simple. Esta incompatibilidad evita reintroducir en la nueva arquitectura la semántica histórica implícita que DT-039 decidió eliminar.
 
@@ -233,7 +233,7 @@ Fuente autorizada para descargar imágenes existentes:
 
 Incluye imágenes `1.png` a `12.png` usadas para representación de bancas.
 
-SISLeg no debe hardcodear la imagen por número de banca. La ruta interna correspondiente a cada concejal se declara en `ruta_imagen` dentro de `concejales.csv`.
+SIS-Leg no debe hardcodear la imagen por número de banca. La ruta interna correspondiente a cada concejal se declara en `ruta_imagen` dentro de `concejales.csv`.
 
 Los agentes pueden copiar esos assets cuando implementen la interfaz. No deben copiar el frontend histórico completo para obtenerlos.
 
@@ -244,7 +244,7 @@ Los 22 archivos WAV del Recinto están versionados en
 y 7 alternativas sin asignar, que permiten cambiar un sonido editando sólo
 `system.toml`.
 
-Los 22 son **originales de SISLeg**: los sintetiza de forma determinista
+Los 22 son **originales de SIS-Leg**: los sintetiza de forma determinista
 `scripts/generar_sonidos_recinto.py` usando únicamente la biblioteca estándar
 de Python, sin grabaciones ni bibliotecas de terceros. No hay obra ajena
 involucrada, de modo que se redistribuyen bajo la misma licencia que el resto
@@ -311,7 +311,7 @@ Las actualizaciones de dependencias deben ser deliberadas y revisadas; nunca una
 
 ## 15. Assets de marca institucional
 
-El nombre visible del producto es **SISLeg** (WP-062). Los archivos aprobados por HUMAN_GATE están versionados en `assets/branding/`:
+El nombre visible del producto es **SIS-Leg** (WP-062). Los archivos aprobados por HUMAN_GATE están versionados en `assets/branding/`:
 
 | Archivo | Medidas | Uso |
 | --- | --- | --- |
@@ -326,6 +326,6 @@ Cada SPA consume una copia idéntica bajo `apps/<aplicacion>/public/assets/marca
 
 Reglas de uso:
 
-- donde se muestra el logo completo no se repite «SISLeg» como texto;
+- donde se muestra el logo completo no se repite «SIS-Leg» como texto;
 - la marca no se redibuja, recolorea ni se le agrega fondo;
-- `Botonera2` se conserva como nombre de repositorio, paquetes, módulos, unidades systemd y contrato OpenAPI, pero no debe presentarse como marca a las personas usuarias.
+- `SIS-Leg` es a la vez la marca visible y el nombre técnico del repositorio, los paquetes, los módulos, las unidades systemd y el contrato OpenAPI; el nombre histórico `Botonera2` sólo sobrevive en la evidencia inmutable descrita en `docs/NOTA-LEGADO-BOTONERA2.md`.

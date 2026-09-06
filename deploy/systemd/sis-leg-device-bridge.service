@@ -1,0 +1,22 @@
+[Unit]
+Description=SIS-Leg - bridge de dispositivos
+After=network.target sis-leg-backend.service
+Requires=sis-leg-backend.service
+
+[Service]
+Type=simple
+User=sis-leg-bridge
+Group=sis-leg-bridge
+SupplementaryGroups=input
+WorkingDirectory=/opt/sis-leg
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/env /opt/sis-leg/current/.venv/bin/sis-leg-device-bridge --config /opt/sis-leg/config/bridge/devices.json --url http://127.0.0.1:8000 --control-host 127.0.0.1 --control-port 8765
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=10s
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

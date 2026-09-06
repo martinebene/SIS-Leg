@@ -15,7 +15,7 @@ import {
   type EstadoGlobal,
   type EstadoRecinto,
   type Suscripcion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 
 export type EstadoConexionRecinto = 'INICIAL' | 'CONECTADO' | 'RECONECTANDO' | 'DESCONECTADO'
 

@@ -21,8 +21,8 @@
  */
 
 import { computed } from 'vue'
-import type { EstadoGlobal, EstadoTransmision } from '@botonera2/api-client'
-import AccesoManual from '@botonera2/frontend-shared/componentes/AccesoManual.vue'
+import type { EstadoGlobal, EstadoTransmision } from '@sis-leg/api-client'
+import AccesoManual from '@sis-leg/frontend-shared/componentes/AccesoManual.vue'
 import type { EstadoConexionTecnico } from '../composables/useEstadoTecnico'
 
 const props = defineProps<{

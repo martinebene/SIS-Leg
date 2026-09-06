@@ -10,19 +10,19 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from botonera2_backend.api.estado import (
+from fastapi import Request
+from sis_leg_backend.api.estado import (
     generar_stream_estado,
     transmitir_estado_moderacion,
     transmitir_estado_recinto,
 )
-from botonera2_backend.aplicacion import crear_aplicacion
-from botonera2_backend.dominio.votacion import (
+from sis_leg_backend.aplicacion import crear_aplicacion
+from sis_leg_backend.dominio.votacion import (
     ResultadoVotacion,
     ValorVotoOrdinario,
     VotoOrdinario,
 )
-from botonera2_backend.servicios.fronteras_temporales import ServicioFronterasTemporales
-from fastapi import Request
+from sis_leg_backend.servicios.fronteras_temporales import ServicioFronterasTemporales
 
 from tests.backend.ayudas_proyecciones import (
     abrir_sesion_prueba,

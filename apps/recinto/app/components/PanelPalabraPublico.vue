@@ -30,7 +30,7 @@
  *   entra, que es lo que mantiene la promesa de "nunca scroll horizontal".
  */
 
-import type { EstadoPalabraPublico } from '@botonera2/api-client'
+import type { EstadoPalabraPublico } from '@sis-leg/api-client'
 
 defineProps<{ palabra: EstadoPalabraPublico | null }>()
 </script>

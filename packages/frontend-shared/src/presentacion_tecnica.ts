@@ -26,7 +26,7 @@
  */
 
 import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
-import type { AvisoTecnicoProyectado, TransmisionProyectada } from '@botonera2/api-client'
+import type { AvisoTecnicoProyectado, TransmisionProyectada } from '@sis-leg/api-client'
 
 /** Cadencia del redibujo local. 250 ms basta para que el segundo cambie sin saltos. */
 const INTERVALO_RELOJ_MS = 250

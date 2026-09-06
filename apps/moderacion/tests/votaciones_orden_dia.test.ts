@@ -14,7 +14,7 @@ import type {
   EstadoModeracion,
   PuntoOrdenDelDiaProyectado,
   VotacionModeracion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import DialogoConfirmacionApertura from '../app/components/DialogoConfirmacionApertura.vue'
 import fuenteDialogoConfirmacionApertura from '../app/components/DialogoConfirmacionApertura.vue?raw'
 import GestionVotacion from '../app/components/GestionVotacion.vue'

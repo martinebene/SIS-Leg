@@ -30,13 +30,13 @@ import {
   EVENTOS_SONOROS_RECINTO,
   useSonidosRecinto,
   type MotorSonidosRecinto,
-} from '@botonera2/frontend-shared'
+} from '@sis-leg/frontend-shared'
 import type {
   ClienteApoyoTecnico,
   EstadoRecinto,
   EstadoTecnico,
   Suscripcion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import {
   crearSincronizacionTecnica,
   type SincronizacionTecnica,

@@ -21,7 +21,7 @@
 
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ClienteApoyoTecnico, Suscripcion } from '@botonera2/api-client'
+import type { ClienteApoyoTecnico, Suscripcion } from '@sis-leg/api-client'
 import ControlTransmision from '../app/components/ControlTransmision.vue'
 import ControlAvisos from '../app/components/ControlAvisos.vue'
 import BibliotecaMensajes from '../app/components/BibliotecaMensajes.vue'

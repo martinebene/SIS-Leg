@@ -107,7 +107,7 @@ Debe permitir:
 - crear una votación manual;
 - seleccionar puntos en cualquier orden.
 
-No debe advertir por números repetidos, secuencia u otras cuestiones institucionales que SISLeg no valida.
+No debe advertir por números repetidos, secuencia u otras cuestiones institucionales que SIS-Leg no valida.
 
 ## 8. Formulario de votación
 

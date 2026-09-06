@@ -16,8 +16,8 @@ def validar_systemd() -> None:
         [
             "systemd-analyze",
             "verify",
-            str(RAIZ / "deploy/systemd/botonera2-backend.service"),
-            str(RAIZ / "deploy/systemd/botonera2-device-bridge.service"),
+            str(RAIZ / "deploy/systemd/sis-leg-backend.service"),
+            str(RAIZ / "deploy/systemd/sis-leg-device-bridge.service"),
         ],
         check=True,
     )
@@ -26,8 +26,8 @@ def validar_systemd() -> None:
 def validar_nginx() -> None:
     """Envuelve el sitio en una configuración efímera y ejecuta ``nginx -t``."""
 
-    sitio = RAIZ / "deploy/nginx/botonera2.conf"
-    with tempfile.TemporaryDirectory(prefix="botonera2-nginx-") as temporal:
+    sitio = RAIZ / "deploy/nginx/sis-leg.conf"
+    with tempfile.TemporaryDirectory(prefix="sis-leg-nginx-") as temporal:
         prefijo = Path(temporal)
         configuracion = prefijo / "nginx.conf"
         configuracion.write_text(

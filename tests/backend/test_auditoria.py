@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import TextIO, cast
 
 import pytest
-from botonera2_backend import auditoria
-from botonera2_backend.auditoria import (
+from sis_leg_backend import auditoria
+from sis_leg_backend.auditoria import (
     ENCABEZADO_CSV,
     ErrorAuditoria,
     ErrorEscritorNoDisponible,

@@ -1,5 +1,5 @@
 /**
- * Payloads de prueba tipados para los tests de @botonera2/api-client.
+ * Payloads de prueba tipados para los tests de @sis-leg/api-client.
  */
 
 import type { ApoyoTecnicoProyectado, EstadoModeracion, EstadoRecinto } from '../../src/tipos'

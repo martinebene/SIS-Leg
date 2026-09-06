@@ -8,7 +8,7 @@
  */
 
 import { computed, onMounted, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
-import type { EstadoRecinto } from '@botonera2/api-client'
+import type { EstadoRecinto } from '@sis-leg/api-client'
 import { calcularDuracionEnSnapshot, formatearDuracion } from '../utils/tiempo'
 
 export interface RelojLocal {

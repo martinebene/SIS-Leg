@@ -1,5 +1,5 @@
 /**
- * Cliente TypeScript del puesto de Apoyo Técnico de SISLeg (WP-055).
+ * Cliente TypeScript del puesto de Apoyo Técnico de SIS-Leg (WP-055).
  *
  * Expone la superficie completa del plano técnico: lectura/sincronización del
  * EstadoTecnico, comandos de transmisión, avisos por destino y CRUD de la

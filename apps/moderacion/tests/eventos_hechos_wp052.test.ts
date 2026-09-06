@@ -24,7 +24,7 @@ import PanelContenedor from '../app/components/PanelContenedor.vue'
 import fuentePanelContenedor from '../app/components/PanelContenedor.vue?raw'
 import PanelEventos from '../app/components/PanelEventos.vue'
 import fuentePanelEventos from '../app/components/PanelEventos.vue?raw'
-import type { EstadoModeracion, HechoOperativoProyectado } from '@botonera2/api-client'
+import type { EstadoModeracion, HechoOperativoProyectado } from '@sis-leg/api-client'
 
 /**
  * El entorno de Vitest compila los SFC para SSR. Esta adaptación adjunta el

@@ -1,6 +1,6 @@
 """Pruebas unitarias del estado inicial definido por CA-001."""
 
-from botonera2_backend.dominio.estado import EstadoGlobal, EstadoOperativo
+from sis_leg_backend.dominio.estado import EstadoGlobal, EstadoOperativo
 
 
 def test_estado_operativo_nuevo_esta_sin_preparar_y_sin_entidades() -> None:

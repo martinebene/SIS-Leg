@@ -1,5 +1,5 @@
 /**
- * Identidad visible SISLeg en las superficies compartidas (WP-062).
+ * Identidad visible SIS-Leg en las superficies compartidas (WP-062).
  *
  * ## Qué demuestra esta prueba
  *
@@ -17,7 +17,7 @@
  *    expresamente redibujar la marca, y esto es lo que lo hace verificable.
  * 2. **Pantalla de carga.** Debe mostrar el logo completo y no puede volver a nombrar
  *    «Botonera2» como marca.
- * 3. **Metadatos de las cuatro SPA.** Título con SISLeg y favicon con el isotipo, cada uno
+ * 3. **Metadatos de las cuatro SPA.** Título con SIS-Leg y favicon con el isotipo, cada uno
  *    bajo el prefijo público de su propia aplicación: un `href` sin ese prefijo apuntaría
  *    a la raíz del servidor, donde el archivo no existe.
  */
@@ -49,10 +49,10 @@ const raiz = ubicarRaizMonorepo()
 
 /** Las cuatro SPA y el prefijo público bajo el que se sirve cada una. */
 const APLICACIONES = [
-  { nombre: 'moderacion', rutaBase: '/moderacion/', titulo: 'SISLeg · Moderación' },
-  { nombre: 'recinto', rutaBase: '/recinto/', titulo: 'SISLeg · Pantalla del Recinto' },
-  { nombre: 'tecnico', rutaBase: '/tecnico/', titulo: 'SISLeg · Apoyo Técnico' },
-  { nombre: 'simulador', rutaBase: '/simulador/', titulo: 'SISLeg · Simulador de Dispositivos' },
+  { nombre: 'moderacion', rutaBase: '/moderacion/', titulo: 'SIS-Leg · Moderación' },
+  { nombre: 'recinto', rutaBase: '/recinto/', titulo: 'SIS-Leg · Pantalla del Recinto' },
+  { nombre: 'tecnico', rutaBase: '/tecnico/', titulo: 'SIS-Leg · Apoyo Técnico' },
+  { nombre: 'simulador', rutaBase: '/simulador/', titulo: 'SIS-Leg · Simulador de Dispositivos' },
 ] as const
 
 /**
@@ -205,9 +205,9 @@ describe('Indicador de carga previo a la hidratación', () => {
   it('no repite el nombre del producto como texto junto al logo', () => {
     // El nombre accesible lo aporta el contenedor; la imagen va con `alt` vacío para que
     // un lector de pantalla no anuncie la marca dos veces.
-    expect(carga).toContain('aria-label="Cargando la interfaz de SISLeg"')
+    expect(carga).toContain('aria-label="Cargando la interfaz de SIS-Leg"')
     expect(carga).toContain('alt=""')
-    expect(carga).not.toContain('>SISLeg<')
+    expect(carga).not.toContain('>SIS-Leg<')
   })
 
   it('ya no presenta «Botonera2» como marca visible', () => {
@@ -225,7 +225,7 @@ describe('Metadatos visibles de las cuatro SPA', () => {
       'utf8',
     )
 
-    it(`${aplicacion.nombre} declara el título con la marca SISLeg`, () => {
+    it(`${aplicacion.nombre} declara el título con la marca SIS-Leg`, () => {
       expect(configuracion).toContain(`title: '${aplicacion.titulo}'`)
     })
 

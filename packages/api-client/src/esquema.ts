@@ -344,7 +344,7 @@ export interface paths {
          *
          *     Desde WP-074 éste es además el **único** stream que abre la SPA técnica.
          *     Antes abría también los de Moderación y Recinto, y con las cuatro
-         *     superficies de SISLeg abiertas bajo el mismo origen HTTP/1.1 las seis
+         *     superficies de SIS-Leg abiertas bajo el mismo origen HTTP/1.1 las seis
          *     conexiones persistentes resultantes dejaban sin cupo a los comandos REST.
          */
         get: operations["transmitir_estado_tecnico_api_v1_estado_tecnico_stream_get"];

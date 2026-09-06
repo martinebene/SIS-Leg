@@ -3,7 +3,7 @@
 ## Qué defiende esta suite
 
 WP-074 corrige un defecto operativo concreto: con las cuatro superficies de
-SISLeg abiertas en el mismo navegador y bajo el mismo origen HTTP/1.1, los
+SIS-Leg abiertas en el mismo navegador y bajo el mismo origen HTTP/1.1, los
 comandos REST dejaban de llegar al backend porque los seis streams SSE
 persistentes agotaban el cupo de conexiones. Tres de esos seis los abría el
 puesto de Apoyo Técnico.
@@ -28,10 +28,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from botonera2_backend.dominio.apoyo_tecnico import EstadoTransmision
-from botonera2_backend.dominio.estado import EstadoGlobal
-from botonera2_backend.dominio.remapeo import EstadoRemapeo, OperacionRemapeo
-from botonera2_backend.dominio.votacion import (
+from sis_leg_backend.dominio.apoyo_tecnico import EstadoTransmision
+from sis_leg_backend.dominio.estado import EstadoGlobal
+from sis_leg_backend.dominio.remapeo import EstadoRemapeo, OperacionRemapeo
+from sis_leg_backend.dominio.votacion import (
     EstadoVotacion,
     ValorVotoOrdinario,
     VotoOrdinario,

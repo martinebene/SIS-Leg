@@ -16,7 +16,7 @@
  */
 
 import { nextTick, ref, watch } from 'vue'
-import type { EventoPublicoProyectado } from '@botonera2/api-client'
+import type { EventoPublicoProyectado } from '@sis-leg/api-client'
 
 const props = defineProps<{ eventos: EventoPublicoProyectado[] }>()
 const lista = ref<HTMLOListElement | null>(null)

@@ -11,7 +11,7 @@ Verifica:
 from __future__ import annotations
 
 import pytest
-from botonera2_device_bridge.normalizador import normalizar_tecla
+from sis_leg_device_bridge.normalizador import normalizar_tecla
 
 
 @pytest.mark.parametrize(

@@ -10,8 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from botonera2_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
-from botonera2_backend.configuracion.errores import ErrorTomlInvalido, ErrorValidacionConfiguracion
 from conftest import (
     LINEA_LOGS,
     LINEA_QUORUM,
@@ -24,6 +22,8 @@ from conftest import (
     TOML_CANONICO,
     escribir_system_toml,
 )
+from sis_leg_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
+from sis_leg_backend.configuracion.errores import ErrorTomlInvalido, ErrorValidacionConfiguracion
 
 
 def test_carga_el_toml_canonico_con_sus_valores_y_tipos(ruta_system_toml_valido: Path) -> None:

@@ -1,9 +1,9 @@
-"""Construye el artefacto productivo reproducible de Botonera2.
+"""Construye el artefacto productivo reproducible de SIS-Leg.
 
 El script copia únicamente entradas declaradas, calcula un inventario SHA-256
 de cada archivo y genera un tar sin metadatos variables. La configuración
 institucional queda deliberadamente afuera: producción la provisiona en
-``/opt/botonera2/config`` y una release nunca debe reemplazarla.
+``/opt/sis-leg/config`` y una release nunca debe reemplazarla.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from typing import Any
 
 RAIZ_REPOSITORIO = Path(__file__).resolve().parents[1]
 DIRECTORIO_SALIDA_PREDETERMINADO = RAIZ_REPOSITORIO / "dist" / "produccion"
-FORMATO_RELEASE = "botonera2-release"
+FORMATO_RELEASE = "sis-leg-release"
 VERSION_FORMATO = 1
 VERSION_PYTHON = "3.14"
 
@@ -184,7 +184,7 @@ def escribir_manifest(
         # El manual no es una SPA: se declara aparte para que la herramienta de despliegue
         # pueda exigirlo sin ampliar el contrato cerrado de las cuatro aplicaciones.
         "manual": "web/manual/index.html",
-        "paquetes_python": ["botonera2-backend", "botonera2-device-bridge"],
+        "paquetes_python": ["sis-leg-backend", "sis-leg-device-bridge"],
         "archivos": inventariar_archivos(raiz_release),
     }
     ruta = raiz_release / "release.json"
@@ -248,9 +248,9 @@ def construir_paquete(
 
     if len(sha_commit) != 40 or any(c not in "0123456789abcdef" for c in sha_commit):
         raise ErrorEmpaquetado("El SHA de commit debe contener 40 caracteres hexadecimales.")
-    nombre = f"botonera2-{sha_commit}.tar.gz"
+    nombre = f"sis-leg-{sha_commit}.tar.gz"
     paquete = directorio_salida / nombre
-    with tempfile.TemporaryDirectory(prefix="botonera2-release-") as temporal:
+    with tempfile.TemporaryDirectory(prefix="sis-leg-release-") as temporal:
         staging = Path(temporal)
         poblar_release(raiz, staging)
         escribir_manifest(staging, sha_commit=sha_commit, sha_arbol=sha_arbol)

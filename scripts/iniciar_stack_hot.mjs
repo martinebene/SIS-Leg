@@ -153,7 +153,7 @@ export function generarIndiceHtml() {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Botonera2 · entorno interactivo (hot reload)</title>
+    <title>SIS-Leg · entorno interactivo (hot reload)</title>
     <style>
       body { font-family: system-ui, -apple-system, sans-serif; margin: 2rem; background: #0f172a; color: #f8fafc; }
       h1 { color: #38bdf8; font-size: 1.5rem; margin-bottom: 0.5rem; }
@@ -165,7 +165,7 @@ export function generarIndiceHtml() {
     </style>
   </head>
   <body>
-    <h1>Botonera2 · Entorno interactivo de desarrollo</h1>
+    <h1>SIS-Leg · Entorno interactivo de desarrollo</h1>
     <p>Modo interactivo con Hot Module Replacement (HMR) y recarga automática del backend.</p>
     <ul>
       <li><a href="/moderacion/">Moderación <span class="badge">HMR</span></a></li>
@@ -470,9 +470,9 @@ export function lanzarProcesosHijos(configuracion) {
     [
       'run',
       '--package',
-      'botonera2-backend',
+      'sis-leg-backend',
       'uvicorn',
-      'botonera2_backend.main:app',
+      'sis_leg_backend.main:app',
       '--host',
       host,
       '--port',
@@ -495,7 +495,7 @@ export function lanzarProcesosHijos(configuracion) {
     comandoPnpm,
     [
       '--filter',
-      '@botonera2/moderacion',
+      '@sis-leg/moderacion',
       'exec',
       'nuxt',
       'dev',
@@ -519,7 +519,7 @@ export function lanzarProcesosHijos(configuracion) {
     comandoPnpm,
     [
       '--filter',
-      '@botonera2/recinto',
+      '@sis-leg/recinto',
       'exec',
       'nuxt',
       'dev',
@@ -543,7 +543,7 @@ export function lanzarProcesosHijos(configuracion) {
     comandoPnpm,
     [
       '--filter',
-      '@botonera2/simulador',
+      '@sis-leg/simulador',
       'exec',
       'nuxt',
       'dev',
@@ -567,7 +567,7 @@ export function lanzarProcesosHijos(configuracion) {
     comandoPnpm,
     [
       '--filter',
-      '@botonera2/tecnico',
+      '@sis-leg/tecnico',
       'exec',
       'nuxt',
       'dev',
@@ -739,7 +739,7 @@ export function mostrarAyuda() {
   console.log(`
 Uso: pnpm dev:stack:hot [OPCIONES]
 
-Levanta el stack de desarrollo interactivo de Botonera2 con HMR y autoreload:
+Levanta el stack de desarrollo interactivo de SIS-Leg con HMR y autoreload:
   - FastAPI real con recarga automática por cambios en apps/backend/src o config/
   - Servidores Nuxt/Vite en desarrollo con Hot Module Replacement (HMR) para las cuatro SPA
   - Superficie HTTP y WebSocket unificada bajo el mismo origen en una única interfaz loopback
@@ -798,7 +798,7 @@ export async function main(argumentos = process.argv.slice(2)) {
   const puertoSimulador = await obtenerPuertoLibre(opciones.puertoSimulador, opciones.host)
   const puertoTecnico = await obtenerPuertoLibre(opciones.puertoTecnico, opciones.host)
 
-  console.log('Iniciando servicios interactivos de Botonera2...')
+  console.log('Iniciando servicios interactivos de SIS-Leg...')
   console.log(`- Host loopback:       ${opciones.host}`)
   console.log(`- Puerto externo:      ${opciones.puertoExterno}`)
   console.log(`- Puerto FastAPI:      ${puertoBackend} (interno)`)
@@ -908,7 +908,7 @@ export async function main(argumentos = process.argv.slice(2)) {
   // 8. Notificar al operador que el stack está 100% operativo
   const urlBase = `http://${opciones.host}:${opciones.puertoExterno}`
   console.log('\n' + '='.repeat(68))
-  console.log('  Botonera2 · Stack interactivo de desarrollo (hot reload) listo')
+  console.log('  SIS-Leg · Stack interactivo de desarrollo (hot reload) listo')
   console.log('='.repeat(68))
   console.log(`Superficie externa (mismo origen):  ${urlBase}/`)
   console.log(`  ├── Moderación (HMR):            ${urlBase}/moderacion/`)

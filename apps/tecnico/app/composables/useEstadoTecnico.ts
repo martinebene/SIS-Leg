@@ -31,7 +31,7 @@
  * ## Qué sigue igual
  *
  * - No hay polling: snapshot REST inicial, SSE y reconexión con retroceso, todo resuelto
- *   dentro de `@botonera2/api-client`. La cuenta regresiva la deriva localmente
+ *   dentro de `@sis-leg/api-client`. La cuenta regresiva la deriva localmente
  *   `usePresentacionTecnica`.
  * - El remapeo sigue siendo el mismo componente compartido, con las mismas capacidades y
  *   los mismos endpoints REST (`/api/v1/remapeos`). Lo único que cambió es que sus
@@ -59,7 +59,7 @@ import {
   type ConfiguracionCliente,
   type EstadoTecnico,
   type Suscripcion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 
 /**
  * Estados visibles del canal de sincronización, con el mismo vocabulario que usan

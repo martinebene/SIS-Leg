@@ -12,13 +12,13 @@
 
 import { describe, expect, it } from 'vitest'
 import { effectScope, ref, type Ref } from 'vue'
-import type { EstadoRecinto } from '@botonera2/api-client'
+import type { EstadoRecinto } from '@sis-leg/api-client'
 import type { EstadoConexionRecinto } from '../app/composables/useEstadoRecinto'
 import {
   EVENTOS_SONOROS_RECINTO,
   useSonidosRecinto,
   type MotorSonidosRecinto,
-} from '@botonera2/frontend-shared'
+} from '@sis-leg/frontend-shared'
 import {
   crearApoyoTecnicoPrueba,
   crearConcejalesPublicos,

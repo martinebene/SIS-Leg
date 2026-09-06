@@ -12,14 +12,14 @@ import json
 from pathlib import Path
 
 import pytest
-from botonera2_backend.configuracion.cargar_padron import cargar_padron_concejales
-from botonera2_backend.configuracion.errores import ErrorPadronInvalido
 from conftest import (
     ENCABEZADO_CANONICO,
     configuracion_de_prueba,
     escribir_padron,
     filas_padron_valido,
 )
+from sis_leg_backend.configuracion.cargar_padron import cargar_padron_concejales
+from sis_leg_backend.configuracion.errores import ErrorPadronInvalido
 
 # Plantillas versionadas que deben permanecer coherentes entre sí. Desde
 # WP-073 los archivos operativos (`config/system.toml`, `config/concejales.csv`
@@ -260,7 +260,7 @@ def test_los_archivos_canonicos_del_repositorio_cargan_juntos() -> None:
     deben ser compatibles entre sí y conservar exactamente las identidades,
     bancas y asociaciones lógicas recuperadas de producción para WP-043.
     """
-    from botonera2_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
+    from sis_leg_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
 
     configuracion = cargar_configuracion_sistema(RUTA_TOML_REPO)
     padron = cargar_padron_concejales(RUTA_PADRON_REPO, configuracion)
@@ -396,7 +396,7 @@ def test_las_imagenes_del_padron_existen_en_ambos_frontends() -> None:
     ``ruta_imagen`` es autoritativa: el test usa literalmente el valor del
     CSV en vez de reconstruir un nombre de archivo a partir de la banca.
     """
-    from botonera2_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
+    from sis_leg_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
 
     configuracion = cargar_configuracion_sistema(RUTA_TOML_REPO)
     padron = cargar_padron_concejales(RUTA_PADRON_REPO, configuracion)
@@ -414,7 +414,7 @@ def test_los_dispositivos_logicos_del_padron_coinciden_con_el_bridge() -> None:
     La comparación solo verifica la frontera lógica: los fingerprints físicos
     continúan siendo responsabilidad exclusiva de ``devices.json``.
     """
-    from botonera2_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
+    from sis_leg_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
 
     configuracion = cargar_configuracion_sistema(RUTA_TOML_REPO)
     padron = cargar_padron_concejales(RUTA_PADRON_REPO, configuracion)

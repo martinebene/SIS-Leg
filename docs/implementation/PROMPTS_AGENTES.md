@@ -1,6 +1,6 @@
 # Política de prompts operativos para agentes
 
-Este documento define cómo debe redactar ChatGPT Web/orquestador los prompts que delegan trabajo a agentes implementadores y revisores de Botonera2.
+Este documento define cómo debe redactar ChatGPT Web/orquestador los prompts que delegan trabajo a agentes implementadores y revisores de SIS-Leg.
 
 Complementa `AGENTS.md`, `docs/implementation/ORQUESTACION.md`, `PLAN.md`, los Work Packages y las decisiones vigentes. El prompt operativo **no reemplaza** esas fuentes: las convierte en instrucciones de ejecución concretas, ordenadas y difíciles de interpretar de forma ambigua.
 
@@ -49,14 +49,14 @@ Cuando el WP ya documenta alguno de estos puntos, el prompt puede referenciarlo,
 
 ## Bloque obligatorio de autonomía del turno
 
-Toda asignación dirigida a IMPLEMENTER o REVIEWER debe dejar explícito que, una vez validada la elegibilidad desde Botonera2-Control, el turno ya está autorizado de punta a punta.
+Toda asignación dirigida a IMPLEMENTER o REVIEWER debe dejar explícito que, una vez validada la elegibilidad desde SIS-Leg-Control, el turno ya está autorizado de punta a punta.
 
 El ORCHESTRATOR debe incluir o garantizar por referencia normativa estas instrucciones:
 
 - **no pedir permiso intermedio** para acciones rutinarias comprendidas en el rol/asignación;
 - continuar hasta publicar el handoff o hasta encontrar un gate real de escalamiento;
 - IMPLEMENTER: editar, probar, corregir, commit, sincronización Git permitida, push, PR, CI y handoff forman parte normal del mismo turno;
-- REVIEWER: inspección/tests/builds no destructivos y publicación del handoff forman parte normal del mismo turno; “solo lectura” aplica al producto/candidato, no al commit/push del informe en Botonera2-Control;
+- REVIEWER: inspección/tests/builds no destructivos y publicación del handoff forman parte normal del mismo turno; “solo lectura” aplica al producto/candidato, no al commit/push del informe en SIS-Leg-Control;
 - un fallo normal de test o un defecto encontrado debe diagnosticarse dentro del turno, no transformarse en una pregunta al humano;
 - pedir intervención únicamente por DT-038, aprobación humana expresamente reservada, contradicción material, conflicto Git no trivial, operación destructiva/force, merge/deploy/infraestructura persistente no autorizada, credenciales faltantes, pérdida de elegibilidad o imposibilidad técnica.
 
@@ -350,7 +350,7 @@ La interfaz basada en terminal (TUI) de OpenCode presenta dificultades en cierto
 Cuando entorno=Orca y agente=OpenCode, ChatGPT Web debe incluir al final del prompt de delegación un bloque de instrucciones con el siguiente procedimiento exacto:
 
 1. **Composición de la respuesta**: OpenCode compone primero el informe o respuesta final completo correspondiente a su turno de trabajo.
-2. **Almacenamiento temporal fuera del repositorio**: Antes de emitir su mensaje final en la TUI, guarda exactamente ese texto en un archivo temporal no versionado y fuera del árbol Git (por ejemplo `/tmp/botonera2-wp-NNN-opencode-ultima-respuesta.txt`, sobrescribiéndolo si ya existía para reflejar siempre la última respuesta de ese WP).
+2. **Almacenamiento temporal fuera del repositorio**: Antes de emitir su mensaje final en la TUI, guarda exactamente ese texto en un archivo temporal no versionado y fuera del árbol Git (por ejemplo `/tmp/sis-leg-wp-NNN-opencode-ultima-respuesta.txt`, sobrescribiéndolo si ya existía para reflejar siempre la última respuesta de ese WP).
 3. **Carga de skill oficial**: Carga y consulta la skill oficial `orca-cli` antes de interactuar con la CLI de Orca, sin inventar flags de memoria.
 4. **Creación de terminal común auxiliar**: Abre una terminal común dentro del mismo worktree mediante:
    ```bash

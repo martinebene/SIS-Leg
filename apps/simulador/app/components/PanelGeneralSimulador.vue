@@ -10,7 +10,7 @@
  */
 
 import type { EstadoConexion } from '../types/simulador'
-import type { EstadoGlobal } from '@botonera2/api-client'
+import type { EstadoGlobal } from '@sis-leg/api-client'
 
 defineProps<{
   estadoConexion: EstadoConexion

@@ -4,7 +4,7 @@
 
 ## Contexto
 
-DT-006 ya estableció que Botonera2 utiliza REST para comandos, snapshots y consultas puntuales, y Server-Sent Events (SSE) para cambios de estado backend -> frontend. DT-008 exige proyecciones separadas `ModerationState` y `PublicState`, y dispone que durante una votación `EN_CURSO` la proyección pública no puede contener votos individuales ni datos o eventos capaces de revelarlos.
+DT-006 ya estableció que SIS-Leg utiliza REST para comandos, snapshots y consultas puntuales, y Server-Sent Events (SSE) para cambios de estado backend -> frontend. DT-008 exige proyecciones separadas `ModerationState` y `PublicState`, y dispone que durante una votación `EN_CURSO` la proyección pública no puede contener votos individuales ni datos o eventos capaces de revelarlos.
 
 Los casos de uso CU-24, CU-25 y CU-26 exigen que Moderación y Recinto puedan reconstruir su vista desde backend, incluido después de una recarga o reconexión. Los frontends futuros no deben reconstruir reglas de negocio localmente ni depender de haber observado todos los eventos anteriores.
 

@@ -6,7 +6,7 @@
  * `GestionRemapeo.vue` es una sola pantalla usada por dos puestos: Moderación y Apoyo
  * Técnico. Hasta WP-074 pedía un `EstadoModeracion` completo, lo que obligaba al puesto
  * técnico a suscribirse al stream de Moderación sólo para poder remapear. Con las cuatro
- * superficies de SISLeg abiertas bajo el mismo origen, esa suscripción de más era una de
+ * superficies de SIS-Leg abiertas bajo el mismo origen, esa suscripción de más era una de
  * las que dejaban al navegador sin conexiones HTTP/1.1 disponibles para los comandos REST.
  *
  * Declarando el contrato por lo que el componente **realmente lee**, el mismo componente
@@ -28,7 +28,7 @@
  * la sigue decidiendo el backend y llega en `capacidades`.
  */
 
-import type { Capacidad, EstadoRemapeoModeracion } from '@botonera2/api-client'
+import type { Capacidad, EstadoRemapeoModeracion } from '@sis-leg/api-client'
 
 /**
  * Banca elegible, tal como la muestra el selector y el resumen de confirmación.

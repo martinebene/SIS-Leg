@@ -1,7 +1,7 @@
 /**
- * @botonera2/api-client
+ * @sis-leg/api-client
  *
- * Paquete TypeScript compartido para el consumo de la API REST y streams SSE de SISLeg.
+ * Paquete TypeScript compartido para el consumo de la API REST y streams SSE de SIS-Leg.
  * Deriva sus tipos de OpenAPI generado por FastAPI, normaliza errores, separa las superficies
  * de Moderación y Recinto, y administra el ciclo de vida de sincronización y reconexión.
  */

@@ -9,8 +9,8 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
-import type { ConcejalPublico, VotoPublico } from '@botonera2/api-client'
-import { calcularPresentacionBanca } from '@botonera2/frontend-shared'
+import type { ConcejalPublico, VotoPublico } from '@sis-leg/api-client'
+import { calcularPresentacionBanca } from '@sis-leg/frontend-shared'
 import BancaPublica from '../app/components/BancaPublica.vue'
 import GrillaBancas from '../app/components/GrillaBancas.vue'
 

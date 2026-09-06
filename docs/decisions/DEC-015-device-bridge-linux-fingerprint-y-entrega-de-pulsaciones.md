@@ -10,7 +10,7 @@
 
 ## Contexto
 
-WP-019 debe convertir el scaffold `services/device-bridge/` en el bridge físico base de Botonera2. Los documentos canónicos ya separan responsabilidades de esta forma:
+WP-019 debe convertir el scaffold `services/device-bridge/` en el bridge físico base de SIS-Leg. Los documentos canónicos ya separan responsabilidades de esta forma:
 
 ```text
 fingerprint físico -> device-bridge -> identificador lógico -> backend -> concejal
@@ -18,7 +18,7 @@ fingerprint físico -> device-bridge -> identificador lógico -> backend -> conc
 
 El backend recibe únicamente `{dispositivo, tecla}` en `POST /api/v1/entradas/tecla`; no conoce fingerprints físicos. Presencia, quórum, voto, palabra, cierre y resultado pertenecen al backend.
 
-La instalación histórica autorizada de `martinebene/Botonera` identifica teclados Linux mediante `evdev`, construye un fingerprint persistente, resuelve un mapa `fingerprint -> devXX` y transmite la pulsación por HTTP. Botonera2 conserva esa compatibilidad física inicial sin copiar la arquitectura monolítica histórica ni trasladar reglas de negocio al bridge.
+La instalación histórica autorizada de `martinebene/Botonera` identifica teclados Linux mediante `evdev`, construye un fingerprint persistente, resuelve un mapa `fingerprint -> devXX` y transmite la pulsación por HTTP. SIS-Leg conserva esa compatibilidad física inicial sin copiar la arquitectura monolítica histórica ni trasladar reglas de negocio al bridge.
 
 DT-027 fija Linux Mint 22.3 como plataforma productiva de referencia. DT-014 fija que el remapeo futuro debe sustituir el fingerprint físico asociado a un identificador lógico estable sin alterar concejal, presencia ni votos.
 
@@ -189,7 +189,7 @@ El futuro remapeo seguirá DT-014:
 
 WP-019 debe producir un servicio ejecutable y testeable, pero no instala unidades systemd ni despliega producción.
 
-La unidad `botonera2-device-bridge.service`, permisos del usuario de servicio, releases y wiring de producción pertenecen al alcance posterior de empaquetado/despliegue conforme DT-028/DT-031.
+La unidad `sis-leg-device-bridge.service`, permisos del usuario de servicio, releases y wiring de producción pertenecen al alcance posterior de empaquetado/despliegue conforme DT-028/DT-031.
 
 ## Consecuencias
 

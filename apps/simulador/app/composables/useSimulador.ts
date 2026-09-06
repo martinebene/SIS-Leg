@@ -2,7 +2,7 @@
  * Composable y frontera reactiva para el Simulador Web de Dispositivos Lógicos.
  *
  * Responsabilidades:
- * 1. Conectar con @botonera2/api-client mediante ClienteSimulador para la sincronización
+ * 1. Conectar con @sis-leg/api-client mediante ClienteSimulador para la sincronización
  *    del estado de Moderación (diagnóstico en tiempo real mediante Snapshot REST + SSE).
  * 2. Administrar la emisión de pulsaciones directas a POST /api/v1/entradas/tecla:
  *    - Cero reglas de negocio en frontend: toda pulsación se envía a FastAPI.
@@ -30,7 +30,7 @@ import {
   type EstadoModeracion,
   type Suscripcion,
   type ConfiguracionCliente,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import {
   CANTIDAD_DISPOSITIVOS_MINIMA,
   CANTIDAD_DISPOSITIVOS_MAXIMA,

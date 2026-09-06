@@ -7,16 +7,16 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import pytest
-from botonera2_backend.auditoria import ErrorAuditoria, EscritorAuditoriaCsv, NivelAuditoria
-from botonera2_backend.dominio.votacion import (
+from sis_leg_backend.auditoria import ErrorAuditoria, EscritorAuditoriaCsv, NivelAuditoria
+from sis_leg_backend.dominio.votacion import (
     ResultadoVotacion,
     SentidoVotoDesempate,
     ValorVotoOrdinario,
     VotoOrdinario,
 )
-from botonera2_backend.hechos_operativos import ReferenciaHechoOperativo
-from botonera2_backend.servicios.proyecciones import EstadoModeracion
-from botonera2_backend.servicios.votacion import (
+from sis_leg_backend.hechos_operativos import ReferenciaHechoOperativo
+from sis_leg_backend.servicios.proyecciones import EstadoModeracion
+from sis_leg_backend.servicios.votacion import (
     CODIGO_VOTACION_RESULTADO_DESEMPATE,
     ServicioVotacion,
 )

@@ -54,7 +54,7 @@ Si una persona que es concejal también ejerce la Presidencia, ambos roles funci
 El estado presente/ausente de esa persona como concejal no afecta su rol de Presidente.
 
 ### RN-AUT-06
-Secretaría Legislativa no tiene acciones funcionales en SISLeg y no puede ser reemplazada por un concejal según el caso de negocio contemplado.
+Secretaría Legislativa no tiene acciones funcionales en SIS-Leg y no puede ser reemplazada por un concejal según el caso de negocio contemplado.
 
 ## RN-CON - Concejales y padrón
 
@@ -356,7 +356,7 @@ Cancelar preparación y cerrar sesión escriben un evento final y cierran defini
 Ante caída abrupta, los CSV quedan hasta el último evento persistido y no se modifican retrospectivamente.
 
 ### RN-LOG-09
-Los archivos cerrados no son editables desde SISLeg. Pueden ser corregidos externamente si el procedimiento institucional lo requiere.
+Los archivos cerrados no son editables desde SIS-Leg. Pueden ser corregidos externamente si el procedimiento institucional lo requiere.
 
 ### RN-LOG-10
 La profundidad y categorías de eventos deben conservar la lógica funcional de la implementación vigente, adaptada a CSV y extendida con las nuevas reglas documentadas.

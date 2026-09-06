@@ -1,5 +1,5 @@
 /**
- * Pruebas unitarias para ClienteSimulador (@botonera2/api-client).
+ * Pruebas unitarias para ClienteSimulador (@sis-leg/api-client).
  *
  * Demuestra:
  * 1. La delimitación estricta de la superficie pública del cliente del simulador.

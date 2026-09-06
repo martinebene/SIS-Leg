@@ -2,7 +2,7 @@
 
 import { effectScope, ref, type ComputedRef, type EffectScope } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { EstadoModeracion, VotoModeracion } from '@botonera2/api-client'
+import type { EstadoModeracion, VotoModeracion } from '@sis-leg/api-client'
 import { usePresentacionBancas } from '../app/composables/usePresentacionBancas'
 
 const HORA_BASE = '2026-09-01T12:00:00Z'

@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from botonera2_device_bridge.configuracion import (
+from sis_leg_device_bridge.configuracion import (
     ErrorConfiguracionBridge,
     cargar_dispositivos_json,
 )

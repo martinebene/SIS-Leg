@@ -11,29 +11,6 @@ from functools import partial
 from pathlib import Path
 
 import pytest
-from botonera2_backend.auditoria import ErrorAuditoria, EscritorAuditoriaCsv, NivelAuditoria
-from botonera2_backend.dominio.entrada import (
-    AccionPalabra,
-    Pulsacion,
-    RespuestaEntrada,
-    ResultadoPalabra,
-)
-from botonera2_backend.dominio.errores import ErrorEstadoIncompatible
-from botonera2_backend.dominio.estado import EstadoGlobal, EstadoOperativo
-from botonera2_backend.dominio.sesion import ActualizacionDatosInstitucionales, Sesion
-from botonera2_backend.dominio.votacion import (
-    BaseMayoria,
-    DatosAperturaVotacion,
-    EstadoVotacion,
-    TipoMayoria,
-)
-from botonera2_backend.hechos_operativos import ReferenciaHechoOperativo
-from botonera2_backend.servicios.entrada import ServicioEntradaTecla
-from botonera2_backend.servicios.palabra import ServicioPalabra
-from botonera2_backend.servicios.preparacion import ServicioPreparacion
-from botonera2_backend.servicios.serializacion import EjecutorMutaciones
-from botonera2_backend.servicios.sesion import ServicioSesion
-from botonera2_backend.servicios.votacion import ServicioVotacion
 from conftest import (
     LINEA_LOGS,
     LINEA_QUORUM,
@@ -42,6 +19,29 @@ from conftest import (
     escribir_system_toml,
     filas_padron_valido,
 )
+from sis_leg_backend.auditoria import ErrorAuditoria, EscritorAuditoriaCsv, NivelAuditoria
+from sis_leg_backend.dominio.entrada import (
+    AccionPalabra,
+    Pulsacion,
+    RespuestaEntrada,
+    ResultadoPalabra,
+)
+from sis_leg_backend.dominio.errores import ErrorEstadoIncompatible
+from sis_leg_backend.dominio.estado import EstadoGlobal, EstadoOperativo
+from sis_leg_backend.dominio.sesion import ActualizacionDatosInstitucionales, Sesion
+from sis_leg_backend.dominio.votacion import (
+    BaseMayoria,
+    DatosAperturaVotacion,
+    EstadoVotacion,
+    TipoMayoria,
+)
+from sis_leg_backend.hechos_operativos import ReferenciaHechoOperativo
+from sis_leg_backend.servicios.entrada import ServicioEntradaTecla
+from sis_leg_backend.servicios.palabra import ServicioPalabra
+from sis_leg_backend.servicios.preparacion import ServicioPreparacion
+from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.sesion import ServicioSesion
+from sis_leg_backend.servicios.votacion import ServicioVotacion
 
 pytestmark = pytest.mark.anyio
 

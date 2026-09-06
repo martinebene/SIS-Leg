@@ -27,15 +27,15 @@ import type {
   ConcejalModeracion,
   EstadoModeracion,
   VotacionModeracion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import PanelContenedor from '../app/components/PanelContenedor.vue'
 import fuentePanelContenedor from '../app/components/PanelContenedor.vue?raw'
 import PanelSesionVotacion from '../app/components/PanelSesionVotacion.vue'
 import fuentePanelSesionVotacion from '../app/components/PanelSesionVotacion.vue?raw'
 import GestionVotacion from '../app/components/GestionVotacion.vue'
 import fuenteGestionVotacion from '../app/components/GestionVotacion.vue?raw'
-import GestionRemapeo from '@botonera2/frontend-shared/componentes/GestionRemapeo.vue'
-import fuenteGestionRemapeo from '@botonera2/frontend-shared/componentes/GestionRemapeo.vue?raw'
+import GestionRemapeo from '@sis-leg/frontend-shared/componentes/GestionRemapeo.vue'
+import fuenteGestionRemapeo from '@sis-leg/frontend-shared/componentes/GestionRemapeo.vue?raw'
 import DialogoConfirmacionApertura from '../app/components/DialogoConfirmacionApertura.vue'
 import fuenteDialogoConfirmacionApertura from '../app/components/DialogoConfirmacionApertura.vue?raw'
 import DialogoConfirmacionCierre from '../app/components/DialogoConfirmacionCierre.vue'

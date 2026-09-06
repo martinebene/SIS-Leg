@@ -1,5 +1,5 @@
 /**
- * Cliente TypeScript para la Pantalla del Recinto de SISLeg.
+ * Cliente TypeScript para la Pantalla del Recinto de SIS-Leg.
  *
  * Superficie estrictamente de solo lectura: consume directamente las rutas
  * de proyección pública /api/v1/estado/recinto y /api/v1/estado/recinto/stream.

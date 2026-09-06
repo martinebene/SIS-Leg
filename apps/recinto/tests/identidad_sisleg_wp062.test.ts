@@ -1,5 +1,5 @@
 /**
- * Identidad SISLeg en el estado público sin sesión (WP-062).
+ * Identidad SIS-Leg en el estado público sin sesión (WP-062).
  *
  * HUMAN_GATE decidió que `SIN_PREPARAR` deje de mostrar el monograma provisional dibujado
  * con CSS y presente el logo completo aprobado. Como ese estado es lo que el recinto ve
@@ -48,13 +48,13 @@ describe('Identidad institucional en SIN_PREPARAR', () => {
     // Nuxt el `baseURL` no existe, así que el helper devuelve la raíz: lo que importa acá
     // es que el archivo pedido sea el logo aprobado y no otro.
     expect(logo.element.getAttribute('src')).toBe('/assets/marca/sisleg-logo.png')
-    expect(logo.element.getAttribute('alt')).toBe('SISLeg')
+    expect(logo.element.getAttribute('alt')).toBe('SIS-Leg')
   })
 
   it('no repite la marca como texto donde ya está el logo', () => {
     const texto = montarSinPreparar().get('[data-testid="estado-sin-preparar"]').text()
 
-    expect(texto).not.toContain('SISLeg')
+    expect(texto).not.toContain('SIS-Leg')
     expect(texto).not.toContain('Botonera2')
   })
 

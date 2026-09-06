@@ -3,7 +3,7 @@
  *
  * ## Qué ocurrió
  *
- * Con las cuatro superficies de SISLeg abiertas en un mismo navegador y bajo el mismo
+ * Con las cuatro superficies de SIS-Leg abiertas en un mismo navegador y bajo el mismo
  * origen —Moderación, Pantalla del Recinto, Simulador y Apoyo Técnico— los comandos dejaban
  * de llegar al backend. «Preparar sala» quedaba girando y el operador leía el síntoma como
  * una caída del servidor, aunque el servicio respondiera perfectamente a cualquier otro

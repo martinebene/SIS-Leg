@@ -23,8 +23,8 @@ import type {
   ClienteApoyoTecnico,
   DestinoAvisoTecnico,
   MensajeTecnicoProyectado,
-} from '@botonera2/api-client'
-import { extraerMensajeError } from '@botonera2/frontend-shared'
+} from '@sis-leg/api-client'
+import { extraerMensajeError } from '@sis-leg/frontend-shared'
 
 const props = defineProps<{
   /** Biblioteca proyectada por el backend, o `null` antes del primer snapshot. */

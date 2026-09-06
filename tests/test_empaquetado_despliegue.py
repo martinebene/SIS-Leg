@@ -40,12 +40,12 @@ def crear_checkout_minimo(raiz: Path) -> None:
         "pyproject.toml": "[project]\nname='raiz'\nversion='0'\n",
         "uv.lock": "version = 1\n",
         ".python-version": "3.14\n",
-        "apps/backend/pyproject.toml": "[project]\nname='botonera2-backend'\nversion='0'\n",
-        "apps/backend/src/botonera2_backend/__init__.py": "",
+        "apps/backend/pyproject.toml": "[project]\nname='sis-leg-backend'\nversion='0'\n",
+        "apps/backend/src/sis_leg_backend/__init__.py": "",
         "services/device-bridge/pyproject.toml": (
-            "[project]\nname='botonera2-device-bridge'\nversion='0'\n"
+            "[project]\nname='sis-leg-device-bridge'\nversion='0'\n"
         ),
-        "services/device-bridge/src/botonera2_device_bridge/__init__.py": "",
+        "services/device-bridge/src/sis_leg_device_bridge/__init__.py": "",
         "apps/moderacion/.output/public/index.html": "<!doctype html>Moderación",
         "apps/moderacion/.output/public/_nuxt/app.js": "m",
         "apps/recinto/.output/public/index.html": "<!doctype html>Recinto",
@@ -54,13 +54,13 @@ def crear_checkout_minimo(raiz: Path) -> None:
         "apps/simulador/.output/public/_nuxt/app.js": "s",
         "apps/tecnico/.output/public/index.html": "<!doctype html>Apoyo Técnico",
         "apps/tecnico/.output/public/_nuxt/app.js": "t",
-        "manual/index.html": '<!doctype html><html lang="es"><body>SISLeg</body></html>',
+        "manual/index.html": '<!doctype html><html lang="es"><body>SIS-Leg</body></html>',
         "deploy/__init__.py": "",
         "deploy/herramienta_despliegue.py": "# herramienta",
         "deploy/validar_configuracion.py": "# validador",
-        "deploy/systemd/botonera2-backend.service": "[Service]\n",
-        "deploy/systemd/botonera2-device-bridge.service": "[Service]\n",
-        "deploy/nginx/botonera2.conf": "server {}\n",
+        "deploy/systemd/sis-leg-backend.service": "[Service]\n",
+        "deploy/systemd/sis-leg-device-bridge.service": "[Service]\n",
+        "deploy/nginx/sis-leg.conf": "server {}\n",
     }
     for relativa, contenido in archivos.items():
         ruta = raiz / relativa
@@ -89,7 +89,7 @@ def test_paquete_es_reproducible_trazable_y_excluye_configuracion(tmp_path: Path
         sha_arbol="c" * 40,
     )
 
-    assert paquete_1.name == f"botonera2-{SHA_A}.tar.gz"
+    assert paquete_1.name == f"sis-leg-{SHA_A}.tar.gz"
     assert sha256_archivo(paquete_1) == sha256_archivo(paquete_2)
     verificar_checksum(paquete_1, sidecar_1)
     with tarfile.open(paquete_1, "r:gz") as tar:
@@ -111,7 +111,7 @@ def test_gate_compara_dos_empaquetados_completos(
     """Dos ejecuciones idénticas dejan la segunda release y devuelven su hash."""
 
     salida = tmp_path / "dist/produccion"
-    paquete = salida / f"botonera2-{SHA_A}.tar.gz"
+    paquete = salida / f"sis-leg-{SHA_A}.tar.gz"
     sidecar = paquete.with_name(f"{paquete.name}.sha256")
     ejecuciones = 0
 
@@ -149,7 +149,7 @@ def test_gate_rechaza_bytes_variables(
     """Una diferencia en el tar o su sidecar impide aceptar la release."""
 
     salida = tmp_path / "dist/produccion"
-    paquete = salida / f"botonera2-{SHA_A}.tar.gz"
+    paquete = salida / f"sis-leg-{SHA_A}.tar.gz"
     sidecar = paquete.with_name(f"{paquete.name}.sha256")
     ejecuciones = 0
 
@@ -185,7 +185,7 @@ def test_gate_rechaza_bytes_variables(
     [
         ("tree_sha", "abreviado", "tree SHA"),
         ("spas", {"moderacion": "otra-ruta"}, "SPA canónicas"),
-        ("paquetes_python", ["botonera2-backend"], "paquetes Python canónicos"),
+        ("paquetes_python", ["sis-leg-backend"], "paquetes Python canónicos"),
         ("manual", "web/otro/index.html", "manual de usuario canónico"),
     ],
     ids=["tree-sha", "spas", "paquetes-python", "manual"],
@@ -214,9 +214,9 @@ def test_manifest_rechaza_identidad_runtime_incompleta(
 def test_checksum_adulterado_es_rechazado(tmp_path: Path) -> None:
     """Un solo byte distinto impide preparar antes de extraer."""
 
-    paquete = tmp_path / "botonera2.tar.gz"
+    paquete = tmp_path / "sis-leg.tar.gz"
     paquete.write_bytes(b"contenido")
-    sidecar = tmp_path / "botonera2.tar.gz.sha256"
+    sidecar = tmp_path / "sis-leg.tar.gz.sha256"
     sidecar.write_text(f"{'0' * 64}  {paquete.name}\n", encoding="ascii")
 
     with pytest.raises(ErrorDespliegue, match="Checksum incorrecto"):
@@ -393,7 +393,7 @@ def test_python_base_rechaza_directorio_privado(tmp_path: Path) -> None:
     python_privado = privado / "python3.14"
     python_privado.write_text("binario", encoding="utf-8")
     python_privado.chmod(0o755)
-    gestor = GestorDespliegue(tmp_path / "opt/botonera2", python_base=python_privado)
+    gestor = GestorDespliegue(tmp_path / "opt/sis-leg", python_base=python_privado)
 
     with pytest.raises(ErrorDespliegue, match="no atravesable"):
         gestor._validar_python_base()  # pyright: ignore[reportPrivateUsage]
@@ -423,14 +423,14 @@ class EjecutorFalso:
             assert directorio is not None and entorno is not None
             venv = Path(entorno["UV_PROJECT_ENVIRONMENT"])
             (venv / "bin").mkdir(parents=True)
-            for nombre in ("python", "uvicorn", "botonera2-device-bridge"):
+            for nombre in ("python", "uvicorn", "sis-leg-device-bridge"):
                 (venv / "bin" / nombre).write_text("ejecutable", encoding="utf-8")
         if args[:2] == ["systemctl", "is-active"]:
             return ResultadoComando(0, f"{self.estado_backend}\n")
-        if args == ["id", "--groups", "--name", "botonera2-backend"]:
-            return ResultadoComando(0, "botonera2-backend\n")
-        if args == ["id", "--groups", "--name", "botonera2-bridge"]:
-            return ResultadoComando(0, "botonera2-bridge input\n")
+        if args == ["id", "--groups", "--name", "sis-leg-backend"]:
+            return ResultadoComando(0, "sis-leg-backend\n")
+        if args == ["id", "--groups", "--name", "sis-leg-bridge"]:
+            return ResultadoComando(0, "sis-leg-bridge input\n")
         return ResultadoComando(0)
 
 
@@ -441,15 +441,15 @@ def crear_release_preparada(gestor: GestorDespliegue, sha: str) -> Path:
     requeridos = (
         ".venv/bin/python",
         ".venv/bin/uvicorn",
-        ".venv/bin/botonera2-device-bridge",
+        ".venv/bin/sis-leg-device-bridge",
         "web/moderacion/index.html",
         "web/recinto/index.html",
         "web/simulador/index.html",
         "web/tecnico/index.html",
         "web/manual/index.html",
-        "deploy/systemd/botonera2-backend.service",
-        "deploy/systemd/botonera2-device-bridge.service",
-        "deploy/nginx/botonera2.conf",
+        "deploy/systemd/sis-leg-backend.service",
+        "deploy/systemd/sis-leg-device-bridge.service",
+        "deploy/nginx/sis-leg.conf",
         "deploy/validar_configuracion.py",
     )
     for relativa in requeridos:
@@ -481,12 +481,12 @@ def crear_gestor(tmp_path: Path, ejecutor: EjecutorFalso | None = None) -> Gesto
         return "<!doctype html>"
 
     return GestorDespliegue(
-        tmp_path / "opt/botonera2",
+        tmp_path / "opt/sis-leg",
         ejecutor=ejecutor,
         consultor_json=json_ok,
         consultor_texto=html_ok,
         directorio_systemd=tmp_path / "etc/systemd/system",
-        ruta_nginx=tmp_path / "etc/nginx/conf.d/botonera2.conf",
+        ruta_nginx=tmp_path / "etc/nginx/conf.d/sis-leg.conf",
         python_base=Path("/usr/bin/python3"),
     )
 
@@ -634,11 +634,11 @@ def test_permisos_incompatibles_fallan_antes_del_switch(tmp_path: Path) -> None:
             if args[:7] == [
                 "runuser",
                 "--user",
-                "botonera2-backend",
+                "sis-leg-backend",
                 "--",
                 "test",
                 "-w",
-                str(tmp_path / "opt/botonera2/logs"),
+                str(tmp_path / "opt/sis-leg/logs"),
             ]:
                 self.llamadas.append(args)
                 return ResultadoComando(1, error="permiso denegado")
@@ -673,12 +673,12 @@ def test_permisos_correctos_verifican_ambos_usuarios_y_grupo_input(tmp_path: Pat
     gestor.activar(SHA_A)
 
     llamadas_runuser = [llamada for llamada in ejecutor.llamadas if llamada[:1] == ["runuser"]]
-    assert any("botonera2-backend" in llamada for llamada in llamadas_runuser)
-    assert any("botonera2-bridge" in llamada for llamada in llamadas_runuser)
+    assert any("sis-leg-backend" in llamada for llamada in llamadas_runuser)
+    assert any("sis-leg-bridge" in llamada for llamada in llamadas_runuser)
     assert [
         "runuser",
         "--user",
-        "botonera2-bridge",
+        "sis-leg-bridge",
         "--",
         "test",
         "-x",
@@ -687,15 +687,15 @@ def test_permisos_correctos_verifican_ambos_usuarios_y_grupo_input(tmp_path: Pat
     assert [
         "runuser",
         "--user",
-        "botonera2-bridge",
+        "sis-leg-bridge",
         "--",
         "test",
         "!",
         "-r",
         str(gestor.config / "system.toml"),
     ] in llamadas_runuser
-    assert ["id", "--groups", "--name", "botonera2-backend"] in ejecutor.llamadas
-    assert ["id", "--groups", "--name", "botonera2-bridge"] in ejecutor.llamadas
+    assert ["id", "--groups", "--name", "sis-leg-backend"] in ejecutor.llamadas
+    assert ["id", "--groups", "--name", "sis-leg-bridge"] in ejecutor.llamadas
     assert resolver_enlace_release(gestor.current, gestor.releases) == release
 
 
@@ -787,51 +787,51 @@ def test_plan_de_permisos_separa_backend_bridge_e_input() -> None:
         desplazamiento = 6 if usuario == entrada.usuario else 3 if entrada.grupo in grupos else 0
         return bool(entrada.modo & (permiso << desplazamiento))
 
-    grupos_backend = {"botonera2-backend"}
-    grupos_bridge = {"botonera2-bridge", "input"}
+    grupos_backend = {"sis-leg-backend"}
+    grupos_bridge = {"sis-leg-bridge", "input"}
 
     assert por_ruta["."].modo == 0o755
     assert por_ruta["releases"].usuario == "root"
-    assert por_ruta["logs"].usuario == "botonera2-backend"
-    assert por_ruta["config/bridge"].usuario == "botonera2-bridge"
+    assert por_ruta["logs"].usuario == "sis-leg-backend"
+    assert por_ruta["config/bridge"].usuario == "sis-leg-bridge"
     assert por_ruta["config/system.toml"].modo == 0o640
     assert por_ruta["config"].modo == 0o751
 
     # Backend puede leer sus dos entradas y crear auditoría, pero no modificar
     # configuración ni atravesar el subdirectorio privado del bridge.
-    assert tiene_permiso("botonera2-backend", grupos_backend, "config/system.toml", 0o4)
-    assert tiene_permiso("botonera2-backend", grupos_backend, "config/concejales.csv", 0o4)
-    assert not tiene_permiso("botonera2-backend", grupos_backend, "config/system.toml", 0o2)
-    assert not tiene_permiso("botonera2-backend", grupos_backend, "config", 0o2)
-    assert not tiene_permiso("botonera2-backend", grupos_backend, "config/bridge/devices.json", 0o4)
-    assert tiene_permiso("botonera2-backend", grupos_backend, "logs", 0o2)
-    assert tiene_permiso("botonera2-backend", grupos_backend, "logs", 0o1)
+    assert tiene_permiso("sis-leg-backend", grupos_backend, "config/system.toml", 0o4)
+    assert tiene_permiso("sis-leg-backend", grupos_backend, "config/concejales.csv", 0o4)
+    assert not tiene_permiso("sis-leg-backend", grupos_backend, "config/system.toml", 0o2)
+    assert not tiene_permiso("sis-leg-backend", grupos_backend, "config", 0o2)
+    assert not tiene_permiso("sis-leg-backend", grupos_backend, "config/bridge/devices.json", 0o4)
+    assert tiene_permiso("sis-leg-backend", grupos_backend, "logs", 0o2)
+    assert tiene_permiso("sis-leg-backend", grupos_backend, "logs", 0o1)
 
     # Bridge atraviesa el padre sin poder enumerarlo, llega a devices.json y
     # tiene write+execute sobre su directorio para tempfile + os.replace.
-    assert tiene_permiso("botonera2-bridge", grupos_bridge, "config", 0o1)
-    assert not tiene_permiso("botonera2-bridge", grupos_bridge, "config", 0o4)
-    assert not tiene_permiso("botonera2-bridge", grupos_bridge, "config/system.toml", 0o4)
-    assert not tiene_permiso("botonera2-bridge", grupos_bridge, "config/concejales.csv", 0o4)
-    assert tiene_permiso("botonera2-bridge", grupos_bridge, "config/bridge", 0o2)
-    assert tiene_permiso("botonera2-bridge", grupos_bridge, "config/bridge", 0o1)
-    assert tiene_permiso("botonera2-bridge", grupos_bridge, "config/bridge/devices.json", 0o4)
-    assert tiene_permiso("botonera2-bridge", grupos_bridge, "config/bridge/devices.json", 0o2)
+    assert tiene_permiso("sis-leg-bridge", grupos_bridge, "config", 0o1)
+    assert not tiene_permiso("sis-leg-bridge", grupos_bridge, "config", 0o4)
+    assert not tiene_permiso("sis-leg-bridge", grupos_bridge, "config/system.toml", 0o4)
+    assert not tiene_permiso("sis-leg-bridge", grupos_bridge, "config/concejales.csv", 0o4)
+    assert tiene_permiso("sis-leg-bridge", grupos_bridge, "config/bridge", 0o2)
+    assert tiene_permiso("sis-leg-bridge", grupos_bridge, "config/bridge", 0o1)
+    assert tiene_permiso("sis-leg-bridge", grupos_bridge, "config/bridge/devices.json", 0o4)
+    assert tiene_permiso("sis-leg-bridge", grupos_bridge, "config/bridge/devices.json", 0o2)
 
 
 def test_plantillas_fijan_loopback_worker_usuarios_y_sse() -> None:
     """Las propiedades productivas críticas son visibles en los artefactos."""
 
     raiz = Path(__file__).resolve().parents[1]
-    backend = (raiz / "deploy/systemd/botonera2-backend.service").read_text(encoding="utf-8")
-    bridge = (raiz / "deploy/systemd/botonera2-device-bridge.service").read_text(encoding="utf-8")
-    nginx = (raiz / "deploy/nginx/botonera2.conf").read_text(encoding="utf-8")
+    backend = (raiz / "deploy/systemd/sis-leg-backend.service").read_text(encoding="utf-8")
+    bridge = (raiz / "deploy/systemd/sis-leg-device-bridge.service").read_text(encoding="utf-8")
+    nginx = (raiz / "deploy/nginx/sis-leg.conf").read_text(encoding="utf-8")
 
-    assert "User=botonera2-backend" in backend
+    assert "User=sis-leg-backend" in backend
     assert "--host 127.0.0.1 --port 8000 --workers 1" in backend
-    assert "WorkingDirectory=/opt/botonera2" in backend
+    assert "WorkingDirectory=/opt/sis-leg" in backend
     assert "PYTHONDONTWRITEBYTECODE=1" in backend
-    assert "User=botonera2-bridge" in bridge
+    assert "User=sis-leg-bridge" in bridge
     assert "SupplementaryGroups=input" in bridge
     assert "--control-host 127.0.0.1 --control-port 8765" in bridge
     assert "proxy_http_version 1.1" in nginx
@@ -852,12 +852,12 @@ def test_configuracion_nginx_expone_apoyo_tecnico_en_la_red() -> None:
     """
 
     raiz = Path(__file__).resolve().parents[1]
-    nginx = (raiz / "deploy/nginx/botonera2.conf").read_text(encoding="utf-8")
+    nginx = (raiz / "deploy/nginx/sis-leg.conf").read_text(encoding="utf-8")
 
     inicio = nginx.index("location /tecnico/ {")
     bloque = nginx[inicio : nginx.index("}", inicio)]
     assert "try_files $uri $uri/ /tecnico/index.html;" in bloque
-    assert "root /opt/botonera2/current/web;" in bloque
+    assert "root /opt/sis-leg/current/web;" in bloque
     assert "deny" not in bloque
     assert "allow" not in bloque
 
@@ -872,11 +872,11 @@ def test_configuracion_nginx_publica_el_manual_sin_restriccion_de_red() -> None:
     """
 
     raiz = Path(__file__).resolve().parents[1]
-    nginx = (raiz / "deploy/nginx/botonera2.conf").read_text(encoding="utf-8")
+    nginx = (raiz / "deploy/nginx/sis-leg.conf").read_text(encoding="utf-8")
 
     inicio = nginx.index("location /manual/ {")
     bloque = nginx[inicio : nginx.index("}", inicio)]
-    assert "root /opt/botonera2/current/web;" in bloque
+    assert "root /opt/sis-leg/current/web;" in bloque
     assert "try_files $uri $uri/ =404;" in bloque
     assert "deny" not in bloque
     assert "allow" not in bloque
@@ -886,7 +886,7 @@ def test_configuracion_nginx_restringe_simulador_a_loopback() -> None:
     """Nginx expone /simulador/ restringido a loopback con allow 127.0.0.1; ::1; deny all."""
 
     raiz = Path(__file__).resolve().parents[1]
-    nginx = (raiz / "deploy/nginx/botonera2.conf").read_text(encoding="utf-8")
+    nginx = (raiz / "deploy/nginx/sis-leg.conf").read_text(encoding="utf-8")
 
     assert "location /simulador/ {" in nginx
     assert "allow 127.0.0.1;" in nginx

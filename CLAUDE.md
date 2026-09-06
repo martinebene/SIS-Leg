@@ -11,12 +11,12 @@ Una orden humana breve como `Seguí`, `Continuá` o `Revisá` es solamente una s
 Antes de realizar trabajo sustantivo como IMPLEMENTER o REVIEWER:
 
 1. seguí primero el bootstrap de coordinación definido en `AGENTS.md`;
-2. sincronizá `martinebene/Botonera2-Control`;
+2. sincronizá `martinebene/SIS-Leg-Control`;
 3. leé allí `CLAUDE.md` si existe, `AGENTS.md`, `PROTOCOL.md` y `CURRENT.json`;
 4. leé el archivo de rol correspondiente;
 5. verificá `next_actor`, WP, iteración, `assignment_id`, destinatario y `expected_response_path`;
 6. si la asignación fija agente/arnés o modelo, verificá que esta sesión de Claude esté autorizada para ejecutarla;
-7. leé únicamente `assignment_path` y las fuentes canónicas de Botonera2 que esa asignación requiera.
+7. leé únicamente `assignment_path` y las fuentes canónicas de SIS-Leg que esa asignación requiera.
 
 Si el turno corresponde a otro actor o a otro agente, si el resultado esperado ya existe o si el estado es ambiguo, detenete sin modificar nada e indicá al humano qué actor/agente corresponde.
 

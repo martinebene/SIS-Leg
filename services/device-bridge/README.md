@@ -1,4 +1,4 @@
-# Botonera2 — Device Bridge (Bridge Físico Linux)
+# SIS-Leg — Device Bridge (Bridge Físico Linux)
 
 ## Propósito y Función
 
@@ -53,7 +53,7 @@ POST /api/v1/entradas/tecla (FastAPI)
 
 ## Arquitectura y Componentes
 
-El paquete `botonera2_device_bridge` está estructurado en módulos enfocados y testeables:
+El paquete `sis_leg_device_bridge` está estructurado en módulos enfocados y testeables:
 
 - `fingerprint.py`: construcción y validación del formato canónico Linux.
 - `configuracion.py`: parámetros operacionales y lector estricto de `devices.json`.
@@ -163,15 +163,15 @@ sudo usermod -a -G input $USER
 
 ## Ejecución y Parámetros CLI
 
-El paquete registra el comando de consola `botonera2-device-bridge`.
+El paquete registra el comando de consola `sis-leg-device-bridge`.
 
 ### Ejecutar con uv:
 ```bash
 # Ejecución estándar con defaults
-uv run botonera2-device-bridge
+uv run sis-leg-device-bridge
 
 # Especificando parámetros
-uv run botonera2-device-bridge \
+uv run sis-leg-device-bridge \
   --config services/device-bridge/config/devices.json \
   --url http://127.0.0.1:8000 \
   --timeout 3.0 \
@@ -182,13 +182,13 @@ uv run botonera2-device-bridge \
 ```
 
 ### Variables de Entorno Soportadas:
-- `BOTONERA2_DEVICES_CONFIG`: Ruta al archivo `devices.json`.
-- `BOTONERA2_BACKEND_URL`: URL base de FastAPI (ej: `http://127.0.0.1:8000`).
-- `BOTONERA2_HTTP_TIMEOUT`: Timeout HTTP en segundos (ej: `3.0`).
-- `BOTONERA2_SCAN_INTERVAL`: Intervalo de re-escaneo de dispositivos en segundos (ej: `2.0`).
-- `BOTONERA2_LOG_LEVEL`: Nivel de log (`DEBUG`, `INFO`, `WARNING`, `ERROR`).
-- `BOTONERA2_CONTROL_HOST`: bind de la API de control; default seguro `127.0.0.1`.
-- `BOTONERA2_CONTROL_PORT`: puerto de control; default `8765`.
+- `SIS_LEG_DEVICES_CONFIG`: Ruta al archivo `devices.json`.
+- `SIS_LEG_BACKEND_URL`: URL base de FastAPI (ej: `http://127.0.0.1:8000`).
+- `SIS_LEG_HTTP_TIMEOUT`: Timeout HTTP en segundos (ej: `3.0`).
+- `SIS_LEG_SCAN_INTERVAL`: Intervalo de re-escaneo de dispositivos en segundos (ej: `2.0`).
+- `SIS_LEG_LOG_LEVEL`: Nivel de log (`DEBUG`, `INFO`, `WARNING`, `ERROR`).
+- `SIS_LEG_CONTROL_HOST`: bind de la API de control; default seguro `127.0.0.1`.
+- `SIS_LEG_CONTROL_PORT`: puerto de control; default `8765`.
 
 ---
 
@@ -258,7 +258,7 @@ Con el bridge en ejecución y Moderación abierta con el foco en un campo editab
 - el teclado del moderador debe escribir con normalidad.
 
 Si el numpad escribe en el campo, la exclusividad no se adquirió: revisar el diagnóstico
-del servicio (`journalctl -u botonera2-device-bridge.service`) buscando el error de captura
+del servicio (`journalctl -u sis-leg-device-bridge.service`) buscando el error de captura
 exclusiva.
 
 ---
@@ -293,7 +293,7 @@ había sido aplicado.
 
 El teclado candidato de un reemplazo todavía no pertenece al mapping efectivo, así que no
 se toma en exclusiva mientras dura la captura. Recién al confirmar el remapeo el nuevo
-fingerprint queda dedicado a SISLeg y el reemplazado vuelve al sistema.
+fingerprint queda dedicado a SIS-Leg y el reemplazado vuelve al sistema.
 
 El loop físico resuelve primero el mapping efectivo bajo un `RLock`. Si el
 fingerprint está mapeado, su keydown sigue inmediatamente por el flujo normal
@@ -363,4 +363,4 @@ uv run pytest
 ## Alcance Futuro y Pendientes
 
 - **UI de Moderación**: los contratos de WP-020 quedan listos; la pantalla visual corresponde a un WP posterior.
-- **Unidad systemd e instalación (Fase de Despliegue)**: El empaquetado del servicio `botonera2-device-bridge.service` y reglas udev se implementará en la etapa de despliegue productivo (DT-028).
+- **Unidad systemd e instalación (Fase de Despliegue)**: El empaquetado del servicio `sis-leg-device-bridge.service` y reglas udev se implementará en la etapa de despliegue productivo (DT-028).

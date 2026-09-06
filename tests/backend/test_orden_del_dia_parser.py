@@ -19,9 +19,9 @@ Verifica todas las reglas de negocio y restricciones técnicas de DT-039 y WP-01
 from __future__ import annotations
 
 import pytest
-from botonera2_backend.dominio.errores import ErrorOrdenDelDiaInvalido
-from botonera2_backend.dominio.orden_del_dia import PuntoOrdenDelDia, parsear_orden_del_dia
-from botonera2_backend.dominio.votacion import BaseMayoria, TipoMayoria
+from sis_leg_backend.dominio.errores import ErrorOrdenDelDiaInvalido
+from sis_leg_backend.dominio.orden_del_dia import PuntoOrdenDelDia, parsear_orden_del_dia
+from sis_leg_backend.dominio.votacion import BaseMayoria, TipoMayoria
 
 # ==============================================================================
 # 1. ENCABEZADO Y FORMATO BASE

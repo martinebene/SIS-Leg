@@ -1,6 +1,6 @@
 # Orquestación operativa de la implementación
 
-Este documento describe el procedimiento práctico de coordinación de Botonera2. Deriva de `DEC-004`, `DEC-005`, `DEC-007` y `DEC-017` y no reemplaza `AGENTS.md`, los Work Packages ni las decisiones canónicas.
+Este documento describe el procedimiento práctico de coordinación de SIS-Leg. Deriva de `DEC-004`, `DEC-005`, `DEC-007` y `DEC-017` y no reemplaza `AGENTS.md`, los Work Packages ni las decisiones canónicas.
 
 ## Principio general
 
@@ -8,8 +8,8 @@ La coordinación y planificación documental se realizan preferentemente desde u
 
 Existen dos repositorios con responsabilidades distintas:
 
-- `martinebene/Botonera2`: producto, documentación canónica, WPs, decisiones, código, PR, CI e integración;
-- `martinebene/Botonera2-Control`: asignaciones, resultados, iteraciones y estado operativo de turnos.
+- `martinebene/SIS-Leg`: producto, documentación canónica, WPs, decisiones, código, PR, CI e integración;
+- `martinebene/SIS-Leg-Control`: asignaciones, resultados, iteraciones y estado operativo de turnos.
 
 GitHub se utiliza como transporte y persistencia. No existe encadenamiento autónomo que atraviese decisiones del ORCHESTRATOR. Conforme a DEC-018, el operador puede delegar a un **COORDINADOR_LOCAL** la secuencialización mecánica de un lote finito de asignaciones ya autorizadas, sin habilitarlo a cruzar puertas de implementación/revisión/integración.
 
@@ -24,7 +24,7 @@ El ORCHESTRATOR:
 - escala decisiones DT-038;
 - mantiene documentación canónica dentro de la autoridad de DEC-005;
 - selecciona/proponer implementador y revisor conforme DEC-007;
-- crea las asignaciones en `Botonera2-Control`;
+- crea las asignaciones en `SIS-Leg-Control`;
 - es el único actor que modifica `CURRENT.json`;
 - procesa los resultados de IMPLEMENTER y REVIEWER;
 - decide correcciones, re-revisiones, integración, bloqueo y cierre.
@@ -49,19 +49,19 @@ Las frases breves como `Seguí`, `Continuá`, `Dale`, `Procedé`, `Revisá` o `T
 
 Una sesión debe interpretar la intención humana dentro del contexto vigente. Si HUMAN_GATE ya verificó una condición previa requerida —por ejemplo el modelo del COORDINADOR_LOCAL—, cualquier instrucción inequívoca de continuar/reanudar/iniciar el trabajo autorizado habilita la ejecución. No se exige repetir literalmente `Seguí`.
 
-Estas frases **no contienen el trabajo**. El actor descubre la tarea desde `Botonera2-Control`.
+Estas frases **no contienen el trabajo**. El actor descubre la tarea desde `SIS-Leg-Control`.
 
 ## Fuente de autoridad y precedencia
 
-Para producto, alcance, contratos, criterios, Git, CI e integración manda Botonera2.
+Para producto, alcance, contratos, criterios, Git, CI e integración manda SIS-Leg.
 
-Para turno y transporte operativo manda el protocolo vigente de `Botonera2-Control`, subordinado a la documentación canónica.
+Para turno y transporte operativo manda el protocolo vigente de `SIS-Leg-Control`, subordinado a la documentación canónica.
 
 En caso de contradicción:
 
-1. reglas canónicas de Botonera2;
+1. reglas canónicas de SIS-Leg;
 2. decisiones `DEC-XXX` posteriores aplicables;
-3. protocolo de `Botonera2-Control`;
+3. protocolo de `SIS-Leg-Control`;
 4. decisión del ORCHESTRATOR dentro de su autoridad;
 5. asignación particular.
 
@@ -73,11 +73,11 @@ Leer o verificar:
 2. `docs/decisions/DEC-004-orquestacion-revision-secuencial-y-sincronizacion.md`;
 3. `docs/decisions/DEC-005-planificacion-y-autoridad-documental-del-orquestador.md`;
 4. `docs/decisions/DEC-007-entorno-orca-asignacion-agentes-y-lanzadores.md`;
-5. `docs/decisions/DEC-017-coordinacion-mediante-botonera2-control.md`;
+5. `docs/decisions/DEC-017-coordinacion-mediante-sis-leg-control.md`;
 6. `docs/implementation/ORQUESTACION.md`;
 7. `docs/implementation/PROMPTS_AGENTES.md` como estándar de contenido de delegación;
 8. `docs/implementation/PLAN.md`;
-9. `Botonera2-Control/PROTOCOL.md` y `Botonera2-Control/CURRENT.json`;
+9. `SIS-Leg-Control/PROTOCOL.md` y `SIS-Leg-Control/CURRENT.json`;
 10. PR abiertas o recientemente integradas relevantes;
 11. el `WP-XXX.md` concreto cuando corresponda.
 
@@ -101,7 +101,7 @@ Antes de iniciar implementación, el ORCHESTRATOR:
 12. consulta disponibilidad/cuota de agentes/modelos cuando sea necesario;
 13. propone y acuerda implementador + revisor independiente conforme DEC-007;
 14. cambia PLAN a `EN_CURSO` con el implementador autorizado;
-15. prepara la primera asignación en `Botonera2-Control`.
+15. prepara la primera asignación en `SIS-Leg-Control`.
 
 Al redactar o aprobar el WP, el ORCHESTRATOR verifica además que la sección obligatoria
 `## Impacto en el manual de usuario y soporte` exista y esté resuelta con una de las dos
@@ -129,7 +129,7 @@ Toda asignación debe ser explícita respecto de:
 
 La asignación no reemplaza al WP. La redundancia deliberada sigue siendo una salvaguarda para agentes con capacidades distintas.
 
-## Preparación de un turno en Botonera2-Control
+## Preparación de un turno en SIS-Leg-Control
 
 El ORCHESTRATOR crea un mensaje append-only bajo:
 
@@ -165,7 +165,7 @@ Antes de actuar, IMPLEMENTER o REVIEWER debe:
 
 1. determinar el worktree Git actual y la rama activa;
 2. resolver de forma inequívoca el `WP-NNN` correspondiente a ese worktree/rama;
-3. sincronizar `martinebene/Botonera2-Control` con `main` remoto;
+3. sincronizar `martinebene/SIS-Leg-Control` con `main` remoto;
 4. leer su `AGENTS.md`;
 5. leer `CURRENT.json`;
 6. cuando `protocol_version >= 1.2` y exista `active_assignments`, filtrar primero por el WP del worktree actual;
@@ -174,7 +174,7 @@ Antes de actuar, IMPLEMENTER o REVIEWER debe:
 9. verificar `assignment_id`, WP, iteración y destinatario;
 10. comprobar que `expected_response_path` todavía no exista;
 11. leer únicamente la asignación dirigida a su rol;
-12. recién entonces cargar el contexto canónico de Botonera2.
+12. recién entonces cargar el contexto canónico de SIS-Leg.
 
 Asignaciones del mismo harness/modelo en otros WPs paralelos no generan ambigüedad porque pertenecen a otros worktrees. Si no puede resolver el WP local o quedan cero/múltiples asignaciones para ese mismo WP, el agente se detiene sin modificar nada.
 
@@ -219,13 +219,13 @@ Antes del lanzamiento:
 - dependencias `INTEGRADO`;
 - PLAN `EN_CURSO` con un implementador;
 - implementador/revisor acordados;
-- asignación IMPLEMENTER publicada en `Botonera2-Control`;
+- asignación IMPLEMENTER publicada en `SIS-Leg-Control`;
 - `CURRENT.json` apuntando a esa asignación.
 
 El checkout coordinador se sincroniza:
 
 ```bash
-cd /workspace/Botonera2
+cd /workspace/SIS-Leg
 git switch main
 git status --short
 git fetch --prune origin
@@ -244,7 +244,7 @@ uv run python scripts/iniciar_wp_orca.py NNN agente
 
 El lanzador crea el worktree/rama nativa y abre el agente **sin inyectar el trabajo**.
 
-Una vez abierto, el operador puede decir `Seguí`. El agente debe entonces sincronizar `Botonera2-Control`, descubrir la asignación y verificar su elegibilidad antes de modificar el WP.
+Una vez abierto, el operador puede decir `Seguí`. El agente debe entonces sincronizar `SIS-Leg-Control`, descubrir la asignación y verificar su elegibilidad antes de modificar el WP.
 
 No se copia/pega normalmente un prompt exhaustivo desde ChatGPT Web.
 
@@ -256,11 +256,11 @@ Se conserva:
 uv run python scripts/iniciar_wp.py NNN agente
 ```
 
-El agente sigue la misma regla de descubrimiento desde `Botonera2-Control`.
+El agente sigue la misma regla de descubrimiento desde `SIS-Leg-Control`.
 
 ## Paralelismo de WPs
 
-Cuando el PLAN permite WPs independientes, protocolo 1.2 de Botonera2-Control permite publicarlos simultáneamente mediante `CURRENT.json.active_assignments`.
+Cuando el PLAN permite WPs independientes, protocolo 1.2 de SIS-Leg-Control permite publicarlos simultáneamente mediante `CURRENT.json.active_assignments`.
 
 Cada entrada activa debe identificar WP, iteración, rol, `assignment_id`, `assignment_path`, `expected_response_path` y agente/arnés/modelo cuando corresponda. Los worktrees deben ser distintos y no puede existir superposición sustantiva no coordinada.
 
@@ -305,7 +305,7 @@ DEC-018 permite una excepción acotada para aprovechar periodos prolongados sin 
 
 El ORCHESTRATOR puede preparar un manifiesto de lote que autorice al COORDINADOR_LOCAL a pasar automáticamente de una asignación IMPLEMENTER/SYNC ya autorizada a una REVIEWER ya decidida por HUMAN_GATE, **sin decidir nada por sí mismo**, cuando se cumplan condiciones objetivas verificables de PR/SHA/main/CI/handoff y no exista escalamiento.
 
-En ese caso el COORDINADOR_LOCAL puede publicar la asignación REVIEWER exacta y actualizar únicamente el estado operativo necesario de Botonera2-Control para volver elegible al revisor fijado. Esa autoridad debe estar expresamente listada en el manifiesto del lote.
+En ese caso el COORDINADOR_LOCAL puede publicar la asignación REVIEWER exacta y actualizar únicamente el estado operativo necesario de SIS-Leg-Control para volver elegible al revisor fijado. Esa autoridad debe estar expresamente listada en el manifiesto del lote.
 
 Esta excepción no alcanza a:
 
@@ -338,7 +338,7 @@ IMPLEMENTER:
 11. crea/actualiza PR;
 12. deja candidato remoto con SHA exacto;
 13. verifica CI según la asignación;
-14. publica mediante commit/push únicamente `expected_response_path` en `Botonera2-Control`;
+14. publica mediante commit/push únicamente `expected_response_path` en `SIS-Leg-Control`;
 15. se detiene.
 
 El inicio del turno por HUMAN_GATE ya autoriza estos pasos. El IMPLEMENTER solo vuelve al humano antes del handoff ante un gate real: DT-038/aprobación reservada, contradicción material, conflicto Git no trivial, operación destructiva/no autorizada, merge/deploy/infraestructura persistente no autorizada, credencial faltante o imposibilidad técnica.
@@ -379,7 +379,7 @@ El operador inicia manualmente el turno con `Revisá`.
 
 REVIEWER:
 
-- verifica elegibilidad desde `Botonera2-Control`;
+- verifica elegibilidad desde `SIS-Leg-Control`;
 - desde ese momento completa autónomamente toda la revisión hasta el handoff, sin pedir permisos intermedios;
 - utiliza una sesión distinta;
 - preferentemente usa otra familia de modelo;
@@ -388,10 +388,10 @@ REVIEWER:
 - comprueba que la evaluación de impacto sobre `manual/index.html` esté declarada explícitamente y
   que el manual haya sido actualizado cuando el cambio sí es relevante para usuario o soporte;
 - ejecuta tests/builds/validaciones no destructivas sin solicitar confirmación;
-- trabaja en solo lectura respecto de Botonera2;
+- trabaja en solo lectura respecto de SIS-Leg;
 - no lee el informe privado del IMPLEMENTER;
-- no modifica/pushea/mergea código de Botonera2;
-- crea, commitea y pushea sin confirmación adicional únicamente su resultado para el ORCHESTRATOR en Botonera2-Control;
+- no modifica/pushea/mergea código de SIS-Leg;
+- crea, commitea y pushea sin confirmación adicional únicamente su resultado para el ORCHESTRATOR en SIS-Leg-Control;
 - finaliza con el worktree limpio.
 
 Encontrar hallazgos no detiene el turno: debe completar la revisión y publicarlos. Solo un gate real de escalamiento o una imposibilidad técnica justifica devolver el control antes del handoff.
@@ -420,7 +420,7 @@ Cuando IMPLEMENTER + REVIEWER —directamente o bajo COORDINADOR_LOCAL— termin
 El ORCHESTRATOR debe realizar la auditoría pre-integración definida por DEC-004. Como mínimo:
 
 1. fresh-check de `main`, PR, base, HEAD, candidate/tree SHA, mergeabilidad y CI;
-2. reconstrucción completa en Botonera2-Control de asignaciones, handoffs, correcciones, sincronizaciones, reviews y re-reviews;
+2. reconstrucción completa en SIS-Leg-Control de asignaciones, handoffs, correcciones, sincronizaciones, reviews y re-reviews;
 3. confirmación de que el último REVIEWER cubrió exactamente el candidate SHA final;
 4. comprobación de independencia de implementador/revisor y modelos efectivos;
 5. inspección propia del diff completo y archivos cambiados;
@@ -490,7 +490,7 @@ No se crea un commit vacío ni se modifica código solo para fabricar una nueva 
 Cuando Orca administró el worktree, usar primero Orca:
 
 ```bash
-orca worktree list --repo path:/workspace/Botonera2 --json
+orca worktree list --repo path:/workspace/SIS-Leg --json
 ```
 
 Obtener un selector inequívoco, preferentemente `id:<id>`, y ejecutar:
@@ -504,7 +504,7 @@ orca worktree rm \
 Luego verificar:
 
 ```bash
-orca worktree list --repo path:/workspace/Botonera2 --json
+orca worktree list --repo path:/workspace/SIS-Leg --json
 git worktree list
 git branch --list '*wp-NNN*'
 ```
@@ -521,7 +521,7 @@ No usar `--force` en `orca worktree rm` para descartar trabajo no investigado.
 ## Limpieza en entorno genérico
 
 ```bash
-cd /workspace/Botonera2
+cd /workspace/SIS-Leg
 git worktree remove <ruta-del-worktree>
 git branch -d <rama> || git branch -D <rama>
 git push origin --delete <rama>
@@ -538,7 +538,7 @@ Como estado remoto normal, si no hay ningún WP activo debe quedar únicamente `
 
 ```text
 ORCHESTRATOR
-  -> reconstruye Botonera2 + Botonera2-Control
+  -> reconstruye SIS-Leg + SIS-Leg-Control
   -> planifica WP con HUMAN_GATE
   -> resuelve decisiones DT-038
   -> documenta/aprueba WP
@@ -565,6 +565,6 @@ ORCHESTRATOR
 
 Una conversación nueva de ORCHESTRATOR debe reconstruir el estado desde ambos repositorios y no desde memoria.
 
-`Botonera2-Control/CURRENT.json` indica el turno operativo; `Botonera2/docs/implementation/PLAN.md` y los WPs indican qué trabajo de producto existe y bajo qué reglas.
+`SIS-Leg-Control/CURRENT.json` indica el turno operativo; `SIS-Leg/docs/implementation/PLAN.md` y los WPs indican qué trabajo de producto existe y bajo qué reglas.
 
 El contexto durable reside en GitHub.

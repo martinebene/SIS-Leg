@@ -24,7 +24,7 @@ import type {
   EstadoModeracion,
   OpcionesSuscripcion,
   Suscripcion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 
 // Fixture pedagógica de EstadoModeracion para pruebas
 function crearEstadoModeracionPrueba(parcial: Partial<EstadoModeracion> = {}): EstadoModeracion {

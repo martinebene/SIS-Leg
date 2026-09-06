@@ -18,15 +18,15 @@ import shutil
 from pathlib import Path
 
 import pytest
-from botonera2_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
-from botonera2_backend.configuracion.errores import ErrorValidacionConfiguracion
-from botonera2_backend.configuracion.sonidos_recinto import (
+from conftest import TOML_CANONICO, escribir_system_toml
+from sis_leg_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
+from sis_leg_backend.configuracion.errores import ErrorValidacionConfiguracion
+from sis_leg_backend.configuracion.sonidos_recinto import (
     EVENTOS_SONIDO_RECINTO,
     MOTIVO_SONIDOS_INVALIDOS,
     leer_sonidos_recinto,
     validar_assets_sonidos,
 )
-from conftest import TOML_CANONICO, escribir_system_toml
 
 from deploy.validar_configuracion import validar as validar_despliegue
 from scripts.generar_sonidos_recinto import (

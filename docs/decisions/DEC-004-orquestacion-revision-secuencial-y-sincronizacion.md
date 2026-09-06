@@ -6,7 +6,7 @@
 
 ## Contexto
 
-Durante la ejecución de los primeros Work Packages de Botonera2 se consolidó un flujo operativo en el que la planificación y coordinación se realizan desde una conversación de ChatGPT Web con acceso independiente al repositorio de GitHub, mientras que los agentes de implementación y revisión se ejecutan localmente desde terminales administradas por el operador.
+Durante la ejecución de los primeros Work Packages de SIS-Leg se consolidó un flujo operativo en el que la planificación y coordinación se realizan desde una conversación de ChatGPT Web con acceso independiente al repositorio de GitHub, mientras que los agentes de implementación y revisión se ejecutan localmente desde terminales administradas por el operador.
 
 El flujo demostró buena trazabilidad, pero también dejó pasos repetitivos que no aportan aislamiento real, especialmente la creación de un segundo `git worktree` dedicado exclusivamente a revisión. También se identificó que los cambios administrativos mínimos de `PLAN.md` generan Pull Requests sin cambio sustantivo de producto, y que toda transición entre implementación, revisión, integración y siguiente WP necesita una regla explícita de sincronización entre GitHub y el clon local.
 
@@ -20,7 +20,7 @@ La coordinación del trabajo se realiza preferentemente desde una conversación 
 
 El orquestador debe:
 
-- disponer de acceso independiente al repositorio `martinebene/Botonera2` en GitHub mediante la integración disponible;
+- disponer de acceso independiente al repositorio `martinebene/SIS-Leg` en GitHub mediante la integración disponible;
 - consultar GitHub directamente para verificar `main`, ramas, PR, SHA, CI y merges;
 - no considerar las salidas pegadas desde terminal como única evidencia del estado remoto;
 - indicar al operador los comandos y prompts que debe copiar y pegar en sus terminales locales;
@@ -266,7 +266,7 @@ Cada vez que un turno o lote devuelve el control al ORCHESTRATOR con un candidat
 
 Esta auditoría es una segunda capa de razonamiento de alto nivel. No reemplaza al REVIEWER ni pretende duplicar sus pruebas; busca detectar incoherencias que pueden quedar fuera de una revisión local, errores de flujo, cobertura incompleta del candidato, contradicciones documentales o una cadena de revisión que no cubra realmente el SHA que se pretende integrar.
 
-El ORCHESTRATOR debe reconstruir desde GitHub y Botonera2-Control, sin depender únicamente del resumen del COORDINADOR_LOCAL:
+El ORCHESTRATOR debe reconstruir desde GitHub y SIS-Leg-Control, sin depender únicamente del resumen del COORDINADOR_LOCAL:
 
 1. la asignación IMPLEMENTER original y todas sus iteraciones;
 2. el/los handoffs IMPLEMENTER;
@@ -301,7 +301,7 @@ Debe comprobar especialmente la cobertura temporal de la revisión:
 
 ### Resultado de la auditoría
 
-Antes de mergear, el ORCHESTRATOR registra una evidencia append-only en Botonera2-Control:
+Antes de mergear, el ORCHESTRATOR registra una evidencia append-only en SIS-Leg-Control:
 
 `work-packages/WP-NNN/audits/pre-merge-XXX.md`
 

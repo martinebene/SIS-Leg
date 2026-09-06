@@ -27,7 +27,7 @@ from typing import Any
 class PulsacionLogica:
     """Representa una pulsacion de tecla emitida por un dispositivo logico.
 
-    En Botonera2, el simulador y el device-bridge se comunican con el backend
+    En SIS-Leg, el simulador y el device-bridge se comunican con el backend
     utilizando identificadores logicos (por ejemplo 'dev01', 'dev12'), nunca
     identificadores fisicos o numeros de serie de hardware.
 

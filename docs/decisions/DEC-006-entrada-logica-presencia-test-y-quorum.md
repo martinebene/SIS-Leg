@@ -6,7 +6,7 @@
 
 ## Contexto
 
-WP-006 debe implementar la primera vía lógica de entrada de dispositivos de Botonera2 sobre el backend ya integrado por WP-002 a WP-005.
+WP-006 debe implementar la primera vía lógica de entrada de dispositivos de SIS-Leg sobre el backend ya integrado por WP-002 a WP-005.
 
 La documentación canónica ya define el significado funcional de las teclas y varias invariantes:
 
@@ -265,7 +265,7 @@ Rechazada. El test es un temporizador con significado propio y la configuración
 
 ### Copiar íntegramente la lógica histórica de entradas
 
-Rechazada. Producción se utiliza únicamente como fallback funcional permitido por DEC-001. La arquitectura, serialización, auditoría y contratos técnicos se rigen por Botonera2.
+Rechazada. Producción se utiliza únicamente como fallback funcional permitido por DEC-001. La arquitectura, serialización, auditoría y contratos técnicos se rigen por SIS-Leg.
 
 ### Implementar desde WP-006 presencia dentro de sesión/votación
 

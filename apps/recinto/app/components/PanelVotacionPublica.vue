@@ -2,10 +2,10 @@
 /** Presenta el DTO público sin recalcular mayoría, conteos ni resultado. */
 
 import { computed } from 'vue'
-import type { VotacionPublica } from '@botonera2/api-client'
+import type { VotacionPublica } from '@sis-leg/api-client'
 // WP-063: el factor se escribe siempre con dos decimales truncados. La regla vive en
 // frontend-shared para que Recinto y Moderación muestren el mismo texto del mismo dato.
-import { formatearFactorMayoria } from '@botonera2/frontend-shared'
+import { formatearFactorMayoria } from '@sis-leg/frontend-shared'
 
 const props = defineProps<{ votacion: VotacionPublica | null }>()
 

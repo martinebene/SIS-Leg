@@ -24,27 +24,27 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from botonera2_backend.auditoria import EscritorAuditoriaCsv
-from botonera2_backend.configuracion.modelos import (
+from sis_leg_backend.auditoria import EscritorAuditoriaCsv
+from sis_leg_backend.configuracion.modelos import (
     Concejal,
     ConfiguracionSistema,
     Padron,
 )
-from botonera2_backend.dominio.errores import ErrorEstadoIncompatible, ErrorOrdenDelDiaInvalido
-from botonera2_backend.dominio.estado import EstadoGlobal, EstadoOperativo
-from botonera2_backend.dominio.preparacion import Preparacion
-from botonera2_backend.dominio.sesion import Sesion
-from botonera2_backend.dominio.votacion import (
+from sis_leg_backend.dominio.errores import ErrorEstadoIncompatible, ErrorOrdenDelDiaInvalido
+from sis_leg_backend.dominio.estado import EstadoGlobal, EstadoOperativo
+from sis_leg_backend.dominio.preparacion import Preparacion
+from sis_leg_backend.dominio.sesion import Sesion
+from sis_leg_backend.dominio.votacion import (
     BaseMayoria,
     TipoMayoria,
     ValorVotoOrdinario,
     Votacion,
     VotoOrdinario,
 )
-from botonera2_backend.servicios.orden_del_dia import ServicioOrdenDelDia
-from botonera2_backend.servicios.preparacion import ServicioPreparacion
-from botonera2_backend.servicios.serializacion import EjecutorMutaciones
-from botonera2_backend.servicios.sesion import ServicioSesion
+from sis_leg_backend.servicios.orden_del_dia import ServicioOrdenDelDia
+from sis_leg_backend.servicios.preparacion import ServicioPreparacion
+from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.sesion import ServicioSesion
 
 pytestmark = pytest.mark.anyio
 

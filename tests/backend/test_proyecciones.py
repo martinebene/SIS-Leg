@@ -6,10 +6,10 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from botonera2_backend.auditoria import NivelAuditoria
-from botonera2_backend.dominio.estado import EstadoGlobal
-from botonera2_backend.dominio.remapeo import EstadoRemapeo, OperacionRemapeo
-from botonera2_backend.dominio.votacion import (
+from sis_leg_backend.auditoria import NivelAuditoria
+from sis_leg_backend.dominio.estado import EstadoGlobal
+from sis_leg_backend.dominio.remapeo import EstadoRemapeo, OperacionRemapeo
+from sis_leg_backend.dominio.votacion import (
     EstadoVotacion,
     ResultadoVotacion,
     SentidoVotoDesempate,

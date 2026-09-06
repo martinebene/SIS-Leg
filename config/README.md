@@ -67,7 +67,7 @@ raíz.
 ## Producción
 
 Producción no usa nada de esto: provisiona su configuración fuera de las
-releases, bajo `/opt/botonera2/config/`, según `docs/13-despliegue-y-operacion.md`.
+releases, bajo `/opt/sis-leg/config/`, según `docs/13-despliegue-y-operacion.md`.
 El empaquetado sigue excluyendo deliberadamente `config/`, de modo que ni las
 plantillas ni los archivos operativos locales viajan en un artefacto.
 

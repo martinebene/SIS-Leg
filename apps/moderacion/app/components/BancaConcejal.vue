@@ -17,8 +17,8 @@
  */
 
 import { computed, ref, watch } from 'vue'
-import type { ConcejalModeracion } from '@botonera2/api-client'
-import { calcularPresentacionBanca, estilosBanca } from '@botonera2/frontend-shared'
+import type { ConcejalModeracion } from '@sis-leg/api-client'
+import { calcularPresentacionBanca, estilosBanca } from '@sis-leg/frontend-shared'
 import { resolverRutaAsset } from '../utils/rutas'
 
 const props = defineProps<{

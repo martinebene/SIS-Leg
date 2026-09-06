@@ -10,21 +10,21 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from botonera2_device_bridge.adaptador_linux import AdaptadorFalso
-from botonera2_device_bridge.cliente_http import ClienteHttpBackend
-from botonera2_device_bridge.configuracion import ConfiguracionBridge, cargar_dispositivos_json
-from botonera2_device_bridge.modelos import (
+from sis_leg_device_bridge.adaptador_linux import AdaptadorFalso
+from sis_leg_device_bridge.cliente_http import ClienteHttpBackend
+from sis_leg_device_bridge.configuracion import ConfiguracionBridge, cargar_dispositivos_json
+from sis_leg_device_bridge.modelos import (
     EventoTeclaFisica,
     RespuestaEnvioBackend,
     SolicitudEntradaLogica,
 )
-from botonera2_device_bridge.remapeo import (
+from sis_leg_device_bridge.remapeo import (
     CoordinadorRemapeoBridge,
     ErrorControlRemapeo,
     PersistenciaRemapeo,
 )
-from botonera2_device_bridge.servicio import ServicioDeviceBridge
-from botonera2_device_bridge.servidor_control import ServidorControlBridge
+from sis_leg_device_bridge.servicio import ServicioDeviceBridge
+from sis_leg_device_bridge.servidor_control import ServidorControlBridge
 
 FP_BASE_01 = "lin|vendor=1001|product=2001|version=0001|phys=usb-1|uniq=|name=Base 1"
 FP_BASE_02 = "lin|vendor=1002|product=2002|version=0001|phys=usb-2|uniq=|name=Base 2"
@@ -227,8 +227,8 @@ def test_persistente_reemplaza_solo_objetivo_con_fsync_y_replace(tmp_path: Path)
         replace_real(origen, destino)
 
     with (
-        patch("botonera2_device_bridge.remapeo.os.fsync", side_effect=registrar_fsync),
-        patch("botonera2_device_bridge.remapeo.os.replace", side_effect=registrar_replace),
+        patch("sis_leg_device_bridge.remapeo.os.fsync", side_effect=registrar_fsync),
+        patch("sis_leg_device_bridge.remapeo.os.replace", side_effect=registrar_replace),
     ):
         coordinador.confirmar("persistir", FP_NUEVO_A, PersistenciaRemapeo.PERSISTENTE)
         # Repetir confirma idempotencia: no duplica write/fsync/replace.
@@ -251,10 +251,10 @@ def test_fallo_persistencia_conserva_archivo_y_efectivo(tmp_path: Path, etapa: s
     original = ruta.read_bytes()
     congelar_candidato(coordinador, f"fallo-{etapa}", "dev01", FP_NUEVO_A)
     objetivo = {
-        "validacion": "botonera2_device_bridge.remapeo.validar_mapeo_dispositivos",
-        "write": "botonera2_device_bridge.remapeo.json.dump",
-        "fsync": "botonera2_device_bridge.remapeo.os.fsync",
-        "replace": "botonera2_device_bridge.remapeo.os.replace",
+        "validacion": "sis_leg_device_bridge.remapeo.validar_mapeo_dispositivos",
+        "write": "sis_leg_device_bridge.remapeo.json.dump",
+        "fsync": "sis_leg_device_bridge.remapeo.os.fsync",
+        "replace": "sis_leg_device_bridge.remapeo.os.replace",
     }[etapa]
     with (
         patch(objetivo, side_effect=OSError(f"fallo {etapa}")),

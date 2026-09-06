@@ -20,16 +20,16 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from botonera2_backend.auditoria import NivelAuditoria
-from botonera2_backend.configuracion.mensajes_tecnicos import cargar_mensajes_tecnicos
-from botonera2_backend.dominio.apoyo_tecnico import (
+from sis_leg_backend.auditoria import NivelAuditoria
+from sis_leg_backend.configuracion.mensajes_tecnicos import cargar_mensajes_tecnicos
+from sis_leg_backend.dominio.apoyo_tecnico import (
     BibliotecaMensajesTecnicos,
     DestinoAvisoTecnico,
     ErrorBibliotecaMensajesNoDisponible,
     ErrorMensajeTecnicoNoExistente,
     EstadoTransmision,
 )
-from botonera2_backend.dominio.estado import EstadoGlobal
+from sis_leg_backend.dominio.estado import EstadoGlobal
 
 from tests.backend.ayudas_proyecciones import (
     EntornoProyecciones,
@@ -243,7 +243,7 @@ async def test_fallo_de_auditoria_no_aplica_la_orden_de_transmision(
     servicio = crear_servicio_apoyo_tecnico(entorno, tmp_path / "mensajes.csv")
     monkeypatch.setattr(entorno.contexto.escritor_auditoria, "_fallado", True)
 
-    from botonera2_backend.auditoria import ErrorAuditoria
+    from sis_leg_backend.auditoria import ErrorAuditoria
 
     with pytest.raises(ErrorAuditoria):
         await servicio.iniciar_transmision(None)
@@ -569,7 +569,7 @@ async def test_biblioteca_sobrevive_a_un_reinicio_simulado(tmp_path: Path) -> No
     await servicio.crear_mensaje("Mensaje persistente", DestinoAvisoTecnico.AMBOS)
 
     otro = crear_entorno_proyecciones(tmp_path / "segundo")
-    from botonera2_backend.servicios.apoyo_tecnico import leer_biblioteca_mensajes_tecnicos
+    from sis_leg_backend.servicios.apoyo_tecnico import leer_biblioteca_mensajes_tecnicos
 
     otro.estado.biblioteca_mensajes_tecnicos = leer_biblioteca_mensajes_tecnicos(ruta)
 
@@ -600,7 +600,7 @@ async def test_biblioteca_invalida_rechaza_toda_escritura(tmp_path: Path) -> Non
     ruta = tmp_path / "mensajes.csv"
     ruta.write_text("id,texto\nroto,sin destino\n", encoding="utf-8")
     entorno = crear_entorno_proyecciones(tmp_path)
-    from botonera2_backend.servicios.apoyo_tecnico import leer_biblioteca_mensajes_tecnicos
+    from sis_leg_backend.servicios.apoyo_tecnico import leer_biblioteca_mensajes_tecnicos
 
     entorno.estado.biblioteca_mensajes_tecnicos = leer_biblioteca_mensajes_tecnicos(ruta)
     servicio = crear_servicio_apoyo_tecnico(entorno, ruta)
@@ -657,8 +657,8 @@ async def test_fallo_de_persistencia_no_actualiza_la_memoria(
     servicio = crear_servicio_apoyo_tecnico(entorno, ruta, identificadores=("m1",))
     await servicio.crear_mensaje("Persistido", DestinoAvisoTecnico.RECINTO)
 
-    import botonera2_backend.servicios.apoyo_tecnico as modulo_servicio
-    from botonera2_backend.dominio.apoyo_tecnico import ErrorPersistenciaMensajesTecnicos
+    import sis_leg_backend.servicios.apoyo_tecnico as modulo_servicio
+    from sis_leg_backend.dominio.apoyo_tecnico import ErrorPersistenciaMensajesTecnicos
 
     def guardado_fallido(*_argumentos: object, **_claves: object) -> None:
         raise ErrorPersistenciaMensajesTecnicos("disco lleno simulado")

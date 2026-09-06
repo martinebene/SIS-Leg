@@ -14,10 +14,10 @@
  */
 
 import { computed, toRefs } from 'vue'
-import type { EstadoRecinto } from '@botonera2/api-client'
-import { usePresentacionTecnica, useSonidosRecinto } from '@botonera2/frontend-shared'
-import AvisoSuperficie from '@botonera2/frontend-shared/componentes/AvisoSuperficie.vue'
-import IndicadorCargaInicial from '@botonera2/frontend-shared/componentes/IndicadorCargaInicial.vue'
+import type { EstadoRecinto } from '@sis-leg/api-client'
+import { usePresentacionTecnica, useSonidosRecinto } from '@sis-leg/frontend-shared'
+import AvisoSuperficie from '@sis-leg/frontend-shared/componentes/AvisoSuperficie.vue'
+import IndicadorCargaInicial from '@sis-leg/frontend-shared/componentes/IndicadorCargaInicial.vue'
 import type { EstadoConexionRecinto } from '../composables/useEstadoRecinto'
 import { usePresentacionVotacion } from '../composables/usePresentacionVotacion'
 import { resolverRutaAsset } from '../utils/rutas'
@@ -152,16 +152,16 @@ useSonidosRecinto({
         Identidad institucional en reposo (WP-062).
 
         HUMAN_GATE decidió que el estado público sin sesión muestre el logo completo de
-        SISLeg. Reemplaza al monograma «CD» dibujado con CSS que ocupaba este lugar: era un
+        SIS-Leg. Reemplaza al monograma «CD» dibujado con CSS que ocupaba este lugar: era un
         marcador provisional, no una marca aprobada. Donde está el logo no se repite
-        «SISLeg» como texto, así que el `alt` describe la marca para lectores de pantalla y
+        «SIS-Leg» como texto, así que el `alt` describe la marca para lectores de pantalla y
         los dos renglones de abajo siguen explicando qué pantalla es y por qué está vacía.
       -->
       <img
         class="logo-institucional"
         data-testid="logo-sin-preparar"
         :src="urlLogoInstitucional"
-        alt="SISLeg"
+        alt="SIS-Leg"
         width="1536"
         height="1024"
       />

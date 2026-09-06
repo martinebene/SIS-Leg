@@ -15,29 +15,6 @@ from functools import partial
 from pathlib import Path
 
 import pytest
-from botonera2_backend.auditoria import (
-    ErrorAuditoria,
-    ErrorEscritorNoDisponible,
-    EscritorAuditoriaCsv,
-    NivelAuditoria,
-)
-from botonera2_backend.dominio.entrada import Pulsacion, ResultadoPalabra, ResultadoPresencia
-from botonera2_backend.dominio.errores import (
-    ErrorEstadoIncompatible,
-    ErrorNumeroSesionRequerido,
-    ErrorPresidenciaRequerida,
-    ErrorQuorumInsuficiente,
-    ErrorSecretariaLegislativaRequerida,
-    ErrorVotacionPendiente,
-)
-from botonera2_backend.dominio.estado import EstadoGlobal, EstadoOperativo
-from botonera2_backend.dominio.sesion import ActualizacionDatosInstitucionales
-from botonera2_backend.dominio.votacion import BaseMayoria, TipoMayoria, Votacion
-from botonera2_backend.hechos_operativos import ReferenciaHechoOperativo
-from botonera2_backend.servicios.entrada import ServicioEntradaTecla
-from botonera2_backend.servicios.preparacion import ServicioPreparacion
-from botonera2_backend.servicios.serializacion import EjecutorMutaciones
-from botonera2_backend.servicios.sesion import ServicioSesion
 from conftest import (
     LINEA_LOGS,
     LINEA_QUORUM,
@@ -46,6 +23,29 @@ from conftest import (
     escribir_system_toml,
     filas_padron_valido,
 )
+from sis_leg_backend.auditoria import (
+    ErrorAuditoria,
+    ErrorEscritorNoDisponible,
+    EscritorAuditoriaCsv,
+    NivelAuditoria,
+)
+from sis_leg_backend.dominio.entrada import Pulsacion, ResultadoPalabra, ResultadoPresencia
+from sis_leg_backend.dominio.errores import (
+    ErrorEstadoIncompatible,
+    ErrorNumeroSesionRequerido,
+    ErrorPresidenciaRequerida,
+    ErrorQuorumInsuficiente,
+    ErrorSecretariaLegislativaRequerida,
+    ErrorVotacionPendiente,
+)
+from sis_leg_backend.dominio.estado import EstadoGlobal, EstadoOperativo
+from sis_leg_backend.dominio.sesion import ActualizacionDatosInstitucionales
+from sis_leg_backend.dominio.votacion import BaseMayoria, TipoMayoria, Votacion
+from sis_leg_backend.hechos_operativos import ReferenciaHechoOperativo
+from sis_leg_backend.servicios.entrada import ServicioEntradaTecla
+from sis_leg_backend.servicios.preparacion import ServicioPreparacion
+from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.sesion import ServicioSesion
 
 pytestmark = pytest.mark.anyio
 

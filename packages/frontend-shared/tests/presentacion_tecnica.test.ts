@@ -10,7 +10,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref } from 'vue'
-import type { AvisoTecnicoProyectado, TransmisionProyectada } from '@botonera2/api-client'
+import type { AvisoTecnicoProyectado, TransmisionProyectada } from '@sis-leg/api-client'
 import {
   usePresentacionTecnica,
   type EntradaPresentacionTecnica,

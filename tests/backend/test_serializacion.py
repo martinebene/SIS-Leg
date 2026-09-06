@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from botonera2_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
 
 pytestmark = pytest.mark.anyio
 

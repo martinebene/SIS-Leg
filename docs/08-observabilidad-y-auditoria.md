@@ -26,7 +26,7 @@ La asignación concreta de cada evento debe conservar el espíritu de producció
 
 ## 3. Formato CSV canónico
 
-SISLeg utiliza **CSV** con:
+SIS-Leg utiliza **CSV** con:
 
 ```text
 seq;timestamp;level;tag;event_code;message
@@ -67,7 +67,7 @@ Al cancelar preparación o cerrar sesión:
 
 - se escribe el evento final;
 - se cierra el conjunto;
-- SISLeg no vuelve a modificar esos archivos.
+- SIS-Leg no vuelve a modificar esos archivos.
 
 ## 5. Persistencia inmediata y durabilidad
 
@@ -215,7 +215,7 @@ preparación/sesión se descarta sin escribir su `FIN` en un conjunto distinto.
 
 La implementación histórica usa principalmente nombre, apellido y banca en mensajes funcionales.
 
-SISLeg conserva como mínimo esa legibilidad humana en `message`. Los códigos/estructuras internas no deben reducir el registro a identificadores opacos.
+SIS-Leg conserva como mínimo esa legibilidad humana en `message`. Los códigos/estructuras internas no deben reducir el registro a identificadores opacos.
 
 Las seis columnas canónicas son suficientes para la primera versión; información adicional del evento puede expresarse de forma consistente en `message` y mediante `event_code`.
 
@@ -279,9 +279,9 @@ memoria y la auditoría histórica no se reescribe.
 
 ## 14. Edición posterior
 
-SISLeg no ofrece edición de archivos cerrados.
+SIS-Leg no ofrece edición de archivos cerrados.
 
-Una corrección externa institucional puede existir fuera del sistema, pero SISLeg no reabre ni reescribe automáticamente registros históricos.
+Una corrección externa institucional puede existir fuera del sistema, pero SIS-Leg no reabre ni reescribe automáticamente registros históricos.
 
 ## 15. Referencia histórica
 
@@ -293,4 +293,4 @@ La implementación actual usa:
 - líneas `HH:MM:SS | Lx | TAG | mensaje`;
 - escritura inmediata.
 
-SISLeg conserva esa semántica de profundidad y la adapta al formato CSV estructurado definido aquí.
+SIS-Leg conserva esa semántica de profundidad y la adapta al formato CSV estructurado definido aquí.

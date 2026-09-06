@@ -8,7 +8,7 @@
  */
 
 import { computed, onMounted, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
-import type { EstadoGlobal } from '@botonera2/api-client'
+import type { EstadoGlobal } from '@sis-leg/api-client'
 import { calcularDuracionEnSnapshot, formatearDuracion } from '../utils/tiempo'
 
 /** Datos mínimos de un snapshot necesarios para anclar la duración visual. */

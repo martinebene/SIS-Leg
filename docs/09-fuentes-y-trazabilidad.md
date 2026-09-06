@@ -2,14 +2,14 @@
 
 ## 1. Jerarquía de autoridad
 
-Para Botonera2:
+Para SIS-Leg:
 
 1. documentación vigente de este repositorio;
 2. decisiones explícitas aprobadas incorporadas posteriormente a esta documentación, incluyendo `DEC-XXX` vigentes;
-3. código vigente de `martinebene/Botonera/main` únicamente como fallback para aclarar reglas de negocio, experiencia de usuario o diseño/flujo visual que no estén suficientemente definidos en Botonera2;
+3. código vigente de `martinebene/Botonera/main` únicamente como fallback para aclarar reglas de negocio, experiencia de usuario o diseño/flujo visual que no estén suficientemente definidos en SIS-Leg;
 4. documentación histórica y rama `v2` como contexto no normativo.
 
-Una vez que una regla fue resuelta y documentada en Botonera2, no debe reabrirse por encontrar un comportamiento distinto en el sistema anterior.
+Una vez que una regla fue resuelta y documentada en SIS-Leg, no debe reabrirse por encontrar un comportamiento distinto en el sistema anterior.
 
 La regla transversal de consulta a producción y estilo de trabajo está definida en `docs/decisions/DEC-001-estilo-codigo-y-referencia-produccion.md`.
 
@@ -33,7 +33,7 @@ Snapshot observado:
 
 `9330812aaed93bc79e5043d3d34061c6aa19a7a0`
 
-`v2` no fue validada en producción y no define reglas de Botonera2.
+`v2` no fue validada en producción y no define reglas de SIS-Leg.
 
 ## 3. Mapa de fuentes históricas relevantes
 
@@ -91,7 +91,7 @@ Aportó la semántica de tres niveles acumulativos y escritura inmediata.
 
 ### Mapa de teclas
 
-Documentos antiguos diferían del código. Botonera2 adopta el código vigente:
+Documentos antiguos diferían del código. SIS-Leg adopta el código vigente:
 
 - 1 positivo;
 - 2 abstención;
@@ -102,27 +102,27 @@ Documentos antiguos diferían del código. Botonera2 adopta el código vigente:
 
 ### Orden del Día
 
-La implementación real de producción utiliza CSV separado por coma y el Orden del Día es solo asistencia. Botonera2 adopta un contrato nuevo explícito definido en DT-039 y no acepta automáticamente el formato histórico.
+La implementación real de producción utiliza CSV separado por coma y el Orden del Día es solo asistencia. SIS-Leg adopta un contrato nuevo explícito definido en DT-039 y no acepta automáticamente el formato histórico.
 
 ### Presencia previa a sesión
 
-`main` rechazaba toda interacción sin sesión abierta. Botonera2 adopta explícitamente `PREPARANDO`, donde presencia y test están habilitados antes de la apertura formal.
+`main` rechazaba toda interacción sin sesión abierta. SIS-Leg adopta explícitamente `PREPARANDO`, donde presencia y test están habilitados antes de la apertura formal.
 
 ### Mayoría simple
 
-La implementación histórica representaba mayoría simple mediante factor especial `0`. Botonera2 lo reemplaza por tipo explícito `SIMPLE` y lo separa de cualquier factor numérico.
+La implementación histórica representaba mayoría simple mediante factor especial `0`. SIS-Leg lo reemplaza por tipo explícito `SIMPLE` y lo separa de cualquier factor numérico.
 
 ### Presidencia
 
-El sistema anterior resolvía desempate desde Moderación sin modelar plenamente autoridades. Botonera2 define Presidencia como rol institucional independiente del rol Concejal y registra explícitamente su voto de desempate.
+El sistema anterior resolvía desempate desde Moderación sin modelar plenamente autoridades. SIS-Leg define Presidencia como rol institucional independiente del rol Concejal y registra explícitamente su voto de desempate.
 
 ### Logs
 
-La versión histórica escribe `.txt` por día. Botonera2 conserva los tres niveles acumulativos pero adopta tres CSV por preparación/sesión, nombrados con fecha y hora de inicio.
+La versión histórica escribe `.txt` por día. SIS-Leg conserva los tres niveles acumulativos pero adopta tres CSV por preparación/sesión, nombrados con fecha y hora de inicio.
 
 ### Estado ante reinicio
 
-Botonera2 confirma deliberadamente estado solo en memoria y prohíbe recuperación automática de sesión/preparación.
+SIS-Leg confirma deliberadamente estado solo en memoria y prohíbe recuperación automática de sesión/preparación.
 
 ## 5. Comportamientos históricos descartados como bugs o insuficiencias
 
@@ -154,7 +154,7 @@ El bridge físico actual usa conceptualmente:
 
 con `dispositivo` y `tecla`.
 
-Esta integración sí debe considerarse al diseñar Botonera2 para evitar una migración física innecesaria, salvo decisión técnica explícita.
+Esta integración sí debe considerarse al diseñar SIS-Leg para evitar una migración física innecesaria, salvo decisión técnica explícita.
 
 ## 8. Regla para futuros agentes
 
@@ -162,7 +162,7 @@ No navegar indiscriminadamente el repositorio histórico.
 
 ### Cuándo consultar producción
 
-La consulta a `martinebene/Botonera/main` procede cuando existe una duda concreta y no resuelta por Botonera2 sobre:
+La consulta a `martinebene/Botonera/main` procede cuando existe una duda concreta y no resuelta por SIS-Leg sobre:
 
 - regla de negocio;
 - experiencia de usuario;
@@ -173,11 +173,11 @@ La consulta a `martinebene/Botonera/main` procede cuando existe una duda concret
 
 Procedimiento:
 
-1. identificar primero qué parte no está definida en Botonera2;
+1. identificar primero qué parte no está definida en SIS-Leg;
 2. consultar el `main` vigente y solo los archivos necesarios;
 3. para conocer comportamiento real, priorizar código ejecutable sobre README, manuales o comentarios históricos cuando difieran;
 4. documentar en WP/PR qué se verificó y los archivos consultados si la consulta influyó en la implementación;
-5. no sustituir una regla ya definida en Botonera2;
+5. no sustituir una regla ya definida en SIS-Leg;
 6. si producción es ambigua, inconsistente o no contiene la respuesta, escalar en vez de inventar.
 
 ### Cuándo NO usar producción como referencia

@@ -6,9 +6,9 @@
 
 ## Contexto
 
-Botonera2 se utilizará no solo como sistema productivo sino también como proyecto de aprendizaje. El código debe ser comprensible para una persona que está aprendiendo Python, FastAPI, TypeScript, Vue y Nuxt.
+SIS-Leg se utilizará no solo como sistema productivo sino también como proyecto de aprendizaje. El código debe ser comprensible para una persona que está aprendiendo Python, FastAPI, TypeScript, Vue y Nuxt.
 
-Además, Botonera2 dispone de una versión actualmente en producción en `martinebene/Botonera`, rama `main`. La documentación de Botonera2 continúa siendo la fuente normativa principal, pero el comportamiento productivo existente es una referencia valiosa cuando una regla de negocio, experiencia de usuario o decisión visual no está suficientemente definida.
+Además, SIS-Leg dispone de una versión actualmente en producción en `martinebene/Botonera`, rama `main`. La documentación de SIS-Leg continúa siendo la fuente normativa principal, pero el comportamiento productivo existente es una referencia valiosa cuando una regla de negocio, experiencia de usuario o decisión visual no está suficientemente definida.
 
 Esta decisión es transversal y aplica a todos los Work Packages de implementación futuros.
 
@@ -91,7 +91,7 @@ La explicación pedagógica complementa el resumen técnico; no lo reemplaza.
 
 La jerarquía de autoridad para **reglas de negocio, experiencia de usuario y diseño/flujo de interfaz** es:
 
-1. documentación canónica vigente de Botonera2;
+1. documentación canónica vigente de SIS-Leg;
 2. decisiones explícitas aprobadas e incorporadas al repositorio;
 3. si lo anterior no define claramente el comportamiento, verificar el sistema actualmente en producción consultando `martinebene/Botonera`, rama `main`, en su estado vigente al momento de la tarea;
 4. si producción tampoco permite determinarlo de forma inequívoca, escalar la duda en lugar de inventar una regla o experiencia nueva.
@@ -101,7 +101,7 @@ Al consultar producción:
 - debe inspeccionarse únicamente el código necesario para la duda concreta;
 - para comportamiento real prevalece el código ejecutable de `main` sobre README, manuales o comentarios históricos si difieren;
 - debe registrarse en el WP o PR qué comportamiento se verificó y qué archivos de producción se consultaron cuando esa consulta influyó en la implementación;
-- si Botonera2 ya define explícitamente algo distinto, **prevalece Botonera2** y producción no reabre la decisión.
+- si SIS-Leg ya define explícitamente algo distinto, **prevalece SIS-Leg** y producción no reabre la decisión.
 
 Esta regla se aplica también al diseño de interfaz cuando la documentación nueva no define con claridad, por ejemplo:
 
@@ -128,16 +128,16 @@ El sistema anterior no debe utilizarse para decidir por analogía:
 - despliegue;
 - stack o versiones;
 - contratos técnicos nuevos;
-- estilo técnico que ya esté cerrado en las decisiones de Botonera2.
+- estilo técnico que ya esté cerrado en las decisiones de SIS-Leg.
 
-Estas cuestiones se rigen exclusivamente por la documentación y decisiones técnicas de Botonera2. Ante una duda técnica no definida, se escala según DT-038; no se copia la solución histórica por defecto.
+Estas cuestiones se rigen exclusivamente por la documentación y decisiones técnicas de SIS-Leg. Ante una duda técnica no definida, se escala según DT-038; no se copia la solución histórica por defecto.
 
 ## Consecuencias
 
 - Los WPs futuros deben heredar estas reglas aunque no las repitan completas.
 - El revisor independiente debe considerar incumplimiento sustantivo que código propio nuevo utilice nomenclatura inglesa sin una excepción justificada, que falte documentación pedagógica relevante o que una PR carezca de la explicación para principiantes requerida.
 - Consultar producción deja de ser una excepción ad hoc y pasa a ser un procedimiento formal de resolución de ambigüedades funcionales/UX/visuales.
-- La versión histórica continúa sin autoridad para arquitectura o decisiones técnicas de Botonera2.
+- La versión histórica continúa sin autoridad para arquitectura o decisiones técnicas de SIS-Leg.
 
 ## Documentos y WPs afectados
 

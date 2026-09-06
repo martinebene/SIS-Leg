@@ -31,7 +31,7 @@ import type {
   ClienteModeracion,
   EstadoModeracion,
   EstadoTransmision,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import App from '../app/app.vue'
 import fuenteApp from '../app/app.vue?raw'
 import CabeceraModeracion from '../app/components/CabeceraModeracion.vue'

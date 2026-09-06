@@ -1,5 +1,5 @@
 /**
- * Punto de entrada del código genuinamente común a los frontends de SISLeg.
+ * Punto de entrada del código genuinamente común a los frontends de SIS-Leg.
  *
  * Solo se publica aquí lo que necesita ser idéntico en más de una interfaz. Hoy
  * incluye la semántica visual de una banca (WP-045), el cálculo temporal
@@ -14,7 +14,7 @@
  * una corrección posterior podría aplicarse en una sola interfaz.
  *
  * Los componentes Vue compartidos no se exportan por este índice: se importan por su
- * subruta (`@botonera2/frontend-shared/componentes/…`) para que cada aplicación cargue
+ * subruta (`@sis-leg/frontend-shared/componentes/…`) para que cada aplicación cargue
  * únicamente el que usa y para que este archivo no arrastre plantillas ni estilos.
  *
  * Sigue vigente DT-024: acá va sólo código realmente común, no una librería de UI

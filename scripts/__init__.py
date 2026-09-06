@@ -1,1 +1,1 @@
-"""Módulos y scripts auxiliares de gobernanza y tooling de Botonera2."""
+"""Módulos y scripts auxiliares de gobernanza y tooling de SIS-Leg."""

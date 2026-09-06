@@ -16,8 +16,8 @@
  */
 
 import { computed, ref } from 'vue'
-import type { ClienteApoyoTecnico, TransmisionProyectada } from '@botonera2/api-client'
-import { extraerMensajeError } from '@botonera2/frontend-shared'
+import type { ClienteApoyoTecnico, TransmisionProyectada } from '@sis-leg/api-client'
+import { extraerMensajeError } from '@sis-leg/frontend-shared'
 
 const props = defineProps<{
   /** Estado autoritativo de la transmisión, o `null` antes del primer snapshot. */

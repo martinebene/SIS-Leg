@@ -61,7 +61,7 @@ def ejecutar_smoke(paquete: Path, sidecar: Path, sha: str) -> None:
     """Extrae seguro, instala ``--no-dev`` y prueba backend/bridge/SPAs."""
 
     verificar_checksum(paquete, sidecar)
-    with tempfile.TemporaryDirectory(prefix="botonera2-smoke-") as temporal:
+    with tempfile.TemporaryDirectory(prefix="sis-leg-smoke-") as temporal:
         release = Path(temporal) / sha
         extraer_paquete_seguro(paquete, release, sha)
         ambiente = os.environ.copy()
@@ -73,7 +73,7 @@ def ejecutar_smoke(paquete: Path, sidecar: Path, sha: str) -> None:
             check=True,
         )
         subprocess.run(
-            [str(release / ".venv/bin/botonera2-device-bridge"), "--help"],
+            [str(release / ".venv/bin/sis-leg-device-bridge"), "--help"],
             check=True,
             capture_output=True,
             text=True,
@@ -91,14 +91,14 @@ def ejecutar_smoke(paquete: Path, sidecar: Path, sha: str) -> None:
         if not manual.is_file():
             raise ErrorSmoke("El manual de usuario no está incluido en el artefacto.")
         contenido_manual = manual.read_text(encoding="utf-8")
-        if "SISLeg" not in contenido_manual or "cap-01-vision-general" not in contenido_manual:
+        if "SIS-Leg" not in contenido_manual or "cap-01-vision-general" not in contenido_manual:
             raise ErrorSmoke("El manual incluido en el artefacto no tiene el contenido esperado.")
 
         puerto = elegir_puerto_loopback()
         proceso = subprocess.Popen(
             [
                 str(release / ".venv/bin/uvicorn"),
-                "botonera2_backend.main:app",
+                "sis_leg_backend.main:app",
                 "--host",
                 "127.0.0.1",
                 "--port",

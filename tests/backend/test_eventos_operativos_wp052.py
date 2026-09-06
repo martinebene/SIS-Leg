@@ -29,25 +29,6 @@ from functools import partial
 from pathlib import Path
 
 import pytest
-from botonera2_backend.auditoria import EscritorAuditoriaCsv, NivelAuditoria
-from botonera2_backend.dominio.entrada import Pulsacion
-from botonera2_backend.dominio.estado import EstadoOperativo
-from botonera2_backend.dominio.sesion import ActualizacionDatosInstitucionales
-from botonera2_backend.dominio.votacion import (
-    BaseMayoria,
-    DatosAperturaVotacion,
-    TipoMayoria,
-)
-from botonera2_backend.servicios.entrada import ServicioEntradaTecla
-from botonera2_backend.servicios.preparacion import ServicioPreparacion
-from botonera2_backend.servicios.proyecciones import (
-    EventoRecienteProyectado,
-    ServicioProyecciones,
-)
-from botonera2_backend.servicios.publicacion import CoordinadorPublicacion
-from botonera2_backend.servicios.serializacion import EjecutorMutaciones
-from botonera2_backend.servicios.sesion import ServicioSesion
-from botonera2_backend.servicios.votacion import ServicioVotacion
 from conftest import (
     LINEA_LOGS,
     LINEA_QUORUM,
@@ -56,6 +37,25 @@ from conftest import (
     escribir_system_toml,
     filas_padron_valido,
 )
+from sis_leg_backend.auditoria import EscritorAuditoriaCsv, NivelAuditoria
+from sis_leg_backend.dominio.entrada import Pulsacion
+from sis_leg_backend.dominio.estado import EstadoOperativo
+from sis_leg_backend.dominio.sesion import ActualizacionDatosInstitucionales
+from sis_leg_backend.dominio.votacion import (
+    BaseMayoria,
+    DatosAperturaVotacion,
+    TipoMayoria,
+)
+from sis_leg_backend.servicios.entrada import ServicioEntradaTecla
+from sis_leg_backend.servicios.preparacion import ServicioPreparacion
+from sis_leg_backend.servicios.proyecciones import (
+    EventoRecienteProyectado,
+    ServicioProyecciones,
+)
+from sis_leg_backend.servicios.publicacion import CoordinadorPublicacion
+from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.sesion import ServicioSesion
+from sis_leg_backend.servicios.votacion import ServicioVotacion
 
 pytestmark = pytest.mark.anyio
 

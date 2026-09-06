@@ -105,7 +105,7 @@ def crear_repositorio(
     semilla = tmp_path / "semilla"
     semilla.mkdir()
     ejecutar("git", "init", "--initial-branch=main", cwd=semilla)
-    ejecutar("git", "config", "user.name", "Pruebas Botonera2", cwd=semilla)
+    ejecutar("git", "config", "user.name", "Pruebas SIS-Leg", cwd=semilla)
     ejecutar("git", "config", "user.email", "pruebas@example.invalid", cwd=semilla)
 
     (semilla / ".gitignore").write_text("__pycache__/\n*.pyc\n", encoding="utf-8")

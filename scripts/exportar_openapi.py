@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from botonera2_backend.aplicacion import crear_aplicacion
+from sis_leg_backend.aplicacion import crear_aplicacion
 
 # Ruta predeterminada del snapshot OpenAPI versionado dentro de packages/api-client
 RUTA_OPENAPI_PREDETERMINADA = (
@@ -107,7 +107,7 @@ def verificar_drift_openapi(ruta_snapshot: Path = RUTA_OPENAPI_PREDETERMINADA) -
 def main() -> None:
     """Punto de entrada CLI para exportación y verificación de OpenAPI."""
     parser = argparse.ArgumentParser(
-        description="Exportación y verificación determinista del esquema OpenAPI de Botonera2."
+        description="Exportación y verificación determinista del esquema OpenAPI de SIS-Leg."
     )
     parser.add_argument(
         "--check",

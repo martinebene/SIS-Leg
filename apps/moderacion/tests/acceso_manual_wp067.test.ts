@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { RUTA_MANUAL } from '@botonera2/frontend-shared'
+import { RUTA_MANUAL } from '@sis-leg/frontend-shared'
 import CabeceraModeracion from '../app/components/CabeceraModeracion.vue'
 
 /** Props que activan todos los indicadores condicionales a la vez. */

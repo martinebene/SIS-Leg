@@ -8,23 +8,23 @@ from contextlib import suppress
 from copy import deepcopy
 from typing import Any, cast
 
-import botonera2_backend.aplicacion as modulo_aplicacion
 import pytest
-from botonera2_backend.aplicacion import crear_aplicacion
-from botonera2_backend.dominio.estado import EstadoGlobal
-from botonera2_backend.recursos import (
+import sis_leg_backend.aplicacion as modulo_aplicacion
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from sis_leg_backend.aplicacion import crear_aplicacion
+from sis_leg_backend.dominio.estado import EstadoGlobal
+from sis_leg_backend.recursos import (
     NOMBRE_RECURSOS,
     obtener_recursos_aplicacion,
 )
-from botonera2_backend.servicios.fronteras_temporales import ServicioFronterasTemporales
-from botonera2_backend.servicios.proyecciones import ServicioProyecciones
-from botonera2_backend.servicios.publicacion import (
+from sis_leg_backend.servicios.fronteras_temporales import ServicioFronterasTemporales
+from sis_leg_backend.servicios.proyecciones import ServicioProyecciones
+from sis_leg_backend.servicios.publicacion import (
     CoordinadorPublicacion,
     SuscripcionProyeccion,
 )
-from botonera2_backend.servicios.serializacion import EjecutorMutaciones
-from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
+from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
 
 pytestmark = pytest.mark.anyio
 

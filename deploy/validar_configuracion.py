@@ -6,10 +6,10 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
-from botonera2_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
-from botonera2_backend.configuracion.cargar_padron import cargar_padron_concejales
-from botonera2_backend.configuracion.sonidos_recinto import validar_assets_sonidos
-from botonera2_device_bridge.configuracion import cargar_dispositivos_json
+from sis_leg_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
+from sis_leg_backend.configuracion.cargar_padron import cargar_padron_concejales
+from sis_leg_backend.configuracion.sonidos_recinto import validar_assets_sonidos
+from sis_leg_device_bridge.configuracion import cargar_dispositivos_json
 
 # Subdirectorio de la release donde queda publicada la Pantalla del Recinto.
 # Es la raíz contra la que resuelven las rutas de ``[sonidos]``: dentro del

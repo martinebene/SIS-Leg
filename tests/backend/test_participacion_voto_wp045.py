@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 import pytest
-from botonera2_backend.dominio.votacion import (
+from sis_leg_backend.dominio.votacion import (
     ValorVotoOrdinario,
     VotoOrdinario,
 )

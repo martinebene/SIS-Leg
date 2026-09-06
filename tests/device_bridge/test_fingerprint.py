@@ -11,7 +11,7 @@ Verifica:
 from __future__ import annotations
 
 import pytest
-from botonera2_device_bridge.fingerprint import (
+from sis_leg_device_bridge.fingerprint import (
     construir_fingerprint_linux,
     formatear_hex_4_digitos,
     validar_fingerprint_linux,

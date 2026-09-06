@@ -13,7 +13,7 @@ Las decisiones aprobadas se registran en:
 
 No existen decisiones técnicas previas abiertas que bloqueen el inicio de `WP-001`.
 
-DT-039 quedó cerrada: SISLeg utiliza exclusivamente el nuevo formato explícito de CSV de Orden del Día y **no ofrece compatibilidad automática con el formato histórico**.
+DT-039 quedó cerrada: SIS-Leg utiliza exclusivamente el nuevo formato explícito de CSV de Orden del Día y **no ofrece compatibilidad automática con el formato histórico**.
 
 Contrato canónico:
 

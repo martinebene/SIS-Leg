@@ -25,8 +25,8 @@ import type {
   AvisoTecnicoProyectado,
   ClienteApoyoTecnico,
   DestinoAvisoTecnico,
-} from '@botonera2/api-client'
-import { extraerMensajeError } from '@botonera2/frontend-shared'
+} from '@sis-leg/api-client'
+import { extraerMensajeError } from '@sis-leg/frontend-shared'
 
 const props = defineProps<{
   /** Aviso vigente en la ranura de Moderación, o `null`. */

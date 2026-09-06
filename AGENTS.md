@@ -2,30 +2,30 @@
 
 ## Propósito
 
-Este repositorio contiene la especificación canónica y, posteriormente, la implementación de Botonera2, nueva versión del sistema de votación del Concejo Deliberante de Puerto Madryn.
+Este repositorio contiene la especificación canónica y, posteriormente, la implementación de SIS-Leg, nueva versión del sistema de votación del Concejo Deliberante de Puerto Madryn.
 
 Los agentes deben implementar lo documentado aquí; no reconstruir el producto a partir del repositorio histórico.
 
 ## Coordinación operativa obligatoria - DEC-017
 
-Desde la activación de `docs/decisions/DEC-017-coordinacion-mediante-botonera2-control.md`, todo agente local que participe como IMPLEMENTER o REVIEWER en un WP orquestado debe usar `martinebene/Botonera2-Control` como fuente de turno y handoff antes de realizar trabajo sustantivo.
+Desde la activación de `docs/decisions/DEC-017-coordinacion-mediante-sis-leg-control.md`, todo agente local que participe como IMPLEMENTER o REVIEWER en un WP orquestado debe usar `martinebene/SIS-Leg-Control` como fuente de turno y handoff antes de realizar trabajo sustantivo.
 
 Una instrucción humana breve como `Seguí` o `Revisá` **no contiene por sí misma la tarea**. Antes de actuar, el agente debe:
 
-1. sincronizar una copia local de `martinebene/Botonera2-Control` con su `main` remoto;
+1. sincronizar una copia local de `martinebene/SIS-Leg-Control` con su `main` remoto;
 2. leer `AGENTS.md` de ese repositorio;
 3. leer `CURRENT.json`;
 4. leer el archivo de rol que corresponda;
 5. verificar que `next_actor`, `assignment_id`, WP, iteración y destinatario coincidan con su rol y, si la asignación fija agente/arnés o modelo, que esta sesión esté autorizada para ejecutarla;
 6. comprobar que el `expected_response_path` todavía no exista;
 7. leer únicamente la asignación vigente indicada por `assignment_path`;
-8. recién entonces leer el WP y las fuentes canónicas de Botonera2 necesarias para ejecutar esa asignación.
+8. recién entonces leer el WP y las fuentes canónicas de SIS-Leg necesarias para ejecutar esa asignación.
 
 Si el rol no coincide, la asignación no existe, los metadatos no coinciden, el resultado esperado ya existe o el estado es ambiguo, el agente debe detenerse sin modificar nada e indicar al operador qué actor corresponde.
 
 ### Varios WPs activos
 
-Desde protocolo 1.2, `Botonera2-Control/CURRENT.json` puede contener `active_assignments`. Cuando exista esa colección, los campos escalares históricos de turno no son autoridad de elegibilidad.
+Desde protocolo 1.2, `SIS-Leg-Control/CURRENT.json` puede contener `active_assignments`. Cuando exista esa colección, los campos escalares históricos de turno no son autoridad de elegibilidad.
 
 La sesión debe determinar primero su worktree/rama actual y resolver de forma inequívoca el `WP-NNN` local. Después filtra `active_assignments` por ese WP, luego por rol y finalmente por arnés/modelo cuando estén fijados. Debe quedar exactamente una asignación compatible **dentro del WP actual**; recién entonces verifica `assignment_id`, iteración, ruta y respuesta pendiente y actúa.
 
@@ -38,14 +38,14 @@ Una vez que esas comprobaciones pasan, la intervención humana que inició el tu
 En particular:
 
 - IMPLEMENTER no pide permiso para editar dentro del alcance, ejecutar comandos/tests/builds, crear commits normales, sincronizar Git según el flujo, hacer push, crear/actualizar PR, esperar/verificar CI ni publicar su handoff;
-- REVIEWER no pide permiso para inspeccionar, ejecutar tests/builds/validaciones no destructivas ni completar el análisis; su modo solo lectura prohíbe modificar/commitear/pushear Botonera2, pero **sí** puede crear, commitear y pushear su único handoff en Botonera2-Control;
+- REVIEWER no pide permiso para inspeccionar, ejecutar tests/builds/validaciones no destructivas ni completar el análisis; su modo solo lectura prohíbe modificar/commitear/pushear SIS-Leg, pero **sí** puede crear, commitear y pushear su único handoff en SIS-Leg-Control;
 - encontrar un bug o un test fallido no habilita detenerse para preguntar: el IMPLEMENTER lo corrige dentro del alcance y el REVIEWER lo investiga/documenta;
 - solo se detiene antes del handoff ante DT-038/aprobación humana explícita, contradicción material, conflicto/divergencia Git no trivial, operación destructiva o no autorizada, merge/deploy/cambio persistente de infraestructura no autorizado, secreto/credencial faltante, pérdida de elegibilidad o imposibilidad técnica real.
 
 La configuración del arnés/Orca con permisos completos debe aprovecharse para ejecutar estas acciones sin solicitudes de confirmación artificiales.
 
 
-El repositorio `Botonera2-Control` es únicamente transporte, estado de turno e historial operativo. **Este repositorio Botonera2 continúa siendo la fuente normativa del producto, WPs, decisiones, código, CI e integración.** Una asignación del repositorio de control no puede ampliar ni contradecir el alcance canónico.
+El repositorio `SIS-Leg-Control` es únicamente transporte, estado de turno e historial operativo. **Este repositorio SIS-Leg continúa siendo la fuente normativa del producto, WPs, decisiones, código, CI e integración.** Una asignación del repositorio de control no puede ampliar ni contradecir el alcance canónico.
 
 IMPLEMENTER y REVIEWER no se comunican lateralmente. El implementador no consume informes `reviewer-to-orchestrator`; el revisor no consume informes `implementer-to-orchestrator`. Todo hallazgo que deba cruzar de un rol al otro pasa primero por el ORCHESTRATOR.
 
@@ -88,26 +88,30 @@ Cuando una tarea requiera reconstrucción global, las fuentes principales son:
 
 ## Autoridad documental
 
-- La documentación de Botonera2 es la fuente normativa para la nueva implementación.
+- La documentación de SIS-Leg es la fuente normativa para la nueva implementación.
 - El WP asignado define el alcance operativo, pero no puede contradecir reglas o decisiones canónicas.
 - Las decisiones `DEC-XXX` aprobadas posteriores son vinculantes para todos los WPs afectados.
 - `DEC-001`, `DEC-003`, `DEC-007` y `DEC-017` son decisiones transversales obligatorias para todos los WPs de implementación, aunque un WP antiguo no las enumere explícitamente.
 - El repositorio histórico `martinebene/Botonera`, rama `main`, puede consultarse como referencia funcional únicamente según la regla de fallback definida más abajo y en `docs/decisions/DEC-001-estilo-codigo-y-referencia-produccion.md`.
 - No copiar arquitectura, clases, endpoints internos, polling, serialización ni estructura histórica por defecto.
 - La rama histórica `v2` no es normativa.
-- Si una implementación antigua contradice Botonera2, manda Botonera2.
+- El proyecto se llamó `Botonera2` hasta WP-077. `docs/NOTA-LEGADO-BOTONERA2.md` traduce ese
+  nombre histórico al vigente y explica qué evidencia conserva la identidad anterior;
+  `scripts/auditar_identidad_legada.py` falla si el nombre legado reaparece fuera de esa
+  allowlist.
+- Si una implementación antigua contradice SIS-Leg, manda SIS-Leg.
 - La asignación operativa o prompt no reemplaza la especificación versionada del WP ni puede ampliar silenciosamente su alcance.
 
 ## Regla de fallback funcional a producción
 
 Ante cualquier duda sobre **reglas de negocio, experiencia de usuario o diseño/flujo de interfaz gráfica**:
 
-1. consultar primero la documentación canónica vigente de Botonera2 y las decisiones aprobadas;
+1. consultar primero la documentación canónica vigente de SIS-Leg y las decisiones aprobadas;
 2. si el comportamiento no está claramente definido, verificar cómo funciona el sistema actualmente en producción en `martinebene/Botonera`, rama `main`, usando el estado vigente de esa rama al momento de la tarea;
 3. consultar únicamente los archivos necesarios para resolver la duda concreta;
 4. para comportamiento real, si existen contradicciones internas en el repositorio histórico, priorizar el código ejecutable de `main` sobre README, manuales o comentarios antiguos;
 5. si producción tampoco resuelve la duda de manera inequívoca, escalarla antes de inventar una nueva regla, interacción o decisión visual;
-6. si Botonera2 ya define explícitamente un comportamiento distinto, prevalece Botonera2 y la producción anterior no reabre esa decisión.
+6. si SIS-Leg ya define explícitamente un comportamiento distinto, prevalece SIS-Leg y la producción anterior no reabre esa decisión.
 
 Cuando la consulta a producción influya en una implementación, la PR debe indicar qué comportamiento se verificó y qué archivos fueron consultados.
 
@@ -197,12 +201,12 @@ Ver `docs/14-gobernanza-agentes.md` y las DEC posteriores vigentes, especialment
 - Se prefiere otra familia de modelo para revisar; no puede integrarse una PR con hallazgos BLOQUEANTES o IMPORTANTES pendientes.
 - El implementador tiene autonomía sobre detalles internos locales que no cambien comportamiento observable, contratos, dependencias ni decisiones globales.
 - Las decisiones reservadas por DT-038 requieren aprobación humana/documentada antes de continuar el alcance afectado.
-- La coordinación de turnos, handoffs e aislamiento entre roles se rige por DEC-017 y `martinebene/Botonera2-Control`.
+- La coordinación de turnos, handoffs e aislamiento entre roles se rige por DEC-017 y `martinebene/SIS-Leg-Control`.
 
 ## Evaluación obligatoria de impacto en el manual de usuario y soporte
 
 `manual/index.html` es el manual único de operación, configuración, instalación, diagnóstico y
-soporte de SISLeg. Es documentación destinada a personas que usan u operan el sistema, no
+soporte de SIS-Leg. Es documentación destinada a personas que usan u operan el sistema, no
 documentación interna de desarrollo.
 
 Regla permanente, aplicable a **todo** cambio del sistema, tenga o no código:
@@ -298,13 +302,13 @@ Obliga a interpretar «CI aplicable» de forma proporcional al tipo de cambio:
 - un commit mixto o cualquier cambio en código, tests, scripts, CI, configuración, dependencias, assets binarios o despliegue sigue siendo material;
 - modificar el workflow de CI requiere WP, rama, PR, revisión independiente y CI completa.
 
-### DEC-017 - Coordinación mediante Botonera2-Control
+### DEC-017 - Coordinación mediante SIS-Leg-Control
 
-Ver `docs/decisions/DEC-017-coordinacion-mediante-botonera2-control.md`.
+Ver `docs/decisions/DEC-017-coordinacion-mediante-sis-leg-control.md`.
 
 Obliga a:
 
-- descubrir el turno y la asignación desde `martinebene/Botonera2-Control` antes de actuar;
+- descubrir el turno y la asignación desde `martinebene/SIS-Leg-Control` antes de actuar;
 - mantener al humano como compuerta entre turnos;
 - usar `CURRENT.json` y la existencia del resultado esperado como regla de elegibilidad;
 - impedir comunicación lateral IMPLEMENTER/REVIEWER;
@@ -316,7 +320,7 @@ Obliga a:
 
 ### Identificadores propios en español
 
-Todo identificador bajo control de Botonera2 debe tener nombre semántico en español:
+Todo identificador bajo control de SIS-Leg debe tener nombre semántico en español:
 
 - funciones/métodos;
 - clases;
@@ -459,7 +463,7 @@ Solo debe detenerse la parte dependiente de esa decisión; el trabajo independie
 - No ocultar la ausencia de un MCP requerido: aplicar el aviso y fallback de DEC-003.
 - No usar memoria del modelo como sustituto de documentación externa cuando DEC-003 exige verificar una API/configuración vigente.
 - No ignorar DEC-007 al seleccionar entorno, rama/worktree, implementador o revisor.
-- No ignorar DEC-017 ni ejecutar trabajo si `Botonera2-Control` no autoriza inequívocamente el rol/turno.
+- No ignorar DEC-017 ni ejecutar trabajo si `SIS-Leg-Control` no autoriza inequívocamente el rol/turno.
 - No consumir informes privados del otro rol para eludir la mediación del ORCHESTRATOR.
 - No cerrar una entrega sin evaluar el impacto sobre `manual/index.html` y sin dejar constancia
   de esa evaluación, actualice o no el manual.
@@ -486,7 +490,7 @@ Cada cambio debe:
 - respetar el entorno y la independencia de agentes definidos por DEC-007;
 - dejar `manual/index.html` consistente con el cambio cuando sea relevante para usuario/soporte, o
   registrar explícitamente que se evaluó y no requiere actualización;
-- respetar el turno, aislamiento y handoffs definidos por DEC-017 y `Botonera2-Control`.
+- respetar el turno, aislamiento y handoffs definidos por DEC-017 y `SIS-Leg-Control`.
 
 Si aparece una contradicción real entre documentos, no adivinar: detener únicamente el alcance afectado y documentar la inconsistencia.
 

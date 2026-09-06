@@ -16,22 +16,6 @@ from functools import partial
 from pathlib import Path
 
 import pytest
-from botonera2_backend.auditoria import (
-    ErrorAuditoria,
-    ErrorEscritorNoDisponible,
-    EscritorAuditoriaCsv,
-    NivelAuditoria,
-)
-from botonera2_backend.dominio.entrada import (
-    Pulsacion,
-    RespuestaEntrada,
-    ResultadoPresencia,
-    ResultadoTest,
-)
-from botonera2_backend.dominio.estado import EstadoGlobal, EstadoOperativo
-from botonera2_backend.servicios.entrada import ServicioEntradaTecla
-from botonera2_backend.servicios.preparacion import ServicioPreparacion
-from botonera2_backend.servicios.serializacion import EjecutorMutaciones
 from conftest import (
     LINEA_LOGS,
     LINEA_QUORUM,
@@ -41,6 +25,22 @@ from conftest import (
     escribir_system_toml,
     filas_padron_valido,
 )
+from sis_leg_backend.auditoria import (
+    ErrorAuditoria,
+    ErrorEscritorNoDisponible,
+    EscritorAuditoriaCsv,
+    NivelAuditoria,
+)
+from sis_leg_backend.dominio.entrada import (
+    Pulsacion,
+    RespuestaEntrada,
+    ResultadoPresencia,
+    ResultadoTest,
+)
+from sis_leg_backend.dominio.estado import EstadoGlobal, EstadoOperativo
+from sis_leg_backend.servicios.entrada import ServicioEntradaTecla
+from sis_leg_backend.servicios.preparacion import ServicioPreparacion
+from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
 
 pytestmark = pytest.mark.anyio
 

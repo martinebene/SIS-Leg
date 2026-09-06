@@ -22,7 +22,7 @@ Las decisiones aquí registradas no reemplazan reglas de negocio ni decisiones t
 - `DEC-014-cliente-api-typescript-openapi-y-reconexion.md`: contrato del cliente TypeScript compartido, generación OpenAPI/tipos, superficies separadas de Moderación/Recinto y recuperación/reconexión.
 - `DEC-015-device-bridge-linux-fingerprint-y-entrega-de-pulsaciones.md`: contrato Linux del bridge físico, `evdev`, fingerprint compatible con producción histórica, `devices.json`, normalización amplia de teclas y entrega HTTP sin reintentos.
 - `DEC-016-remapeo-fisico-coordinado-y-persistencia-seleccionable.md`: contrato de remapeo coordinado backend/bridge, captura no bloqueante, candidato físico seguro e implementación temporal o persistente elegida explícitamente por el operador.
-- `DEC-017-coordinacion-mediante-botonera2-control.md`: coordinación de turnos y handoffs mediante el repositorio Control.
+- `DEC-017-coordinacion-mediante-sis-leg-control.md`: coordinación de turnos y handoffs mediante el repositorio Control.
 - `DEC-018-coordinador-local-secuencial-orca-y-cuotas.md`: coordinador local secuencial, lotes Orca y gestión de cuotas.
 - `DEC-019-ci-proporcional-y-commits-documentales.md`: CI completa para PRs/cambios materiales y omisión de CI de Product en pushes puramente documentales a `main`.
 

@@ -4,9 +4,9 @@ requires-python = "==3.14.*"
 
 [manifest]
 members = [
-    "botonera2",
-    "botonera2-backend",
-    "botonera2-device-bridge",
+    "sis-leg",
+    "sis-leg-backend",
+    "sis-leg-device-bridge",
 ]
 
 [[package]]
@@ -38,59 +38,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/61/cc/a381afa6efea9f496
 wheels = [
     { url = "https://files.pythonhosted.org/packages/da/35/f2287558c17e29fafc8ef3daf819bb9834061cfa43bff8014f7df7f63bdc/anyio-4.14.2-py3-none-any.whl", hash = "sha256:9f505dda5ac9f0c8309b5e8bd445a8c2bf7246f3ce950121e45ea15bc41d1494", size = 125813, upload-time = "2026-07-12T20:29:05.763Z" },
 ]
-
-[[package]]
-name = "botonera2"
-version = "0.0.0"
-source = { virtual = "." }
-
-[package.dev-dependencies]
-dev = [
-    { name = "anyio" },
-    { name = "httpx" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "anyio", specifier = ">=4.11,<5" },
-    { name = "httpx", specifier = ">=0.28,<0.29" },
-    { name = "pyright", specifier = ">=1.1.404,<2" },
-    { name = "pytest", specifier = ">=8.4,<9" },
-    { name = "ruff", specifier = ">=0.14,<0.15" },
-]
-
-[[package]]
-name = "botonera2-backend"
-version = "0.0.0"
-source = { editable = "apps/backend" }
-dependencies = [
-    { name = "fastapi" },
-    { name = "python-multipart" },
-    { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.116,<1" },
-    { name = "python-multipart", specifier = ">=0.0.18,<1" },
-    { name = "uvicorn", specifier = ">=0.41,<0.42" },
-]
-
-[[package]]
-name = "botonera2-device-bridge"
-version = "0.0.0"
-source = { editable = "services/device-bridge" }
-dependencies = [
-    { name = "evdev" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "evdev", specifier = ">=1.9.3,<2" }]
 
 [[package]]
 name = "certifi"
@@ -351,6 +298,59 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/87/44/90fa543014c45560cae1fffc63ea059fb3575ee6e1cb654562197e5d16fb/ruff-0.14.14-py3-none-win_amd64.whl", hash = "sha256:3dde1435e6b6fe5b66506c1dff67a421d0b7f6488d466f651c07f4cab3bf20fd", size = 11630486, upload-time = "2026-01-22T22:30:10.852Z" },
     { url = "https://files.pythonhosted.org/packages/9e/6a/40fee331a52339926a92e17ae748827270b288a35ef4a15c9c8f2ec54715/ruff-0.14.14-py3-none-win_arm64.whl", hash = "sha256:56e6981a98b13a32236a72a8da421d7839221fa308b223b9283312312e5ac76c", size = 10920448, upload-time = "2026-01-22T22:30:15.417Z" },
 ]
+
+[[package]]
+name = "sis-leg"
+version = "0.0.0"
+source = { virtual = "." }
+
+[package.dev-dependencies]
+dev = [
+    { name = "anyio" },
+    { name = "httpx" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "anyio", specifier = ">=4.11,<5" },
+    { name = "httpx", specifier = ">=0.28,<0.29" },
+    { name = "pyright", specifier = ">=1.1.404,<2" },
+    { name = "pytest", specifier = ">=8.4,<9" },
+    { name = "ruff", specifier = ">=0.14,<0.15" },
+]
+
+[[package]]
+name = "sis-leg-backend"
+version = "0.0.0"
+source = { editable = "apps/backend" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "python-multipart" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.116,<1" },
+    { name = "python-multipart", specifier = ">=0.0.18,<1" },
+    { name = "uvicorn", specifier = ">=0.41,<0.42" },
+]
+
+[[package]]
+name = "sis-leg-device-bridge"
+version = "0.0.0"
+source = { editable = "services/device-bridge" }
+dependencies = [
+    { name = "evdev" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "evdev", specifier = ">=1.9.3,<2" }]
 
 [[package]]
 name = "starlette"

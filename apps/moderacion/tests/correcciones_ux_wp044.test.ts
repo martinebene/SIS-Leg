@@ -27,7 +27,7 @@ import type {
   EstadoModeracion,
   PuntoOrdenDelDiaProyectado,
   VotacionModeracion,
-} from '@botonera2/api-client'
+} from '@sis-leg/api-client'
 import PanelContenedor from '../app/components/PanelContenedor.vue'
 import fuentePanelContenedor from '../app/components/PanelContenedor.vue?raw'
 import PanelSesionVotacion from '../app/components/PanelSesionVotacion.vue'
@@ -46,8 +46,8 @@ import PanelRecintoPalabra from '../app/components/PanelRecintoPalabra.vue'
 import fuentePanelRecintoPalabra from '../app/components/PanelRecintoPalabra.vue?raw'
 import GestionPalabra from '../app/components/GestionPalabra.vue'
 import fuenteGestionPalabra from '../app/components/GestionPalabra.vue?raw'
-import GestionRemapeo from '@botonera2/frontend-shared/componentes/GestionRemapeo.vue'
-import fuenteGestionRemapeo from '@botonera2/frontend-shared/componentes/GestionRemapeo.vue?raw'
+import GestionRemapeo from '@sis-leg/frontend-shared/componentes/GestionRemapeo.vue'
+import fuenteGestionRemapeo from '@sis-leg/frontend-shared/componentes/GestionRemapeo.vue?raw'
 import GrillaRecinto from '../app/components/GrillaRecinto.vue'
 import fuenteGrillaRecinto from '../app/components/GrillaRecinto.vue?raw'
 import BancaConcejal from '../app/components/BancaConcejal.vue'
