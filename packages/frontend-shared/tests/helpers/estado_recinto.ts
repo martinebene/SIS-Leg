@@ -17,6 +17,7 @@ import type {
   ConcejalPublico,
   EstadoRecinto,
   SonidosRecintoProyectados,
+  SonorizacionRecintoProyectada,
   VotacionPublica,
 } from '@botonera2/api-client'
 import { EVENTOS_SONOROS_RECINTO } from '../../src/transiciones_sonoras'
@@ -123,5 +124,46 @@ export function crearVotacionPublicaPrueba(
     votos_individuales: parcial.votos_individuales ?? null,
     conteos: parcial.conteos ?? null,
     voto_presidencial: parcial.voto_presidencial ?? null,
+  }
+}
+
+/**
+ * Convierte una fixture pública del Recinto en la subproyección sonora del puesto técnico.
+ *
+ * ## Por qué existe
+ *
+ * WP-074 dejó a Apoyo Técnico con una sola suscripción: la sonorización ya no llega en un
+ * `EstadoRecinto` propio sino recortada dentro de `EstadoTecnico.sonorizacion`. La tabla
+ * canónica de los quince escenarios sigue estando escrita sobre estados del Recinto, que es
+ * donde la semántica está definida, así que las pruebas del puesto técnico necesitan
+ * traducir cada escenario a la forma que ahora reciben.
+ *
+ * Esta función aplica exactamente el mismo recorte que hace el backend en
+ * `_sonorizacion`. Que las dos coincidan no se confía a la vista: lo comprueban las pruebas
+ * backend de la proyección, que verifican campo por campo qué viaja y qué no. Acá el
+ * recorte existe sólo para poder ejecutar la misma tabla de escenarios contra las dos
+ * superficies y seguir demostrando paridad 1:1.
+ */
+export function proyectarSonorizacionTecnica(estado: EstadoRecinto): SonorizacionRecintoProyectada {
+  return {
+    revision: estado.revision,
+    estado_global: estado.estado_global,
+    tecnico: estado.tecnico,
+    palabra:
+      estado.palabra === null
+        ? null
+        : {
+            cola: estado.palabra.cola.map((persona) => ({ banca: persona.banca })),
+            orador: estado.palabra.orador === null ? null : { banca: estado.palabra.orador.banca },
+          },
+    votacion:
+      estado.votacion === null
+        ? null
+        : { id: estado.votacion.id, estado_recepcion: estado.votacion.estado_recepcion },
+    concejales: estado.concejales.map((concejal) => ({
+      banca: concejal.banca,
+      presente: concejal.presente,
+    })),
+    sonidos: estado.sonidos,
   }
 }

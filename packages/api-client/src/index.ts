@@ -10,12 +10,16 @@
 export { ClienteModeracion, crearClienteModeracion } from './moderacion'
 export { ClienteRecinto, crearClienteRecinto } from './recinto'
 export { ClienteApoyoTecnico, crearClienteApoyoTecnico } from './apoyo_tecnico'
+export { ClienteRemapeoDispositivos, crearClienteRemapeo } from './remapeo'
 export { ClienteSimulador, crearClienteSimulador } from './simulador'
 export { SincronizadorEstado, iniciarSincronizacionEstado } from './sincronizador'
 export { EstrategiaBackoff, temporizadorPredeterminado } from './backoff'
 export { crearFabricaEventSourcePredeterminada } from './event_source'
 
 // Errores discriminados
+// Contratos mínimos compartidos entre superficies (WP-074)
+export type { ClienteRemapeo, PersistenciaRemapeo } from './remapeo'
+
 export {
   ErrorApi,
   ErrorHttp,
@@ -59,6 +63,14 @@ export type {
   EstadoRemapeoModeracion,
   EstadoRemapeoRespuesta,
   EstadoTecnico,
+  RemapeoTecnicoProyectado,
+  ConcejalRemapeoProyectado,
+  CapacidadesRemapeoProyectadas,
+  SonorizacionRecintoProyectada,
+  PersonaSonorizacionProyectada,
+  PalabraSonorizacionProyectada,
+  VotacionSonorizacionProyectada,
+  BancaSonorizacionProyectada,
   ApoyoTecnicoProyectado,
   TransmisionProyectada,
   AvisoTecnicoProyectado,

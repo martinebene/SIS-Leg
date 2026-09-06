@@ -10,9 +10,14 @@
  * configuración, mismo volumen y las mismas reglas de silencio.
  *
  * Esa exactitud se consigue **compartiendo este composable**, no replicándolo. Ambas
- * pantallas le entregan los mismos tres insumos —el `EstadoRecinto` adoptado, el estado de
- * su conexión y el número visible de la cuenta regresiva— y obtienen por construcción el
+ * pantallas le entregan los mismos tres insumos —la instantánea sonora adoptada, el estado
+ * de su conexión y el número visible de la cuenta regresiva— y obtienen por construcción el
  * mismo comportamiento.
+ *
+ * Desde WP-074 esa instantánea ya no es el mismo objeto en las dos pantallas: el Recinto
+ * entrega su `EstadoRecinto` completo y Apoyo Técnico entrega la subproyección sonora que
+ * viaja dentro de su propio estado, para no tener que abrir un segundo stream. Las dos
+ * satisfacen `InstantaneaSonora`, así que la decisión de sonar sigue siendo una sola.
  *
  * ## Qué hace
  *
@@ -53,9 +58,8 @@
  */
 
 import { onScopeDispose, watch, type Ref } from 'vue'
-import type { EstadoRecinto } from '@botonera2/api-client'
 import { crearMotorSonidos, type MotorSonidosRecinto } from './motor_sonidos'
-import { detectarTransicionesSonoras } from './transiciones_sonoras'
+import { detectarTransicionesSonoras, type InstantaneaSonora } from './transiciones_sonoras'
 
 /**
  * Vocabulario de conexión que comparten las pantallas de SISLeg.
@@ -67,9 +71,21 @@ import { detectarTransicionesSonoras } from './transiciones_sonoras'
  */
 export type EstadoConexionSuperficie = 'INICIAL' | 'CONECTADO' | 'RECONECTANDO' | 'DESCONECTADO'
 
-export interface OpcionesSonidosRecinto {
-  /** Último `EstadoRecinto` adoptado por la superficie que sonoriza. */
-  estado: Ref<EstadoRecinto | null>
+/**
+ * Insumos del composable, parametrizados por la instantánea que entrega cada pantalla.
+ *
+ * El parámetro genérico existe desde WP-074, cuando las dos superficies dejaron de mirar
+ * el mismo DTO: la Pantalla del Recinto sigue pasando su `EstadoRecinto` y Apoyo Técnico
+ * pasa la subproyección sonora que viaja dentro de su propio estado. Las dos satisfacen
+ * `InstantaneaSonora`, que es lo único que la comparación necesita.
+ *
+ * Sin el genérico habría que declarar `Ref<InstantaneaSonora | null>` y TypeScript
+ * rechazaría un `Ref<EstadoRecinto | null>`: una referencia es mutable y, por lo tanto,
+ * invariante en su contenido, aunque el valor de adentro sí sea asignable.
+ */
+export interface OpcionesSonidosRecinto<T extends InstantaneaSonora = InstantaneaSonora> {
+  /** Última instantánea adoptada por la superficie que sonoriza. */
+  estado: Ref<T | null>
   /** Estado de la conexión SSE; es lo que separa una baseline de un hecho nuevo. */
   estadoConexion: Ref<EstadoConexionSuperficie>
   /**
@@ -103,11 +119,14 @@ export interface SonidosRecinto {
  * sonorización es estrictamente de solo lectura en las dos superficies, y en Apoyo Técnico
  * no toca ninguno de los controles que esa pantalla sí puede accionar.
  */
-export function useSonidosRecinto(opciones: OpcionesSonidosRecinto): SonidosRecinto {
-  const motor = opciones.motor ?? crearMotorSonidos({ resolverUrl: exigirResolutor(opciones) })
+export function useSonidosRecinto<T extends InstantaneaSonora>(
+  opciones: OpcionesSonidosRecinto<T>,
+): SonidosRecinto {
+  const motor =
+    opciones.motor ?? crearMotorSonidos({ resolverUrl: exigirResolutor(opciones.resolverUrl) })
 
   /** Último estado ya sonorizado; es el término de comparación de la próxima revisión. */
-  let instantaneaPrevia: EstadoRecinto | null = null
+  let instantaneaPrevia: T | null = null
   /** Revisión de ese estado, usada como guarda de idempotencia. */
   let revisionPrevia: number | null = null
 
@@ -174,11 +193,13 @@ export function useSonidosRecinto(opciones: OpcionesSonidosRecinto): SonidosReci
  * que es exactamente el defecto difícil de detectar que WP-071 quiere evitar. Fallar acá,
  * al construir la pantalla, hace visible el error de cableado de inmediato.
  */
-function exigirResolutor(opciones: OpcionesSonidosRecinto): (ruta: string) => string {
-  if (opciones.resolverUrl === undefined) {
+function exigirResolutor(
+  resolverUrl: ((ruta: string) => string) | undefined,
+): (ruta: string) => string {
+  if (resolverUrl === undefined) {
     throw new Error(
       'useSonidosRecinto necesita `resolverUrl` para construir su motor predeterminado.',
     )
   }
-  return opciones.resolverUrl
+  return resolverUrl
 }

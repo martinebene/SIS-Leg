@@ -543,6 +543,145 @@ class SonidosRecintoProyectados(ModeloProyeccion):
     sonidos: tuple[SonidoRecintoProyectado, ...]
 
 
+class ConcejalRemapeoProyectado(ModeloProyeccion):
+    """Banca mínima que el panel de remapeo necesita para operar (WP-074).
+
+    Es una **allowlist** deliberadamente corta. El remapeo sólo tiene que poder
+    listar bancas elegibles, mostrar de quién es la que se está reemplazando y
+    enviar su identificador lógico de dispositivo. No necesita presencia, test
+    de dispositivo, bloque ni imagen, así que esos campos no viajan al puesto
+    técnico dentro de esta porción.
+
+    Los campos son exactamente los que lee ``GestionRemapeo.vue``; por eso el
+    componente compartido acepta indistintamente esta proyección y la de
+    Moderación sin adaptadores ni copias de reglas.
+    """
+
+    dni: str
+    nombre: str
+    apellido: str
+    banca: int
+    dispositivo_votacion: str
+
+
+class CapacidadesRemapeoProyectadas(ModeloProyeccion):
+    """Las tres capacidades de remapeo, recortadas de ``CapacidadesModeracion``.
+
+    Se copian tal cual del mismo evaluador autoritativo: acá no se recalcula
+    ninguna precondición. Si mañana cambiara la regla que habilita confirmar un
+    remapeo, cambia en un solo lugar y los dos puestos la heredan.
+    """
+
+    iniciar_remapeo: Capacidad
+    confirmar_remapeo: Capacidad
+    cancelar_remapeo: Capacidad
+
+
+class RemapeoTecnicoProyectado(ModeloProyeccion):
+    """Todo lo que Apoyo Técnico necesita para remapear, y nada más (WP-074).
+
+    Antes de WP-074 el puesto técnico obtenía estos tres datos abriendo una
+    segunda suscripción SSE al ``EstadoModeracion`` completo. Con cuatro
+    superficies abiertas bajo el mismo origen HTTP/1.1 eso agotaba el cupo de
+    conexiones del navegador y los comandos REST quedaban esperando, con
+    apariencia de servidor caído.
+
+    La solución no es copiar Moderación acá dentro: es proyectar sólo esta
+    allowlist. El puesto técnico sigue sin ver votación, quórum, orden del día,
+    autoridades ni las capacidades institucionales que no le corresponden.
+
+    Los nombres de los tres campos coinciden a propósito con los de
+    ``EstadoModeracion`` para que el componente compartido de remapeo consuma
+    ambas proyecciones sin ninguna traducción intermedia.
+    """
+
+    remapeo: EstadoRemapeoModeracion | None
+    concejales: tuple[ConcejalRemapeoProyectado, ...]
+    capacidades: CapacidadesRemapeoProyectadas
+
+
+class PersonaSonorizacionProyectada(ModeloProyeccion):
+    """Identidad mínima de una persona en la cola o en uso de la palabra.
+
+    Sólo la banca: es la única identidad que el detector de transiciones compara
+    para saber si alguien pidió, retiró o recibió la palabra. Nombre y apellido
+    no cambian ningún sonido, así que no viajan en esta porción.
+    """
+
+    banca: int
+
+
+class PalabraSonorizacionProyectada(ModeloProyeccion):
+    """Cola y orador reducidos a bancas, para deducir los tres sonidos de palabra."""
+
+    cola: tuple[PersonaSonorizacionProyectada, ...]
+    orador: PersonaSonorizacionProyectada | None
+
+
+class VotacionSonorizacionProyectada(ModeloProyeccion):
+    """Identidad y recepción de la votación visible, sin ningún dato de voto.
+
+    Los dos sonidos de votación se deducen comparando estos dos campos: una
+    identidad nueva ``EN_CURSO`` es una apertura y el paso ``EN_CURSO`` ->
+    ``CERRADA`` de la misma identidad es un cierre. Conteos, resultado y votos
+    individuales no participan de esa deducción y por eso quedan afuera: la
+    frontera de secreto se estrecha en lugar de ampliarse.
+    """
+
+    id: str
+    # ``str`` y no el enum, exactamente igual que en ``VotacionPublica``: esta
+    # porción se deriva de esa proyección y debe poder compararse contra ella
+    # sin una conversión intermedia.
+    estado_recepcion: str
+
+
+class BancaSonorizacionProyectada(ModeloProyeccion):
+    """Presencia de una banca, que es lo único que distingue los dos sonidos de presencia."""
+
+    banca: int
+    presente: bool
+
+
+class SonorizacionRecintoProyectada(ModeloProyeccion):
+    """Subproyección pública mínima que permite sonorizar igual que el Recinto (WP-074).
+
+    ## Por qué existe
+
+    Los quince sonidos de WP-065 no son eventos que publique el backend: se
+    deducen comparando dos estados públicos consecutivos. Hasta WP-074 el puesto
+    técnico obtenía esos estados abriendo un tercer stream SSE al Recinto. Este
+    submodelo transporta, dentro del **único** stream técnico, exactamente los
+    campos que esa comparación consulta y ninguno más.
+
+    ## Por qué no expone de más
+
+    Cada campo se construye con el mismo helper que arma la proyección pública
+    del Recinto y después se recorta. De ``VotacionPublica`` sólo sobreviven la
+    identidad y la recepción; de cada banca, la presencia; de la palabra, las
+    bancas. En consecuencia esta porción contiene **menos** información que la
+    pantalla del salón, que cualquiera puede mirar: nunca puede convertirse en
+    una vía de fuga del secreto temporal del voto.
+
+    ``tecnico`` sí viaja completo porque es el mismo submodelo pequeño que ve el
+    Recinto, con el aviso del destino ``RECINTO``. Que se construya con
+    ``_apoyo_tecnico`` —el helper que usa la proyección pública— es lo que
+    garantiza que un aviso o una transmisión suenen en el puesto técnico en la
+    misma revisión en que suenan en el salón.
+
+    ``revision`` se repite acá, además de en el estado técnico que la contiene,
+    porque la frontera reactiva usa la revisión del objeto que compara para
+    descartar una revisión repetida sin volver a sonar.
+    """
+
+    revision: int
+    estado_global: EstadoGlobal
+    tecnico: ApoyoTecnicoProyectado
+    palabra: PalabraSonorizacionProyectada | None
+    votacion: VotacionSonorizacionProyectada | None
+    concejales: tuple[BancaSonorizacionProyectada, ...]
+    sonidos: SonidosRecintoProyectados
+
+
 class EstadoModeracion(ModeloProyeccion):
     """Snapshot completo y reconstruible del frontend de Moderación."""
 
@@ -583,12 +722,29 @@ class EstadoRecinto(ModeloProyeccion):
 
 
 class EstadoTecnico(ModeloProyeccion):
-    """Snapshot completo del futuro puesto de Apoyo Técnico (WP-055).
+    """Snapshot completo del puesto de Apoyo Técnico (WP-055, consolidado por WP-074).
 
     Reúne todo lo que ese puesto necesita observar y nada más: el estado de
     transmisión, los avisos vigentes de **ambos** destinos, la biblioteca de
-    mensajes precargados y la misma franja de eventos L1/L2/L3 que ve
-    Moderación.
+    mensajes precargados, la misma franja de eventos L1/L2/L3 que ve Moderación
+    y, desde WP-074, las dos allowlists que faltaban: la del remapeo y la de la
+    sonorización.
+
+    ## Por qué WP-074 amplió este DTO
+
+    El puesto técnico observaba tres proyecciones a la vez y abría, por lo
+    tanto, tres streams SSE. Con Moderación, Recinto, Simulador y Apoyo Técnico
+    abiertos en el mismo navegador y bajo el mismo origen, eso daba seis
+    conexiones persistentes: más de las que HTTP/1.1 permite por origen. La
+    séptima petición —cualquier comando REST, por ejemplo «Preparar sala»—
+    quedaba encolada en el navegador sin llegar nunca al backend, y el operador
+    lo vivía como una caída del servidor.
+
+    La corrección consiste en que esta proyección transporte lo que el puesto
+    necesitaba pedirles a las otras dos. No se copia ``EstadoModeracion`` ni
+    ``EstadoRecinto``: ``remapeo`` y ``sonorizacion`` son allowlists mínimas,
+    documentadas en sus propias clases, construidas con los mismos helpers
+    autoritativos que usan las otras dos proyecciones.
 
     ``eventos_recientes`` se construye con el mismo método que la proyección
     de Moderación, de modo que la frontera de secreto de WP-052 se aplica una
@@ -605,6 +761,8 @@ class EstadoTecnico(ModeloProyeccion):
     biblioteca: BibliotecaMensajesProyectada
     eventos_recientes: tuple[EventoRecienteProyectado, ...]
     auditoria: EstadoAuditoriaProyectado
+    remapeo: RemapeoTecnicoProyectado
+    sonorizacion: SonorizacionRecintoProyectada
 
 
 class ServicioProyecciones:
@@ -767,10 +925,18 @@ class ServicioProyecciones:
         Reutiliza ``_eventos`` y ``_auditoria`` sin variantes propias: si un WP
         posterior endurece la frontera de secreto, Apoyo Técnico la hereda
         automáticamente y no puede quedar como una vía de fuga olvidada.
+
+        Desde WP-074 arma además las dos porciones que el puesto obtenía antes
+        abriendo streams adicionales. Las dos se construyen acá, bajo el mismo
+        lock y en la misma revisión que el resto del snapshot, de modo que el
+        remapeo y el sonido nunca describan un instante distinto del que
+        muestran los demás paneles.
         """
 
         generado_en = self._reloj()
+        monotono = self._reloj_monotono()
         contexto = self._estado.contexto_operativo_activo()
+        sesion = self._estado.sesion_activa
         return EstadoTecnico(
             revision=self._coordinador.revision,
             generado_en=generado_en,
@@ -787,6 +953,108 @@ class ServicioProyecciones:
             biblioteca=self.proyectar_biblioteca(self._estado.biblioteca_mensajes_tecnicos),
             eventos_recientes=self._eventos(contexto, generado_en),
             auditoria=self._auditoria(contexto),
+            remapeo=self._remapeo_tecnico(contexto),
+            sonorizacion=self._sonorizacion(contexto, sesion, generado_en, monotono),
+        )
+
+    def _remapeo_tecnico(self, contexto: Preparacion | None) -> RemapeoTecnicoProyectado:
+        """Recorta a la allowlist de remapeo lo que ya construyó Moderación.
+
+        No hay ninguna regla nueva acá: la operación activa sale del mismo
+        ``_remapeo`` que ve Moderación, las capacidades del mismo
+        ``_capacidades`` y el padrón del mismo ``_concejales_moderacion``. Lo
+        único propio de este método es **quitar** campos, que es exactamente lo
+        que WP-074 pide para no convertir la proyección técnica en una copia del
+        estado de Moderación.
+
+        Nótese que el padrón se recorre sin presencia ni test de dispositivo: el
+        panel de remapeo no los usa, así que tampoco los recibe.
+        """
+
+        capacidades = self._capacidades(contexto)
+        concejales = (
+            ()
+            if contexto is None
+            else tuple(
+                ConcejalRemapeoProyectado(
+                    dni=concejal.dni,
+                    nombre=concejal.nombre,
+                    apellido=concejal.apellido,
+                    banca=concejal.banca,
+                    dispositivo_votacion=concejal.dispositivo_votacion,
+                )
+                for concejal in contexto.padron.concejales
+            )
+        )
+        return RemapeoTecnicoProyectado(
+            remapeo=self._remapeo(self._estado.remapeo_activo),
+            concejales=concejales,
+            capacidades=CapacidadesRemapeoProyectadas(
+                iniciar_remapeo=capacidades.iniciar_remapeo,
+                confirmar_remapeo=capacidades.confirmar_remapeo,
+                cancelar_remapeo=capacidades.cancelar_remapeo,
+            ),
+        )
+
+    def _sonorizacion(
+        self,
+        contexto: Preparacion | None,
+        sesion: Sesion | None,
+        generado_en: datetime,
+        monotono: float,
+    ) -> SonorizacionRecintoProyectada:
+        """Deriva la porción sonora **desde la proyección pública**, y la recorta.
+
+        Éste es el punto donde se juega la paridad exigida por WP-071 y
+        preservada por WP-074: cada campo se calcula con el mismo helper que
+        arma ``EstadoRecinto`` y recién después se reduce a lo que el detector
+        de transiciones compara. Si mañana cambiara, por ejemplo, la ventana de
+        visibilidad de una votación pública, el puesto técnico la heredaría sola
+        y seguiría sonando en el mismo instante que el salón.
+
+        El recorte también es una decisión de seguridad: al pasar por
+        ``_votacion_publica`` se hereda el secreto temporal del voto, y al
+        quedarse sólo con la identidad y la recepción se descartan además los
+        conteos y los votos individuales que la pantalla del salón sí puede
+        mostrar una vez cerrada la votación.
+        """
+
+        palabra_publica = self._palabra_publica(sesion, contexto)
+        votacion_publica = self._votacion_publica(contexto, generado_en)
+        return SonorizacionRecintoProyectada(
+            revision=self._coordinador.revision,
+            estado_global=self._estado.estado_global,
+            # Misma ranura que recibe el Recinto: el puesto técnico debe sonar
+            # con el aviso del salón, no con el suyo propio.
+            tecnico=self._apoyo_tecnico(self._estado.aviso_tecnico_recinto, generado_en),
+            palabra=(
+                None
+                if palabra_publica is None
+                else PalabraSonorizacionProyectada(
+                    cola=tuple(
+                        PersonaSonorizacionProyectada(banca=persona.banca)
+                        for persona in palabra_publica.cola
+                    ),
+                    orador=(
+                        None
+                        if palabra_publica.orador is None
+                        else PersonaSonorizacionProyectada(banca=palabra_publica.orador.banca)
+                    ),
+                )
+            ),
+            votacion=(
+                None
+                if votacion_publica is None
+                else VotacionSonorizacionProyectada(
+                    id=votacion_publica.id,
+                    estado_recepcion=votacion_publica.estado_recepcion,
+                )
+            ),
+            concejales=tuple(
+                BancaSonorizacionProyectada(banca=concejal.banca, presente=concejal.presente)
+                for concejal in self._concejales_publicos(contexto, generado_en, monotono)
+            ),
+            sonidos=self._sonidos(self._estado.sonidos_recinto),
         )
 
     @staticmethod

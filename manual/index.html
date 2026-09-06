@@ -1977,6 +1977,17 @@ volumen = 90</code></pre>
 
           <p>Estos comandos sólo consultan: no modifican nada.</p>
 
+          <p>
+            Antes de revisar el servidor conviene recordar qué es normal en los puestos. Las
+            cuatro pantallas del sistema —Moderación, Pantalla del Recinto, Apoyo Técnico y el
+            simulador de dispositivos— pueden estar abiertas a la vez, en el mismo equipo o en
+            equipos distintos, sin que ninguna interfiera con las demás. En particular, no hace
+            falta cerrar Apoyo Técnico para que Moderación pueda ejecutar sus comandos. Si alguna
+            vez una orden queda sin completarse mientras el resto del sistema responde con
+            normalidad, es una anomalía que debe informarse al soporte técnico y no una maniobra
+            de operación conocida.
+          </p>
+
           <pre><code>python3.14 /opt/botonera2/current/deploy/herramienta_despliegue.py estado
 readlink -f /opt/botonera2/current
 systemctl status botonera2-backend.service botonera2-device-bridge.service
@@ -2047,6 +2058,18 @@ curl --fail http://127.0.0.1/manual/</code></pre>
                   <td>
                     El archivo de mensajes precargados: si no cumple el formato, el sistema lo
                     protege y rechaza escribirlo. Se corrige a mano y se reinicia el servicio.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Un botón de Moderación queda «pensando» y parece que el servidor se cayó, pero
+                    las pantallas siguen mostrando información y el servicio responde.
+                  </td>
+                  <td>
+                    Comprobar primero el servicio con las consultas de diagnóstico de arriba. Las
+                    cuatro pantallas del sistema pueden permanecer abiertas al mismo tiempo, así
+                    que cerrar Apoyo Técnico no es una maniobra necesaria para destrabar un
+                    comando; si el síntoma aparece, corresponde informarlo al soporte técnico.
                   </td>
                 </tr>
               </tbody>

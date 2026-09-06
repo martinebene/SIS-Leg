@@ -65,6 +65,19 @@ export { formatearFactorMayoria } from './factor_mayoria'
 export { RUTA_MANUAL, ROTULO_ACCESO_MANUAL } from './manual'
 
 /*
+  Contrato mínimo del remapeo compartido (WP-074).
+
+  Se exporta el tipo, y no una implementación, porque el remapeo no tiene lógica común más
+  allá del componente: lo que las dos pantallas necesitan compartir es la forma del estado
+  que ese componente lee.
+*/
+export type {
+  CapacidadesRemapeoCompartidas,
+  ConcejalRemapeoCompartido,
+  EstadoRemapeoCompartido,
+} from './contrato_remapeo'
+
+/*
   Sonorización del recinto (WP-066, compartida por WP-071).
 
   Se exportan las tres capas por separado —qué ocurrió, cómo suena y cuándo suena— porque
@@ -75,6 +88,7 @@ export {
   detectarTransicionesSonoras,
   EVENTOS_SONOROS_RECINTO,
   type EventoSonoroRecinto,
+  type InstantaneaSonora,
 } from './transiciones_sonoras'
 
 export {

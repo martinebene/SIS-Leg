@@ -121,6 +121,42 @@ export type CapacidadesModeracion = components['schemas']['CapacidadesModeracion
 export type EstadoTecnico = components['schemas']['EstadoTecnico']
 
 /**
+ * Allowlist de remapeo que viaja dentro de `EstadoTecnico` (WP-074).
+ *
+ * Sus tres campos se llaman igual que en `EstadoModeracion` a propósito: el
+ * componente compartido de remapeo consume las dos proyecciones sin traducción.
+ */
+export type RemapeoTecnicoProyectado = components['schemas']['RemapeoTecnicoProyectado']
+
+/** Banca mínima que necesita el panel de remapeo: identidad y dispositivo lógico */
+export type ConcejalRemapeoProyectado = components['schemas']['ConcejalRemapeoProyectado']
+
+/** Las tres capacidades de remapeo recortadas de las capacidades de Moderación */
+export type CapacidadesRemapeoProyectadas = components['schemas']['CapacidadesRemapeoProyectadas']
+
+/**
+ * Subproyección pública mínima que permite a Apoyo Técnico sonorizar igual que
+ * el Recinto sin abrir un stream propio del Recinto (WP-074).
+ *
+ * Contiene estrictamente los campos que compara el detector de transiciones y
+ * menos información que la pantalla del salón: de la votación sólo viajan la
+ * identidad y la recepción, nunca conteos ni votos individuales.
+ */
+export type SonorizacionRecintoProyectada = components['schemas']['SonorizacionRecintoProyectada']
+
+/** Identidad de cola/orador reducida a la banca, única que distingue los sonidos de palabra */
+export type PersonaSonorizacionProyectada = components['schemas']['PersonaSonorizacionProyectada']
+
+/** Cola y orador reducidos a bancas para la sonorización */
+export type PalabraSonorizacionProyectada = components['schemas']['PalabraSonorizacionProyectada']
+
+/** Identidad y recepción de la votación visible, sin ningún dato de voto */
+export type VotacionSonorizacionProyectada = components['schemas']['VotacionSonorizacionProyectada']
+
+/** Presencia de una banca: lo único que separa `concejal_presente` de `concejal_ausente` */
+export type BancaSonorizacionProyectada = components['schemas']['BancaSonorizacionProyectada']
+
+/**
  * Porción técnica que reciben Moderación y Recinto dentro de su propio estado.
  *
  * Cada uno recibe la transmisión y únicamente el aviso de SU destino: la

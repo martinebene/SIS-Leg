@@ -133,6 +133,55 @@ export function estadoRecinto(parcialTecnico: Record<string, unknown> = {}) {
   }
 }
 
+/**
+ * Allowlist de remapeo que viaja dentro del estado técnico desde WP-074.
+ *
+ * Antes esta información llegaba a la SPA técnica en un `EstadoModeracion` completo, por una
+ * suscripción propia. Ahora es una porción del mismo snapshot, y el doble determinista del
+ * navegador tiene que reflejarlo para que el panel se dibuje igual que en producción.
+ */
+export function remapeoTecnico(parcial: Record<string, unknown> = {}) {
+  const habilitada = { habilitada: true, motivos: [] as string[] }
+  return {
+    remapeo: null,
+    concejales: Array.from({ length: 12 }, (_, indice) => ({
+      dni: `1000000${indice}`,
+      nombre: `Nombre${indice + 1}`,
+      apellido: `Apellido${indice + 1}`,
+      banca: indice + 1,
+      dispositivo_votacion: `dev${String(indice + 1).padStart(2, '0')}`,
+    })),
+    capacidades: {
+      iniciar_remapeo: habilitada,
+      confirmar_remapeo: { habilitada: false, motivos: ['REMAPEO_NO_COINCIDE'] },
+      cancelar_remapeo: { habilitada: false, motivos: ['REMAPEO_NO_COINCIDE'] },
+    },
+    ...parcial,
+  }
+}
+
+/**
+ * Subproyección sonora del estado técnico (WP-074).
+ *
+ * Contiene exactamente los campos que compara el detector de transiciones: es la misma
+ * información con la que sonoriza el Recinto, recortada a bancas e identidades de votación.
+ */
+export function sonorizacionTecnica(parcial: Record<string, unknown> = {}) {
+  return {
+    revision: 1,
+    estado_global: 'SESION_ABIERTA',
+    tecnico: { transmision: transmision(), aviso: null },
+    palabra: { cola: [], orador: null },
+    votacion: null,
+    concejales: concejalesPublicos(12).map((concejal) => ({
+      banca: concejal.banca,
+      presente: concejal.presente,
+    })),
+    sonidos: sonidosRecinto(),
+    ...parcial,
+  }
+}
+
 export function estadoTecnico(parcial: Record<string, unknown> = {}) {
   return {
     revision: 1,
@@ -141,6 +190,8 @@ export function estadoTecnico(parcial: Record<string, unknown> = {}) {
     transmision: transmision(),
     aviso_moderacion: null,
     aviso_recinto: null,
+    remapeo: remapeoTecnico(),
+    sonorizacion: sonorizacionTecnica(),
     biblioteca: {
       disponible: true,
       motivo: null,

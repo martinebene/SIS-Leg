@@ -93,7 +93,47 @@ function crearEstadoTecnico(parcial: Record<string, unknown> = {}) {
       hecho: null,
     })),
     auditoria: { activa: true, disponible: true, fallado: false, cerrado: false, motivo: null },
+    remapeo: crearRemapeoTecnico(),
+    sonorizacion: crearSonorizacion(),
     ...parcial,
+  }
+}
+
+/**
+ * Allowlist de remapeo dentro del estado técnico (WP-074).
+ *
+ * Antes de WP-074 estos datos llegaban en un `EstadoModeracion` completo, por una
+ * suscripción propia del puesto. Ahora viajan acá, así que el doble del navegador debe
+ * entregarlos por este camino para que el panel se dibuje igual que en producción.
+ */
+function crearRemapeoTecnico(operacion: unknown = null) {
+  return {
+    remapeo: operacion,
+    concejales: Array.from({ length: 12 }, (_, indice) => ({
+      dni: `1000000${indice}`,
+      nombre: `Nombre${indice + 1}`,
+      apellido: `Apellido${indice + 1}`,
+      banca: indice + 1,
+      dispositivo_votacion: `dev${String(indice + 1).padStart(2, '0')}`,
+    })),
+    capacidades: {
+      iniciar_remapeo: { habilitada: true, motivos: [] },
+      confirmar_remapeo: { habilitada: false, motivos: ['REMAPEO_NO_COINCIDE'] },
+      cancelar_remapeo: { habilitada: true, motivos: [] },
+    },
+  }
+}
+
+/** Subproyección sonora mínima: estas pruebas miden geometría, no audio. */
+function crearSonorizacion() {
+  return {
+    revision: 1,
+    estado_global: 'SESION_ABIERTA',
+    tecnico: { transmision: crearTransmision(), aviso: null },
+    palabra: { cola: [], orador: null },
+    votacion: null,
+    concejales: [],
+    sonidos: { disponible: true, motivo: null, detalle: null, sonidos: [] },
   }
 }
 
@@ -116,67 +156,6 @@ const REMAPEO_CAPTURANDO = {
   candidato: null,
   diagnostico: null,
   iniciado_en: '2026-09-02T10:00:00Z',
-}
-
-function crearEstadoModeracion(parcial: Record<string, unknown> = {}) {
-  return {
-    revision: 1,
-    generado_en: '2026-09-02T10:00:00Z',
-    estado_global: 'SESION_ABIERTA',
-    preparacion: null,
-    sesion: {
-      fecha_hora_inicio: '2026-09-02T09:00:00Z',
-      fecha_hora_apertura: '2026-09-02T09:30:00Z',
-      numero_sesion: 59,
-      presidencia: 'Presidencia',
-      secretaria_legislativa: 'Secretaría',
-    },
-    configuracion: {
-      total_bancas: 12,
-      filas_bancas: [6, 6],
-      modo_seguro: true,
-      mayoria_simple_estricta: true,
-    },
-    concejales: Array.from({ length: 12 }, (_, indice) => ({
-      nombre: `Nombre${indice + 1}`,
-      apellido: `Apellido${indice + 1}`,
-      bloque: 'Bloque',
-      banca: indice + 1,
-      dni: `1000000${indice}`,
-      dispositivo_votacion: `dev${String(indice + 1).padStart(2, '0')}`,
-      ruta_imagen: `assets/bancas/banca-${String(indice + 1).padStart(2, '0')}.png`,
-      presente: true,
-      test_activo: false,
-      test_expira_en: null,
-    })),
-    quorum: { cantidad_presentes: 12, requerido: 7, alcanzado: true },
-    votacion: null,
-    palabra: { orador: null, cola: [] },
-    orden_del_dia: null,
-    eventos_recientes: [],
-    auditoria: { activa: true, disponible: true, fallado: false, cerrado: false, motivo: null },
-    remapeo: null,
-    capacidades: {
-      preparar_sala: { habilitada: false, motivos: ['ESTADO_INCOMPATIBLE'] },
-      cancelar_preparacion: { habilitada: false, motivos: ['ESTADO_INCOMPATIBLE'] },
-      abrir_sesion: { habilitada: false, motivos: ['ESTADO_INCOMPATIBLE'] },
-      cerrar_sesion: { habilitada: true, motivos: [] },
-      editar_autoridades: { habilitada: true, motivos: [] },
-      abrir_votacion: { habilitada: true, motivos: [] },
-      finalizar_votacion: { habilitada: false, motivos: ['VOTACION_NO_EN_CURSO'] },
-      desempatar_votacion: { habilitada: false, motivos: ['VOTACION_NO_EMPATADA'] },
-      otorgar_palabra: { habilitada: false, motivos: ['COLA_VACIA'] },
-      quitar_palabra: { habilitada: false, motivos: ['COLA_VACIA'] },
-      cargar_orden_del_dia: { habilitada: true, motivos: [] },
-      descartar_orden_del_dia: { habilitada: false, motivos: ['ESTADO_INCOMPATIBLE'] },
-      iniciar_remapeo: { habilitada: true, motivos: [] },
-      confirmar_remapeo: { habilitada: false, motivos: ['REMAPEO_NO_COINCIDE'] },
-      cancelar_remapeo: { habilitada: false, motivos: ['REMAPEO_NO_COINCIDE'] },
-      registrar_evento_manual: { habilitada: false, motivos: ['ESTADO_INCOMPATIBLE'] },
-    },
-    tecnico: { transmision: crearTransmision(), aviso: null },
-    ...parcial,
-  }
 }
 
 // =============================================================================
@@ -261,10 +240,10 @@ async function abrirPuestoTecnico(
 ): Promise<void> {
   await page.setViewportSize(viewport)
   await instalarBackend(page, {
-    '/api/v1/estado/tecnico': crearEstadoTecnico(opciones.avisos ?? {}),
-    '/api/v1/estado/moderacion': crearEstadoModeracion(
-      opciones.remapeo === undefined ? {} : { remapeo: opciones.remapeo },
-    ),
+    '/api/v1/estado/tecnico': crearEstadoTecnico({
+      ...(opciones.avisos ?? {}),
+      ...(opciones.remapeo === undefined ? {} : { remapeo: crearRemapeoTecnico(opciones.remapeo) }),
+    }),
   })
   await page.goto(URL_TECNICO)
   await expect(page.getByTestId('grilla-tecnica')).toBeVisible()

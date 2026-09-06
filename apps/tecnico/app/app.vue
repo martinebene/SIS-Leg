@@ -3,8 +3,9 @@
  * Shell de la SPA de Apoyo Técnico (WP-056, redistribuido por WP-059).
  *
  * Responsabilidades:
- * 1. Abrir las tres suscripciones autoritativas (plano técnico, Moderación para remapeo y,
- *    desde WP-071, la proyección pública del Recinto para el sonido).
+ * 1. Abrir la **única** suscripción autoritativa del puesto (WP-074). Desde ese mismo
+ *    estado salen también el remapeo y la sonorización, que antes exigían dos streams más
+ *    y agotaban las conexiones HTTP/1.1 del navegador con las cuatro superficies abiertas.
  * 2. Alimentar la cabecera con conexión, estado global y estado de transmisión.
  * 3. Disponer los cinco bloques operativos en una grilla que entra completa a 1366×768 y
  *    a 1920×1080, sin scroll de página.
@@ -67,24 +68,32 @@ import ControlAvisos from './components/ControlAvisos.vue'
 import BibliotecaMensajes from './components/BibliotecaMensajes.vue'
 import ListaEventosTecnicos from './components/ListaEventosTecnicos.vue'
 
-const {
-  estado,
-  estadoModeracion,
-  estadoRecinto,
-  estadoConexion,
-  estadoConexionRecinto,
-  revision,
-  conectado,
-  desactualizado,
-  cliente,
-  clienteModeracion,
-} = useEstadoTecnico()
+const { estado, estadoConexion, revision, conectado, desactualizado, cliente, clienteRemapeo } =
+  useEstadoTecnico()
 
 const transmision = computed(() => estado.value?.transmision ?? null)
 const avisoModeracion = computed(() => estado.value?.aviso_moderacion ?? null)
 const avisoRecinto = computed(() => estado.value?.aviso_recinto ?? null)
 const biblioteca = computed(() => estado.value?.biblioteca ?? null)
 const eventos = computed(() => estado.value?.eventos_recientes ?? [])
+
+/**
+ * Allowlist de remapeo que viaja dentro del estado técnico (WP-074).
+ *
+ * Antes este dato salía de un `EstadoModeracion` completo obtenido por una suscripción
+ * propia. Ahora es una porción del único snapshot: mismos campos, misma autoridad, una
+ * conexión menos.
+ */
+const remapeo = computed(() => estado.value?.remapeo ?? null)
+
+/**
+ * Subproyección con la que este puesto sonoriza igual que el salón (WP-074).
+ *
+ * Contiene exactamente los campos que compara el detector de transiciones. Al venir dentro
+ * del mismo estado, el sonido queda además sincronizado con lo que muestran los paneles: es
+ * la misma revisión, no dos streams que podrían adelantarse uno al otro.
+ */
+const sonorizacion = computed(() => estado.value?.sonorizacion ?? null)
 
 const { segundosTransmision, segundosRestantesAviso } = usePresentacionTecnica(
   computed(() => ({
@@ -120,10 +129,12 @@ function seleccionarBorrador(mensaje: { texto: string; destino: DestinoAvisoTecn
  * equipo técnico. Para que la paridad sea exacta y no una imitación, esta pantalla usa el
  * **mismo** composable que la Pantalla del Recinto y le entrega los mismos tres insumos.
  *
- * 1. `estadoRecinto` y `estadoConexionRecinto` son la proyección pública y el estado de su
- *    propio stream. Con el stream abierto, cada estado adoptado es un hecho nuevo; sin él,
- *    es una baseline y no debe sonar. Eso cubre a la vez el primer snapshot, la recarga de
- *    la página y cualquier reconexión: Apoyo Técnico no reproduce historia.
+ * 1. `sonorizacion` y `estadoConexion` son la subproyección pública y el estado del único
+ *    stream de esta pantalla. Con el stream abierto, cada estado adoptado es un hecho
+ *    nuevo; sin él, es una baseline y no debe sonar. Eso cubre a la vez el primer snapshot,
+ *    la recarga de la página y cualquier reconexión: Apoyo Técnico no reproduce historia.
+ *    Desde WP-074 el canal que se observa es el técnico, porque ya no existe un segundo
+ *    stream público que pudiera reconectar por su cuenta.
  * 2. `segundosTransmision` es el número de la cuenta regresiva que ya se calcula acá
  *    arriba para mostrarlo en el panel de Transmisión. Se reutiliza a propósito, por dos
  *    motivos: el tic acompaña exactamente al dígito que el operador ve bajar, y no se
@@ -138,8 +149,8 @@ function seleccionarBorrador(mensaje: { texto: string; destino: DestinoAvisoTecn
  * equipo, igual que en el recinto (ver `docs/13-despliegue-y-operacion.md`).
  */
 useSonidosRecinto({
-  estado: estadoRecinto,
-  estadoConexion: estadoConexionRecinto,
+  estado: sonorizacion,
+  estadoConexion,
   segundosCuentaRegresiva: segundosTransmision,
   resolverUrl: resolverRutaAsset,
 })
@@ -189,11 +200,7 @@ useSonidosRecinto({
           data-testid="panel-remapeo-tecnico"
           class="lg:col-start-2 lg:row-start-1"
         >
-          <GestionRemapeo
-            :estado="estadoModeracion"
-            :cliente="clienteModeracion"
-            :conectado="conectado"
-          />
+          <GestionRemapeo :estado="remapeo" :cliente="clienteRemapeo" :conectado="conectado" />
         </PanelTecnico>
 
         <!--
