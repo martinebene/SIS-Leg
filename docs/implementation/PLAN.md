@@ -123,8 +123,8 @@ WP-018 quedó integrado mediante squash merge de PR #24 sobre el candidato final
 | WP-032 | Corregir pérdida de cancelación en fronteras temporales y estabilizar teardown/CI del backend | INTEGRADO | WP-017 | - |
 | WP-074 | Consolidar Apoyo Técnico en una única proyección SSE para evitar starvation HTTP/1.1 | INTEGRADO | WP-056, WP-071 | - |
 | WP-075 | Capturar exclusivamente los numpads mapeados para que no escriban en el escritorio del moderador | EN_CURSO | WP-019, WP-020 | claude |
-| WP-076 | Alinear destino a la izquierda y acciones a la derecha en mensajes precargados | PENDIENTE | WP-070 | claude |
-| WP-078 | Registrar mensajes al Recinto como eventos principales INICIO/FIN | PENDIENTE | WP-055, WP-056 | claude |
+| WP-076 | Alinear destino a la izquierda y acciones a la derecha en mensajes precargados | EN_CURSO | WP-070 | claude |
+| WP-078 | Registrar mensajes al Recinto como eventos principales INICIO/FIN | EN_CURSO | WP-055, WP-056 | claude |
 | WP-077 | Renombrar repositorios, código y referencias vigentes de Botonera2 a SIS-Leg | PENDIENTE | WP-074, WP-075, WP-076, WP-078 | claude |
 
 WP-032 quedó integrado mediante squash merge de PR #28 sobre el candidato `ae0b5fa8e2c36b5a00f1711650e72e575d5e597d`, después de CI candidata #192 / run `32857548560` verde 6/6 y revisión independiente con OpenCode + DeepSeek V4 Pro, que concluyó `LISTA PARA INTEGRAR` con cero hallazgos BLOQUEANTES, IMPORTANTES y MENORES. El squash produjo `8e2cf38c0ddd4fd9a003df0754497253fcf710ff` en `main`. La CI post-merge #193 / run `32861046565` terminó `success` 6/6 y `Backend · pruebas` completó `uv run pytest` normalmente, confirmando que la condición de carrera de cancelación que había bloqueado el gate post-merge de WP-021 quedó corregida.
@@ -457,3 +457,6 @@ WP-074 quedó integrado mediante PR #83 sobre el candidato `36206974ff13f2b08e32
 
 
 WP-074 completó cleanup verificable: worktree Orca eliminado, rama local y remota ausentes, único worktree restante `main`, y checkout coordinador limpio/sincronizado en `6ee9ef607c697eb0f3b44fc1cea0cf9a39860036`. Con ese gate satisfecho, HUMAN_GATE/ORCHESTRATOR activa WP-075 con Claude Code / Claude Opus 5 (High) como IMPLEMENTER y Antigravity/AGY / Gemini 3.8 Flash (High) como REVIEWER independiente. WP-075 debe capturar exclusivamente mediante EVIOCGRAB sólo los numpads pertenecientes al mapping efectivo, preservando teclado/mouse del moderador y aplicando política fail-safe si un dispositivo mapeado no puede adquirir exclusividad. max_concurrency=1 continúa vigente; WP-076, WP-078 y WP-077 permanecen PENDIENTES, y WP-077 continúa reservado como último corte de identidad.
+
+
+HUMAN_GATE autoriza ejecución paralela de WP-075, WP-076 y WP-078 porque sus alcances materiales son independientes y usan worktrees/ramas separados: WP-075 actúa sobre Device Bridge, WP-076 sobre geometría de Biblioteca de Mensajes en Apoyo Técnico y WP-078 sobre auditoría/backend de avisos al Recinto. El solapamiento documental eventual en PLAN/manual se resuelve mediante sincronización Git normal antes del handoff, sin rebase ni force-push. La coordinación de consumo de CPU/RAM del VPS queda a cargo exclusivo de HUMAN_GATE; los agentes locales no coordinan ni serializan otros WPs. `max_concurrency=1` se mantiene para cada ejecución real de navegador/Playwright en este VPS, no como límite global de work packages. WP-077 permanece PENDIENTE y debe ejecutarse último, en exclusividad, una vez integrados WP-075, WP-076 y WP-078.
