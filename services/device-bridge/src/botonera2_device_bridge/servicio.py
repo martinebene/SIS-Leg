@@ -7,12 +7,19 @@ Este módulo implementa `ServicioDeviceBridge`, el componente central que coordi
 4. El envío determinista de pulsaciones hacia FastAPI mediante `ClienteHttpBackend`.
 5. El ciclo de vida resiliente del proceso (tolerancia a cero dispositivos iniciales,
    desconexión y reconexión en caliente de hardware, y parada limpia ante señales).
+6. La política de captura exclusiva (WP-075): pide al adaptador tomar en exclusiva
+   únicamente los dispositivos del mapping efectivo, para que sus pulsaciones no lleguen
+   al escritorio ni al navegador de Moderación.
 
 Invariantes críticas:
 - Cero asignación automática: Un fingerprint no presente en `devices.json` NUNCA
   recibe un `devXX` ni emite POST al backend.
 - Cero reintentos: Cada evento físico `keydown` emite a lo sumo un POST.
 - No decide reglas de negocio: El bridge no evalúa presencia, quórum, voto ni palabra.
+- Exclusividad fail-safe: un dispositivo mapeado sin exclusividad no despacha pulsaciones
+  funcionales; nunca se degrada silenciosamente a captura compartida.
+- Ningún dispositivo fuera del mapping efectivo se toma en exclusiva, de modo que el
+  teclado y el mouse del moderador siguen funcionando con normalidad.
 """
 
 from __future__ import annotations
@@ -26,6 +33,7 @@ from botonera2_device_bridge.adaptador_linux import (
     AdaptadorEntradaFisica,
     DispositivoFisico,
     ErrorDispositivoDesconectado,
+    ErrorExclusividadNoDisponible,
 )
 from botonera2_device_bridge.cliente_http import ClienteHttpBackend
 from botonera2_device_bridge.configuracion import ConfiguracionBridge
@@ -73,6 +81,13 @@ class ServicioDeviceBridge:
 
         # Registro de dispositivos abiertos actualmente (indexados por su ruta de sistema)
         self.dispositivos_activos: dict[str, DispositivoFisico] = {}
+        # Fingerprints que actualmente están tomados en exclusiva por este proceso. Es la
+        # proyección que decide el despacho funcional: si un fingerprint mapeado no figura
+        # acá, sus pulsaciones no salen hacia FastAPI.
+        self.fingerprints_exclusivos: set[str] = set()
+        # Rutas cuyo fallo de exclusividad ya fue reportado, para no inundar el log en cada
+        # iteración mientras la condición degradada persiste.
+        self._fallos_exclusividad_reportados: set[str] = set()
         self._evento_detencion = threading.Event()
         self._ultimo_escaneo: float = 0.0
 
@@ -85,10 +100,12 @@ class ServicioDeviceBridge:
            - Si está mapeado: continuar siempre por el flujo funcional normal.
            - Si no está mapeado: ofrecerlo al coordinador de captura y NO enviar
              esa pulsación como entrada funcional.
-        3. Normalizar el nombre o código de la tecla física:
+        3. Exigir captura exclusiva vigente del fingerprint mapeado:
+           - Si el bridge no la tiene: Registrar diagnóstico y NO enviar POST.
+        4. Normalizar el nombre o código de la tecla física:
            - Si la tecla no es reconocida: Registrar diagnóstico y NO enviar POST.
-        4. Transmitir {dispositivo, tecla} al backend mediante un único intento HTTP.
-        5. Registrar el resultado funcional o error de red.
+        5. Transmitir {dispositivo, tecla} al backend mediante un único intento HTTP.
+        6. Registrar el resultado funcional o error de red.
 
         Args:
             evento: Evento de tecla física capturado.
@@ -124,7 +141,20 @@ class ServicioDeviceBridge:
                 )
             return None
 
-        # 2. Normalización de tecla
+        # 3. Exclusividad obligatoria antes de despachar (política fail-safe de WP-075).
+        # Si el dispositivo está mapeado pero el bridge no consiguió tomarlo en exclusiva,
+        # sus pulsaciones también las está recibiendo el escritorio. Aceptarlas sería
+        # degradar silenciosamente a captura compartida, así que se descartan.
+        if evento.fingerprint not in self.fingerprints_exclusivos:
+            logger.warning(
+                "Pulsación descartada de %s: el dispositivo mapeado (fp=%s) todavía no "
+                "tiene captura exclusiva. Revise el diagnóstico de exclusividad del bridge.",
+                dispositivo_logico,
+                evento.fingerprint,
+            )
+            return None
+
+        # 4. Normalización de tecla
         tecla_normalizada = normalizar_tecla(evento.nombre_tecla)
         if tecla_normalizada is None:
             logger.info(
@@ -134,7 +164,7 @@ class ServicioDeviceBridge:
             )
             return None
 
-        # 3. Transmisión HTTP al backend
+        # 5. Transmisión HTTP al backend
         solicitud = SolicitudEntradaLogica(
             dispositivo=dispositivo_logico,
             tecla=tecla_normalizada,
@@ -181,7 +211,66 @@ class ServicioDeviceBridge:
                         disp.ruta,
                     )
 
+        # Un dispositivo recién descubierto (o reconectado) todavía no está tomado en
+        # exclusiva: la reconciliación lo resuelve antes de que pueda despachar nada.
+        self.reconciliar_exclusividad()
+
         return nuevos_dispositivos
+
+    def reconciliar_exclusividad(self) -> None:
+        """Alinea la captura exclusiva con el mapping efectivo vigente.
+
+        Se ejecuta en cada descubrimiento y en cada iteración de lectura, porque el mapping
+        efectivo puede cambiar en cualquier momento desde el hilo de la API local de control
+        (remapeo TEMPORAL o PERSISTENTE).
+
+        Reglas aplicadas, en este orden, para cada dispositivo activo:
+
+        1. si su fingerprint pertenece al mapping efectivo y todavía no está tomado, se pide
+           la exclusividad; un fallo se registra y deja al dispositivo sin despacho funcional;
+        2. si su fingerprint dejó de pertenecer al mapping efectivo y estaba tomado, se
+           libera, de modo que un teclado desplazado por un remapeo vuelve al sistema.
+
+        Nunca toca dispositivos ajenos al mapping efectivo: el teclado del moderador jamás
+        recibe `grab()` por el simple hecho de ser un teclado.
+        """
+        for disp in list(self.dispositivos_activos.values()):
+            dispositivo_logico = self.coordinador_remapeo.resolver_dispositivo(disp.fingerprint)
+            esta_mapeado = dispositivo_logico is not None
+
+            if not esta_mapeado:
+                if disp.fingerprint in self.fingerprints_exclusivos:
+                    self.adaptador.liberar_exclusividad(disp)
+                    self.fingerprints_exclusivos.discard(disp.fingerprint)
+                    logger.info(
+                        "Exclusividad liberada: %s ('%s') ya no pertenece al mapping efectivo.",
+                        disp.fingerprint,
+                        disp.nombre,
+                    )
+                self._fallos_exclusividad_reportados.discard(disp.ruta)
+                continue
+
+            if disp.fingerprint in self.fingerprints_exclusivos:
+                continue
+
+            try:
+                self.adaptador.adquirir_exclusividad(disp)
+            except ErrorExclusividadNoDisponible as exc:
+                if disp.ruta not in self._fallos_exclusividad_reportados:
+                    self._fallos_exclusividad_reportados.add(disp.ruta)
+                    logger.error(
+                        "No se pudo tomar en exclusiva el dispositivo mapeado %s ('%s'): %s. "
+                        "Sus pulsaciones NO se despacharán al backend hasta conseguirlo. "
+                        "Verifique que ningún otro proceso lo esté capturando y que el "
+                        "usuario del bridge tenga permisos sobre /dev/input.",
+                        disp.ruta,
+                        disp.nombre,
+                        exc,
+                    )
+                continue
+
+            self.fingerprints_exclusivos.add(disp.fingerprint)
+            self._fallos_exclusividad_reportados.discard(disp.ruta)
 
     def ejecutar_paso(self) -> list[RespuestaEnvioBackend]:
         """Ejecuta una iteración de lectura y procesamiento de eventos pendientes.
@@ -191,6 +280,10 @@ class ServicioDeviceBridge:
         """
         respuestas: list[RespuestaEnvioBackend] = []
         rutas_a_remover: list[str] = []
+
+        # Antes de leer nada reconciliamos la exclusividad: un remapeo confirmado desde la
+        # API local pudo cambiar el mapping efectivo desde la iteración anterior.
+        self.reconciliar_exclusividad()
 
         # Leemos eventos de cada dispositivo activo
         for ruta, disp in list(self.dispositivos_activos.items()):
@@ -226,11 +319,15 @@ class ServicioDeviceBridge:
                 )
                 rutas_a_remover.append(ruta)
 
-        # Limpiamos dispositivos desconectados
+        # Limpiamos dispositivos desconectados. El cierre libera la exclusividad en el
+        # adaptador; acá además olvidamos el fingerprint para que una reconexión posterior
+        # vuelva a exigir una adquisición explícita antes de despachar.
         for ruta in rutas_a_remover:
             disp_removido = self.dispositivos_activos.pop(ruta, None)
             if disp_removido is not None:
                 self.adaptador.cerrar_dispositivo(disp_removido)
+                self.fingerprints_exclusivos.discard(disp_removido.fingerprint)
+                self._fallos_exclusividad_reportados.discard(ruta)
 
         return respuestas
 
@@ -284,7 +381,14 @@ class ServicioDeviceBridge:
             logger.info("Servicio de bridge físico detenido correctamente.")
 
     def detener(self) -> None:
-        """Detiene el servicio y cierra todos los descriptores de hardware."""
+        """Detiene el servicio, libera toda exclusividad y cierra los descriptores.
+
+        `cerrar_todo()` del adaptador ejecuta el `ungrab()` de cada dispositivo tomado antes
+        de cerrar su descriptor, así que al terminar el proceso los numpads vuelven a estar
+        disponibles para el resto del sistema.
+        """
         self._evento_detencion.set()
         self.adaptador.cerrar_todo()
         self.dispositivos_activos.clear()
+        self.fingerprints_exclusivos.clear()
+        self._fallos_exclusividad_reportados.clear()

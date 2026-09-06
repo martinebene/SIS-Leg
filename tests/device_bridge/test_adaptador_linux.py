@@ -10,6 +10,8 @@ Verifica:
 4. Capacidad de redescubrimiento dinámico de dispositivos agregados en caliente.
 5. Tolerancia a iniciar con cero hardware disponible sin fallar el proceso.
 6. Pruebas directas de AdaptadorEvdevLinux con mocks deterministas (I-3).
+7. Captura exclusiva (WP-075): grab() una sola vez, ungrab() una sola vez, manejo de error
+   al adquirir, cierre sin doble liberación y estado de exclusividad del adaptador falso.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from botonera2_device_bridge.adaptador_linux import (
     AdaptadorFalso,
     DispositivoFisico,
     ErrorDispositivoDesconectado,
+    ErrorExclusividadNoDisponible,
 )
 from botonera2_device_bridge.modelos import EventoTeclaFisica
 
@@ -147,11 +150,17 @@ class MockInputDevice:
         path: str = "/dev/input/event0",
         events: list[MockInputEvent] | None = None,
         raise_on_read: Exception | None = None,
+        raise_on_grab: Exception | None = None,
     ) -> None:
         self.path = path
         self.eventos = events or []
         self._raise_on_read = raise_on_read
+        self._raise_on_grab = raise_on_grab
         self.closed = False
+        # Contadores que permiten demostrar que el adaptador no repite las llamadas
+        # EVIOCGRAB/EVIOCGRAB(0) del contrato oficial de python-evdev.
+        self.llamadas_grab = 0
+        self.llamadas_ungrab = 0
 
     def read(self) -> list[MockInputEvent]:
         if self.closed:
@@ -161,6 +170,14 @@ class MockInputDevice:
         res = self.eventos
         self.eventos = []
         return res
+
+    def grab(self) -> None:
+        if self._raise_on_grab is not None:
+            raise self._raise_on_grab
+        self.llamadas_grab += 1
+
+    def ungrab(self) -> None:
+        self.llamadas_ungrab += 1
 
     def close(self) -> None:
         self.closed = True
@@ -363,3 +380,171 @@ def test_adaptador_falso_descartar_eventos_pendientes() -> None:
     descartados = adaptador.descartar_eventos_pendientes(disp)
     assert descartados == 1
     assert len(adaptador.eventos_pendientes["/dev/input/event0"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# Captura exclusiva (WP-075)
+#
+# El contrato oficial de python-evdev indica que solo un proceso puede sostener
+# el grab() de un dispositivo y que liberar uno no tomado provoca un OSError.
+# Por eso el adaptador mantiene su propio registro y estas pruebas verifican que
+# ni el grab ni el ungrab se repiten.
+# ---------------------------------------------------------------------------
+
+
+def _preparar_adaptador_con_mock(
+    raise_on_grab: Exception | None = None,
+) -> tuple[AdaptadorEvdevLinux, DispositivoFisico, MockInputDevice]:
+    """Arma un AdaptadorEvdevLinux con un descriptor simulado ya registrado."""
+    adaptador = AdaptadorEvdevLinux()
+    disp = DispositivoFisico(
+        ruta="/dev/input/event0",
+        fingerprint=FINGERPRINT_A,
+        nombre="Numpad banca 1",
+    )
+    mock_dev = MockInputDevice(path="/dev/input/event0", raise_on_grab=raise_on_grab)
+    adaptador._dispositivos_abiertos[disp.ruta] = mock_dev  # type: ignore[assignment]
+    return adaptador, disp, mock_dev
+
+
+def test_adaptador_evdev_adquiere_exclusividad_una_sola_vez() -> None:
+    """Demuestra que adquirir dos veces llama a grab() una sola vez (idempotencia)."""
+    adaptador, disp, mock_dev = _preparar_adaptador_con_mock()
+
+    adaptador.adquirir_exclusividad(disp)
+    adaptador.adquirir_exclusividad(disp)
+
+    assert mock_dev.llamadas_grab == 1
+    assert adaptador.tiene_exclusividad(disp) is True
+
+
+def test_adaptador_evdev_libera_exclusividad_una_sola_vez() -> None:
+    """Demuestra que liberar dos veces llama a ungrab() una sola vez y no lanza error."""
+    adaptador, disp, mock_dev = _preparar_adaptador_con_mock()
+
+    adaptador.adquirir_exclusividad(disp)
+    adaptador.liberar_exclusividad(disp)
+    adaptador.liberar_exclusividad(disp)
+
+    assert mock_dev.llamadas_ungrab == 1
+    assert adaptador.tiene_exclusividad(disp) is False
+
+
+def test_adaptador_evdev_liberar_sin_haber_adquirido_no_llama_ungrab() -> None:
+    """Demuestra que nunca se invoca ungrab() sobre un dispositivo que no fue tomado."""
+    adaptador, disp, mock_dev = _preparar_adaptador_con_mock()
+
+    adaptador.liberar_exclusividad(disp)
+
+    assert mock_dev.llamadas_ungrab == 0
+    assert adaptador.tiene_exclusividad(disp) is False
+
+
+def test_adaptador_evdev_error_al_adquirir_no_marca_exclusividad() -> None:
+    """Demuestra que un grab() rechazado por el kernel produce ErrorExclusividadNoDisponible."""
+    adaptador, disp, _mock_dev = _preparar_adaptador_con_mock(
+        raise_on_grab=OSError(16, "Device or resource busy")
+    )
+
+    with pytest.raises(ErrorExclusividadNoDisponible, match="captura exclusiva"):
+        adaptador.adquirir_exclusividad(disp)
+
+    assert adaptador.tiene_exclusividad(disp) is False
+
+
+def test_adaptador_evdev_adquirir_sin_descriptor_abierto_falla() -> None:
+    """Demuestra que sin descriptor abierto no se simula una exclusividad inexistente."""
+    adaptador = AdaptadorEvdevLinux()
+    disp = DispositivoFisico(
+        ruta="/dev/input/event0",
+        fingerprint=FINGERPRINT_A,
+        nombre="Numpad banca 1",
+    )
+
+    with pytest.raises(ErrorExclusividadNoDisponible, match="descriptor"):
+        adaptador.adquirir_exclusividad(disp)
+
+    assert adaptador.tiene_exclusividad(disp) is False
+
+
+def test_adaptador_evdev_cerrar_dispositivo_libera_sin_doble_ungrab() -> None:
+    """Demuestra que el cierre libera la exclusividad exactamente una vez antes de close()."""
+    adaptador, disp, mock_dev = _preparar_adaptador_con_mock()
+
+    adaptador.adquirir_exclusividad(disp)
+    adaptador.cerrar_dispositivo(disp)
+    # Un segundo cierre (por ejemplo tras una desconexión ya procesada) no repite ungrab().
+    adaptador.cerrar_dispositivo(disp)
+
+    assert mock_dev.llamadas_ungrab == 1
+    assert mock_dev.closed is True
+    assert adaptador.tiene_exclusividad(disp) is False
+
+
+def test_adaptador_evdev_cerrar_todo_libera_exclusividad_de_cada_dispositivo() -> None:
+    """Demuestra que la parada del bridge devuelve todos los numpads al sistema."""
+    adaptador = AdaptadorEvdevLinux()
+    disp_a = DispositivoFisico(
+        ruta="/dev/input/event0", fingerprint=FINGERPRINT_A, nombre="Numpad 1"
+    )
+    disp_b = DispositivoFisico(
+        ruta="/dev/input/event1", fingerprint=FINGERPRINT_B, nombre="Numpad 2"
+    )
+    mock_a = MockInputDevice(path=disp_a.ruta)
+    mock_b = MockInputDevice(path=disp_b.ruta)
+    adaptador._dispositivos_abiertos[disp_a.ruta] = mock_a  # type: ignore[assignment]
+    adaptador._dispositivos_abiertos[disp_b.ruta] = mock_b  # type: ignore[assignment]
+
+    adaptador.adquirir_exclusividad(disp_a)
+    # disp_b queda deliberadamente sin exclusividad: representa un teclado no mapeado.
+    adaptador.cerrar_todo()
+
+    assert mock_a.llamadas_ungrab == 1
+    assert mock_b.llamadas_ungrab == 0
+    assert mock_a.closed is True
+    assert mock_b.closed is True
+    assert adaptador.tiene_exclusividad(disp_a) is False
+
+
+def test_adaptador_falso_exclusividad_idempotente() -> None:
+    """Demuestra que el adaptador falso replica la idempotencia del adaptador real."""
+    adaptador = AdaptadorFalso()
+    disp = adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_A)
+
+    adaptador.adquirir_exclusividad(disp)
+    adaptador.adquirir_exclusividad(disp)
+    assert adaptador.tiene_exclusividad(disp) is True
+    assert adaptador.conteo_adquisiciones["/dev/input/event0"] == 1
+
+    adaptador.liberar_exclusividad(disp)
+    adaptador.liberar_exclusividad(disp)
+    assert adaptador.tiene_exclusividad(disp) is False
+    assert adaptador.conteo_liberaciones["/dev/input/event0"] == 1
+
+
+def test_adaptador_falso_puede_simular_fallo_de_exclusividad() -> None:
+    """Demuestra que el fake permite probar la política fail-safe sin hardware real."""
+    adaptador = AdaptadorFalso()
+    disp = adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_A)
+    adaptador.simular_fallo_exclusividad("/dev/input/event0")
+
+    with pytest.raises(ErrorExclusividadNoDisponible):
+        adaptador.adquirir_exclusividad(disp)
+    assert adaptador.tiene_exclusividad(disp) is False
+
+    # Al desaparecer la causa del fallo, la adquisición vuelve a ser posible.
+    adaptador.simular_fallo_exclusividad("/dev/input/event0", falla=False)
+    adaptador.adquirir_exclusividad(disp)
+    assert adaptador.tiene_exclusividad(disp) is True
+
+
+def test_adaptador_falso_cerrar_dispositivo_libera_exclusividad() -> None:
+    """Demuestra que cerrar un dispositivo simulado también libera su exclusividad."""
+    adaptador = AdaptadorFalso()
+    disp = adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_A)
+
+    adaptador.adquirir_exclusividad(disp)
+    adaptador.cerrar_dispositivo(disp)
+
+    assert adaptador.tiene_exclusividad(disp) is False
+    assert adaptador.conteo_liberaciones["/dev/input/event0"] == 1
