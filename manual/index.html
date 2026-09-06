@@ -1729,6 +1729,20 @@ volumen = 90</code></pre>
             el padrón no se toca.
           </p>
 
+          <p>
+            Mientras el servicio del puente está activo, las botoneras que figuran en ese mapa
+            quedan <strong>dedicadas al sistema</strong>: sus pulsaciones llegan únicamente a
+            SISLeg y no se escriben en campos de texto, terminales ni otras aplicaciones del
+            equipo, aunque Moderación esté abierta en el mismo monitor. El teclado y el mouse del
+            operador no se ven afectados y siguen funcionando con normalidad, igual que cualquier
+            otro teclado que no esté en el mapa.
+          </p>
+
+          <p>
+            Al detener el servicio, las botoneras vuelven a comportarse como teclados comunes del
+            sistema operativo.
+          </p>
+
           <h3>10.5 Registros de la sesión</h3>
 
           <p>
@@ -2023,6 +2037,20 @@ curl --fail http://127.0.0.1/manual/</code></pre>
                     Conexión física de la botonera y servicio del puente de dispositivos. Si el
                     teclado se rompió, corresponde el reemplazo descrito en el
                     <a href="#cap-08-apoyo-tecnico">capítulo 8</a>.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Una botonera de banca escribe números en un campo de texto de la pantalla, o
+                    ninguna banca responde aunque el servicio esté activo.
+                  </td>
+                  <td>
+                    El servicio del puente no consiguió reservar esa botonera para uso exclusivo.
+                    En el registro del servicio aparece un error de captura exclusiva con la
+                    ruta y el nombre del teclado. Suele deberse a otro programa que está tomando
+                    el dispositivo o a permisos insuficientes sobre los teclados. Mientras la
+                    reserva no se consiga, esa botonera no envía pulsaciones al sistema; se
+                    recupera sola apenas la obtiene, sin reiniciar nada.
                   </td>
                 </tr>
                 <tr>
