@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 
+from botonera2_backend.auditoria import ErrorAuditoria
 from botonera2_backend.servicios.proyecciones import ServicioProyecciones
 from botonera2_backend.servicios.publicacion import CoordinadorPublicacion
 from botonera2_backend.servicios.serializacion import EjecutorMutaciones
+
+REGISTRO = logging.getLogger(__name__)
 
 
 class ServicioFronterasTemporales:
@@ -17,6 +21,12 @@ class ServicioFronterasTemporales:
     despierta para recalcular la frontera más cercana; cada deadline completado
     publica una revisión bajo el lock compartido. ``esperar`` es inyectable
     para que las pruebas controlen el tiempo sin aguardar segundos reales.
+
+    Desde WP-078 el cruce de una frontera puede además **registrar un hecho**:
+    el aviso que vence en la Pantalla del Recinto cierra su período con un
+    evento principal ``FIN``. Ese trabajo no vive acá sino en
+    ``cerrar_marcadores_vencidos``, una corrutina inyectada por el lifespan, de
+    modo que el temporizador siga sin conocer reglas del plano técnico.
     """
 
     def __init__(
@@ -26,11 +36,13 @@ class ServicioFronterasTemporales:
         coordinador: CoordinadorPublicacion,
         *,
         esperar: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        cerrar_marcadores_vencidos: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._proyecciones = servicio_proyecciones
         self._ejecutor = ejecutor_mutaciones
         self._coordinador = coordinador
         self._esperar = esperar
+        self._cerrar_marcadores_vencidos = cerrar_marcadores_vencidos
 
     async def ejecutar(self) -> None:
         """Mantiene el ciclo hasta que el lifespan cancela esta tarea."""
@@ -60,7 +72,7 @@ class ServicioFronterasTemporales:
                     # una revisión temporal adicional cuando el timer fue la
                     # única causa del despertar.
                     if tiempo in completadas and cambio not in completadas:
-                        await self._ejecutor.publicar_frontera_temporal()
+                        await self._cruzar_frontera()
                 finally:
                     for tarea in (cambio, tiempo):
                         if not tarea.done():
@@ -88,6 +100,33 @@ class ServicioFronterasTemporales:
                             raise resultado
         finally:
             suscripcion.cancelar()
+
+    async def _cruzar_frontera(self) -> None:
+        """Publica el cruce y, si corresponde, cierra los períodos vencidos.
+
+        Sin la corrutina de cierre inyectada el comportamiento es el histórico:
+        publicar una revisión para que REST/SSE reconstruyan el DTO con el reloj
+        vigente. Con ella, el cierre corre bajo el mismo ``EjecutorMutaciones``,
+        que ya publica la revisión al salir del lock, así que un cruce sigue
+        produciendo una sola publicación.
+
+        Un fallo de auditoría no puede matar el temporizador. Si lo hiciera, el
+        proceso dejaría además de publicar todas las demás fronteras (cuenta
+        regresiva, revelado, resultado público) por un escritor que de todos
+        modos ya quedó en fallo cerrado permanente. El error se registra, el
+        período queda abierto —no se anuncia una transición que no se persistió—
+        y el ciclo continúa; el ``finally`` del ejecutor ya publicó la revisión.
+        """
+
+        if self._cerrar_marcadores_vencidos is None:
+            await self._ejecutor.publicar_frontera_temporal()
+            return
+        try:
+            await self._cerrar_marcadores_vencidos()
+        except ErrorAuditoria:
+            REGISTRO.exception(
+                "No se pudo registrar el FIN automático de un aviso de la Pantalla del Recinto"
+            )
 
     async def _esperar_demora(self, demora: float) -> None:
         """Convierte el ``Awaitable`` inyectable en una coroutine tipada."""

@@ -99,12 +99,14 @@ class ServicioFronterasRastreado(ServicioFronterasTemporales):
         coordinador: CoordinadorPublicacion,
         *,
         esperar: Callable[[float], Awaitable[None]],
+        cerrar_marcadores_vencidos: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         super().__init__(
             servicio_proyecciones,
             ejecutor_mutaciones,
             coordinador,
             esperar=esperar,
+            cerrar_marcadores_vencidos=cerrar_marcadores_vencidos,
         )
         self.tarea_ejecucion: asyncio.Task[None] | None = None
 
@@ -175,8 +177,16 @@ async def test_lifespan_no_pierde_cancelacion_durante_cleanup_de_frontera(
         _servicio_proyecciones: ServicioProyecciones,
         _ejecutor_mutaciones: EjecutorMutaciones,
         _coordinador: CoordinadorPublicacion,
+        *,
+        cerrar_marcadores_vencidos: Callable[[], Awaitable[None]] | None = None,
     ) -> ServicioFronterasTemporales:
-        """Sustituye solo dependencias temporales sin cambiar el lifespan probado."""
+        """Sustituye solo dependencias temporales sin cambiar el lifespan probado.
+
+        El cierre de marcadores de WP-078 se reenvía tal como lo arma el
+        lifespan: esta prueba sustituye el reloj y las proyecciones, no el
+        cableado que está probando. Acá nunca llega a ejecutarse porque el timer
+        queda bloqueado antes de cruzar ninguna frontera.
+        """
 
         nonlocal servicio_creado
         servicio_creado = ServicioFronterasRastreado(
@@ -184,6 +194,7 @@ async def test_lifespan_no_pierde_cancelacion_durante_cleanup_de_frontera(
             ejecutor,
             coordinador,
             esperar=esperar_controlado,
+            cerrar_marcadores_vencidos=cerrar_marcadores_vencidos,
         )
         return servicio_creado
 

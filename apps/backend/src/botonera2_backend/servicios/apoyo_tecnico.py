@@ -35,10 +35,40 @@ La biblioteca de mensajes precargados no se audita: es mantenimiento de
 configuración, del mismo orden que editar ``config/concejales.csv``, y no una
 interacción del transcurso de la sesión. Su rastro durable es el propio CSV.
 
-Las transiciones puramente temporales (la cuenta regresiva que llega a
-``EN VIVO``, el aviso que vence) tampoco se auditan ni mutan el dominio:
-son estados derivados del reloj, exactamente como la expiración del test de
+La cuenta regresiva que llega a ``EN VIVO`` no se audita ni muta el dominio:
+es un estado derivado del reloj, exactamente como la expiración del test de
 dispositivo de WP-006.
+
+Marcadores de sesión INICIO/FIN (WP-078)
+----------------------------------------
+
+Además de esa auditoría técnica ``L2``, un aviso que **alcanza la Pantalla del
+Recinto** delimita un momento de la sesión y por eso genera dos eventos
+principales ``L3`` con etiqueta general ``EVENTO``:
+
+- ``INICIO`` cuando el texto aparece en Recinto;
+- ``FIN`` cuando deja de mostrarse, con exactamente el mismo texto.
+
+Un aviso dirigido sólo a ``MODERACION`` nunca genera estos marcadores, y un
+aviso ``AMBOS`` genera una única pareja, la de su presencia en Recinto.
+
+La pieza que hace verificable "un INICIO y un FIN por período" es
+``EstadoOperativo.marcador_recinto_abierto``: se instala recién después de que
+el ``INICIO`` quedó persistido y se retira recién después de persistir el
+``FIN``. Nunca se decide leyendo el texto del aviso ni comparando mensajes de
+auditoría, como exige el WP.
+
+El cierre puede llegar por cuatro caminos, y los cuatro pasan por el mismo
+helper privado, así que ninguno puede duplicar el ``FIN``:
+
+1. cancelación manual que alcanza la ranura Recinto;
+2. reemplazo por otro aviso que alcanza Recinto (``FIN`` del anterior antes del
+   ``INICIO`` del nuevo, dentro de la misma mutación);
+3. vencimiento por duración, que el temporizador de fronteras convierte en un
+   hecho institucional durable llamando a
+   :meth:`ServicioApoyoTecnico.cerrar_marcadores_recinto_vencidos`;
+4. una cancelación posterior a cualquiera de los anteriores, que ya no encuentra
+   período abierto y por lo tanto no escribe nada.
 """
 
 from __future__ import annotations
@@ -60,6 +90,7 @@ from botonera2_backend.dominio.apoyo_tecnico import (
     DestinoAvisoTecnico,
     ErrorBibliotecaMensajesNoDisponible,
     ErrorMensajeTecnicoNoExistente,
+    MarcadorRecintoAbierto,
     MensajeTecnico,
     TransmisionTecnica,
 )
@@ -84,6 +115,17 @@ CODIGO_TRANSMISION_INICIADA = "TRANSMISION_INICIADA"
 CODIGO_TRANSMISION_DETENIDA = "TRANSMISION_DETENIDA"
 CODIGO_AVISO_PUBLICADO = "AVISO_TECNICO_PUBLICADO"
 CODIGO_AVISO_CANCELADO = "AVISO_TECNICO_CANCELADO"
+
+# Datos canónicos de los marcadores de sesión de WP-078.
+#
+# La etiqueta es deliberadamente ``EVENTO`` y no ``APOYO_TECNICO``: la decisión
+# humana del WP es que estos registros representan **momentos generales de la
+# sesión** —"acá empezó el cuarto intermedio", "acá terminó"— y no una acción
+# técnica del operador. Quien lea el CSV institucional no debe encontrarlos
+# clasificados como mensajería del puesto técnico.
+ETIQUETA_EVENTO_PRINCIPAL = "EVENTO"
+CODIGO_MARCADOR_INICIO = "INICIO"
+CODIGO_MARCADOR_FIN = "FIN"
 
 
 def leer_biblioteca_mensajes_tecnicos(ruta: Path) -> BibliotecaMensajesTecnicos:
@@ -234,6 +276,12 @@ class ServicioApoyoTecnico:
             vencimiento, que es lo que hace verificable la coherencia entre
             destinos. Las ranuras no alcanzadas quedan intactas, de modo que
             un aviso previo dirigido al otro destino nunca queda huérfano.
+
+            Cuando el destino alcanza Recinto se registran además los marcadores
+            de sesión de WP-078 en este orden dentro de la **misma** mutación:
+            el ``FIN`` del período anterior (si lo había) y después el ``INICIO``
+            del nuevo. Registrar el cierre antes de la apertura es lo que impide
+            que un reemplazo deje un período abierto de más.
         """
 
         async def aplicar() -> None:
@@ -256,6 +304,13 @@ class ServicioApoyoTecnico:
                 publicado_en=ahora,
                 expira_en=expira_en,
             )
+            # Toda la auditoría del comando ocurre antes de tocar las ranuras,
+            # igual que en el resto del backend: si cualquiera de las filas no
+            # pudo persistirse, la mutación completa se aborta y el texto ni
+            # siquiera llega a la pantalla.
+            if destino.alcanza_recinto():
+                self._cerrar_marcador_recinto()
+                self._abrir_marcador_recinto(aviso)
             if destino.alcanza_moderacion():
                 self._estado.aviso_tecnico_moderacion = aviso
             if destino.alcanza_recinto():
@@ -269,6 +324,11 @@ class ServicioApoyoTecnico:
         Es idempotente por la misma razón que ``detener_transmision``: cancelar
         una ranura vacía (o una que acaba de vencer sola) no es un error del
         operador, y no debe producir ni un fallo ni una fila de auditoría.
+
+        Sólo cierra el marcador de sesión de WP-078 cuando la cancelación afecta
+        realmente a la ranura Recinto. Cancelar únicamente Moderación sobre un
+        aviso ``AMBOS`` deja el texto visible en el Recinto y por lo tanto deja
+        el período abierto, que es exactamente lo que pide el WP.
         """
 
         async def aplicar() -> None:
@@ -284,10 +344,50 @@ class ServicioApoyoTecnico:
                 CODIGO_AVISO_CANCELADO,
                 f"Aviso técnico cancelado destino={destino.value}",
             )
+            if alcanza_recinto:
+                self._cerrar_marcador_recinto()
             if alcanza_moderacion:
                 self._estado.aviso_tecnico_moderacion = None
             if alcanza_recinto:
                 self._estado.aviso_tecnico_recinto = None
+
+        await self._ejecutor.ejecutar(aplicar)
+
+    async def cerrar_marcadores_recinto_vencidos(self) -> None:
+        """Convierte el vencimiento por duración en un ``FIN`` durable.
+
+        La llama el temporizador de ``servicios/fronteras_temporales.py`` cada
+        vez que cruza una frontera temporal, siempre bajo el mismo
+        ``EjecutorMutaciones`` que el resto de las mutaciones: no hay polling ni
+        un segundo camino de escritura.
+
+        Por qué hace falta: la vigencia de un aviso es un valor *derivado* del
+        reloj, así que al vencer simplemente desaparece del DTO sin que nadie
+        ejecute un comando. WP-078 exige que ese cierre sea un hecho
+        institucional registrado, no una desaparición silenciosa.
+
+        No toca la ranura del aviso. Retirarlo sería un cambio de comportamiento
+        ajeno al WP —la proyección ya lo oculta por vencido— y podría alterar la
+        ranura de Moderación cuando ambas comparten el mismo aviso ``AMBOS``. La
+        autoridad de "período abierto" es el marcador, no la ranura.
+
+        Errores:
+            ``ErrorAuditoria`` si el escritor institucional no pudo persistir el
+            ``FIN``. En ese caso el marcador queda abierto y no se anuncia una
+            transición que no pudo registrarse.
+        """
+
+        async def aplicar() -> None:
+            marcador = self._estado.marcador_recinto_abierto
+            aviso = self._estado.aviso_tecnico_recinto
+            if marcador is None or aviso is None:
+                return
+            # Sólo cierra el período que corresponde exactamente a este aviso y
+            # únicamente si ya venció. Comparar el identificador evita cerrar por
+            # error un período que otro comando acaba de abrir en la misma ranura.
+            if aviso.aviso_id != marcador.aviso_id or aviso.vigente(self._reloj()):
+                return
+            self._cerrar_marcador_recinto()
 
         await self._ejecutor.ejecutar(aplicar)
 
@@ -390,6 +490,70 @@ class ServicioApoyoTecnico:
             codigo_evento,
             mensaje,
         )
+
+    def _abrir_marcador_recinto(self, aviso: AvisoTecnico) -> None:
+        """Registra el ``INICIO`` de un período de visualización en Recinto.
+
+        Se ejecuta dentro del lock y sólo para avisos que alcanzan Recinto. El
+        mensaje del evento es **exactamente** el texto del aviso: sin prefijos
+        como "Aviso técnico", sin destino, sin duración y sin identificadores
+        internos, porque quien lee el registro institucional debe ver el mismo
+        texto que vio el recinto.
+
+        Igual que el resto de la auditoría del backend, el marcador en memoria se
+        instala recién después de que ``registrar_evento`` confirmó su ``fsync``:
+        si la persistencia falla, la excepción aborta la mutación completa y no
+        queda un período abierto que nadie podría cerrar.
+
+        En ``SIN_PREPARAR`` no hay conjunto de auditoría abierto, así que no se
+        registra nada ni se abre marcador. Ese aviso simplemente no delimita un
+        momento de una sesión que todavía no existe.
+        """
+
+        contexto = self._estado.contexto_operativo_activo()
+        if contexto is None:
+            return
+        contexto.escritor_auditoria.registrar_evento(
+            NivelAuditoria.L3,
+            ETIQUETA_EVENTO_PRINCIPAL,
+            CODIGO_MARCADOR_INICIO,
+            aviso.texto,
+        )
+        self._estado.marcador_recinto_abierto = MarcadorRecintoAbierto(
+            aviso_id=aviso.aviso_id,
+            texto=aviso.texto,
+            escritor_auditoria=contexto.escritor_auditoria,
+        )
+
+    def _cerrar_marcador_recinto(self) -> None:
+        """Registra el ``FIN`` del período abierto, si existe exactamente uno.
+
+        Es el **único** camino de cierre: cancelación, reemplazo y vencimiento
+        pasan todos por acá. Como el marcador se borra en la misma llamada que
+        escribe el ``FIN``, dos causas que coincidan en el tiempo —el timer y una
+        cancelación manual, por ejemplo— producen un solo ``FIN``: la segunda ya
+        no encuentra período abierto. Esa es la garantía de idempotencia del WP,
+        y no depende de comparar textos ni de releer la auditoría.
+
+        Un marcador cuyo escritor ya no es el vigente pertenece a un conjunto de
+        CSV cerrado por una preparación/sesión anterior. Escribir su ``FIN`` en
+        los archivos de otra sesión sería un registro falso, así que el marcador
+        se descarta sin auditar: el período quedó terminado junto con su propio
+        conjunto institucional.
+        """
+
+        marcador = self._estado.marcador_recinto_abierto
+        if marcador is None:
+            return
+        contexto = self._estado.contexto_operativo_activo()
+        if contexto is not None and contexto.escritor_auditoria is marcador.escritor_auditoria:
+            contexto.escritor_auditoria.registrar_evento(
+                NivelAuditoria.L3,
+                ETIQUETA_EVENTO_PRINCIPAL,
+                CODIGO_MARCADOR_FIN,
+                marcador.texto,
+            )
+        self._estado.marcador_recinto_abierto = None
 
     def _exigir_biblioteca_disponible(self) -> BibliotecaMensajesTecnicos:
         """Impide escribir sobre un CSV que el backend no pudo interpretar."""

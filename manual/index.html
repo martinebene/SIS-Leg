@@ -1298,6 +1298,47 @@
             suspensivos: conviene escribir avisos breves.
           </p>
 
+          <h4>Un aviso al recinto también marca un momento de la sesión</h4>
+
+          <p>
+            Todo aviso que llega a la Pantalla del Recinto —destino <code>RECINTO</code> o
+            <code>AMBOS</code>— queda registrado como un evento principal de la sesión, además de la
+            anotación técnica habitual. Se anotan dos momentos con el texto exacto del aviso:
+            <code>INICIO</code> cuando el mensaje aparece en la pantalla y <code>FIN</code> cuando
+            deja de mostrarse, con la hora de cada transición.
+          </p>
+
+          <p>
+            Eso convierte al aviso en una forma cómoda de dejar asentado un tramo de la sesión.
+            Escribir «Cuarto intermedio» y publicarlo hacia el recinto deja registrado a qué hora
+            empezó; retirarlo deja registrado a qué hora terminó. El texto se guarda tal cual se
+            escribió, sin agregados, así que conviene redactarlo pensando en quien después lea el
+            registro.
+          </p>
+
+          <p>
+            El <code>FIN</code> se anota cualquiera sea el motivo por el que el mensaje desaparece:
+            cancelación manual del destino recinto, vencimiento de la duración o reemplazo por otro
+            aviso dirigido al recinto. En un reemplazo queda primero el fin del texto anterior y
+            después el inicio del nuevo, de modo que nunca se solapan dos tramos.
+          </p>
+
+          <div class="nota">
+            <strong>Detalle importante</strong>
+            Un aviso dirigido solo a <code>MODERACION</code> no marca ningún momento: es un mensaje
+            interno de trabajo, no algo que el recinto haya visto. Y cancelar solo la superficie de
+            Moderación de un aviso <code>AMBOS</code> no cierra el tramo, porque el texto sigue a la
+            vista en la pantalla del recinto.
+          </div>
+
+          <div class="nota">
+            <strong>Dónde se ven</strong>
+            Estos dos momentos aparecen en el panel de eventos de Moderación y de Apoyo Técnico bajo
+            el nivel de detalle «Principales», junto con la apertura de la sesión o el resultado de
+            una votación. No se muestran como una tarjeta más en la pantalla del recinto: allí el
+            público ya está viendo el aviso.
+          </div>
+
           <h3>8.3 Mensajes precargados</h3>
 
           <p>

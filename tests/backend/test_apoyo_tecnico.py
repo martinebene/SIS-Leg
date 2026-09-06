@@ -417,7 +417,14 @@ async def test_reconexion_reconstruye_el_aviso_vigente(tmp_path: Path) -> None:
 
 
 async def test_avisos_se_auditan_en_l2(tmp_path: Path) -> None:
-    """Publicar y cancelar dejan su rastro institucional con etiqueta técnica."""
+    """Publicar y cancelar dejan su rastro institucional con etiqueta técnica.
+
+    El aviso del ejemplo alcanza Recinto, así que desde WP-078 cada orden deja
+    dos filas: la técnica ``L2`` que registra el comando y el marcador de sesión
+    ``L3`` que delimita la presencia del texto en la pantalla pública. Esta
+    prueba sigue cuidando la parte técnica; los marcadores tienen su propio
+    módulo en ``test_marcadores_recinto_wp078.py``.
+    """
 
     entorno = crear_entorno_proyecciones(tmp_path)
     servicio = crear_servicio_apoyo_tecnico(entorno, tmp_path / "mensajes.csv")
@@ -427,7 +434,9 @@ async def test_avisos_se_auditan_en_l2(tmp_path: Path) -> None:
 
     assert codigos_auditados(entorno) == [
         "AVISO_TECNICO_PUBLICADO",
+        "INICIO",
         "AVISO_TECNICO_CANCELADO",
+        "FIN",
     ]
 
 
