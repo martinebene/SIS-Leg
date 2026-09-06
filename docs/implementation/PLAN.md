@@ -122,8 +122,8 @@ WP-018 quedó integrado mediante squash merge de PR #24 sobre el candidato final
 |---|---|---|---|---|
 | WP-032 | Corregir pérdida de cancelación en fronteras temporales y estabilizar teardown/CI del backend | INTEGRADO | WP-017 | - |
 | WP-074 | Consolidar Apoyo Técnico en una única proyección SSE para evitar starvation HTTP/1.1 | INTEGRADO | WP-056, WP-071 | - |
-| WP-075 | Capturar exclusivamente los numpads mapeados para que no escriban en el escritorio del moderador | EN_CURSO | WP-019, WP-020 | claude |
-| WP-076 | Alinear destino a la izquierda y acciones a la derecha en mensajes precargados | EN_CURSO | WP-070 | claude |
+| WP-075 | Capturar exclusivamente los numpads mapeados para que no escriban en el escritorio del moderador | INTEGRADO | WP-019, WP-020 | claude |
+| WP-076 | Alinear destino a la izquierda y acciones a la derecha en mensajes precargados | INTEGRADO | WP-070 | claude |
 | WP-078 | Registrar mensajes al Recinto como eventos principales INICIO/FIN | EN_CURSO | WP-055, WP-056 | claude |
 | WP-077 | Renombrar repositorios, código y referencias vigentes de Botonera2 a SIS-Leg | PENDIENTE | WP-074, WP-075, WP-076, WP-078 | claude |
 
@@ -466,3 +466,10 @@ HUMAN_GATE revoca la autorización de ejecución paralela anterior antes de que 
 
 
 HUMAN_GATE precisa la ejecución local de la cola: Codex actúa como **COORDINADOR_LOCAL** conforme a DEC-018, no como ORCHESTRATOR. WP-075, WP-076 y WP-078 quedan lógicamente preparados/autorizados, pero se ejecutan físicamente con `max_concurrency=1`: un único worker IMPLEMENTER/REVIEWER activo a la vez. Orden físico obligatorio: completar implementación y revisión de WP-075; luego implementación y revisión de WP-076; luego implementación y revisión de WP-078. En los tres, IMPLEMENTER = Claude Code / Claude Opus 5 (High) y REVIEWER = Antigravity/AGY / Gemini 3.8 Flash (High). El COORDINADOR_LOCAL puede atravesar únicamente la transición mecánica IMPLEMENTER -> REVIEWER preautorizada por manifiesto, verificando gates objetivos y usando plantillas fijadas; no interpreta reviews, no crea correcciones, no re-revisa, no mergea, no cierra ni limpia. Al finalizar las tres revisiones devuelve el control al HUMAN_GATE/ORCHESTRATOR GPT Web. WP-077 permanece PENDIENTE porque depende de WP-075, WP-076 y WP-078 **INTEGRADOS**; por lo tanto no forma parte de este lote local y sólo podrá activarse después de que GPT Web audite e integre los tres candidatos previos. Esta decisión sustituye cualquier nota anterior que hablara de ORCHESTRATOR local end-to-end.
+
+
+WP-076 quedó integrado mediante squash merge de PR #85 sobre el candidato `79e2fc459b37773d69ef0893ee9fe6380730bd46` / tree `e80c275dc55b405948b9085bbd3d9ae1eb181bdb`, implementado por Claude Code / Claude Opus 5 (High) y revisado por Antigravity/AGY / Gemini 3.8 Flash (High), con 0 BLOQUEANTES, 0 IMPORTANTES y 0 MENORES. Auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`. Squash `44853188ed90b52d12e50fb139e1dff27f1dd31c`; CI post-merge #483 / `34042830610` success 8/8.
+
+WP-075 quedó integrado después de clasificar como `NO_MATERIAL_DISJUNTO` el avance de WP-076 respecto del candidato revisado. PR #84, candidato `d2fd282d4456da91444aa7a6e2def6cc0e73a6dd` / tree `1a2fec4a1766c86526fb8bb8d502dda87d232c00`, Claude Code / Claude Opus 5 (High), review AGY / Gemini 3.8 Flash (High) 0/0/0 y auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`. Squash `4ae3b7fb239f5ca749db22cfbd932cba58150559`; CI post-merge #484 / `34043104582` success 8/8.
+
+WP-078 permanece EN_CURSO. Su review original fue satisfactorio sobre `b21ba6a8deb9fe9d45444d55a92860c065784218`, pero tras integrar WP-075 existe solapamiento en `manual/index.html` y GitHub marca PR #86 no mergeable contra el nuevo main. Conforme PROTOCOL 1.5/DEC-004 se clasifica `MATERIAL_O_DUDOSO`: requiere merge normal del main vigente en la rama WP-078, resolución conservadora del conflicto preservando ambas actualizaciones del manual, validaciones proporcionales, nuevo candidate SHA y re-review independiente antes de integrar.
