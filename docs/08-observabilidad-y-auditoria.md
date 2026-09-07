@@ -206,6 +206,13 @@ más de un `FIN` aunque coincidan temporizador, cancelación y reintento. El
 vencimiento automático se convierte en hecho durable desde el temporizador único
 de fronteras temporales, sin introducir polling.
 
+Ese cierre depende exclusivamente de que la frontera temporal se haya cumplido y
+no de que el vencimiento haya sido la única causa del despertar del temporizador.
+Una mutación ajena que ocurra en el mismo instante reconstruye la proyección y
+retira el aviso vencido de la pantalla, pero no registra nada: si el cruce se
+salteara por esa coincidencia, el período quedaría sin `FIN` de forma permanente,
+porque un aviso ya vencido no vuelve a aportar una frontera futura.
+
 Si la persistencia del `INICIO` falla, el aviso tampoco se publica: rige el
 fallo cerrado general y no se anuncia una transición que no pudo registrarse. Un
 período abierto cuyo conjunto de CSV ya fue cerrado por el fin de la

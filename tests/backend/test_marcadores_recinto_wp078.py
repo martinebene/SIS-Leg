@@ -504,6 +504,109 @@ async def test_el_temporizador_registra_el_fin_al_cruzar_la_frontera(tmp_path: P
     ]
 
 
+async def test_una_mutacion_simultanea_al_vencimiento_no_suprime_el_fin(
+    tmp_path: Path,
+) -> None:
+    """WP-081: el cruce ocurre aunque una mutación despierte el mismo ciclo.
+
+    Reproduce ASTRA-002 de forma determinista. El temporizador espera a la vez
+    dos cosas: que venza el aviso y que aparezca una revisión nueva. La espera
+    inyectada avanza el reloj hasta el vencimiento **y** publica una revisión
+    antes de devolver el control, de modo que ``asyncio.wait`` encuentre las dos
+    tareas completadas en el mismo despertar.
+
+    Por qué eso era peligroso: la mutación ajena sólo hace que REST/SSE
+    reconstruyan el DTO, y el aviso vencido desaparece de la pantalla porque la
+    vigencia se deriva del reloj. Nadie escribe el ``FIN``. Como un aviso ya
+    vencido tampoco aporta una frontera futura, el período quedaba abierto para
+    siempre y la evidencia institucional dejaba de representar lo que el Recinto
+    mostró.
+    """
+
+    entorno = crear_entorno_proyecciones(tmp_path)
+    servicio = crear_servicio_apoyo_tecnico(entorno, tmp_path / "mensajes.csv")
+    await servicio.publicar_aviso("Coincidencia exacta", DestinoAvisoTecnico.RECINTO, 20)
+
+    async def esperar(demora: float) -> None:
+        entorno.reloj.avanzar(demora)
+        # Simula la mutación ajena que publica su revisión justo al vencer. El
+        # ``sleep(0)`` le da al ciclo del event loop el turno que necesita la
+        # espera de revisión para completarse antes que esta corrutina, y así la
+        # coincidencia queda garantizada en vez de depender del azar.
+        entorno.coordinador.publicar()
+        await asyncio.sleep(0)
+
+    fronteras = ServicioFronterasTemporales(
+        entorno.servicio,
+        entorno.ejecutor,
+        entorno.coordinador,
+        esperar=esperar,
+        cerrar_marcadores_vencidos=servicio.cerrar_marcadores_recinto_vencidos,
+    )
+    tarea = asyncio.create_task(fronteras.ejecutar())
+    try:
+        for _ in range(20):
+            await asyncio.sleep(0)
+            if ("FIN", "Coincidencia exacta") in transiciones(entorno):
+                break
+    finally:
+        tarea.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tarea
+
+    assert transiciones(entorno) == [
+        ("INICIO", "Coincidencia exacta"),
+        ("FIN", "Coincidencia exacta"),
+    ]
+    assert entorno.estado.marcador_recinto_abierto is None
+
+
+async def test_la_carrera_no_duplica_el_fin_de_un_aviso_ya_cancelado(
+    tmp_path: Path,
+) -> None:
+    """WP-081: cruzar de más nunca puede agregar un segundo ``FIN``.
+
+    Es la contracara de la prueba anterior. Si la mutación simultánea fue
+    justamente la cancelación del aviso, el período ya quedó cerrado por ella y
+    el cruce del temporizador debe encontrar el marcador vacío y no escribir
+    nada. Demuestra que la corrección conserva la idempotencia por período que
+    exige WP-078.
+    """
+
+    entorno = crear_entorno_proyecciones(tmp_path)
+    servicio = crear_servicio_apoyo_tecnico(entorno, tmp_path / "mensajes.csv")
+    await servicio.publicar_aviso("Cancelado al vencer", DestinoAvisoTecnico.RECINTO, 20)
+
+    async def esperar(demora: float) -> None:
+        entorno.reloj.avanzar(demora)
+        # La cancelación cierra el período y publica su propia revisión, así que
+        # también despierta la espera de revisión del temporizador.
+        await servicio.cancelar_aviso(DestinoAvisoTecnico.RECINTO)
+        await asyncio.sleep(0)
+
+    fronteras = ServicioFronterasTemporales(
+        entorno.servicio,
+        entorno.ejecutor,
+        entorno.coordinador,
+        esperar=esperar,
+        cerrar_marcadores_vencidos=servicio.cerrar_marcadores_recinto_vencidos,
+    )
+    tarea = asyncio.create_task(fronteras.ejecutar())
+    try:
+        for _ in range(20):
+            await asyncio.sleep(0)
+    finally:
+        tarea.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tarea
+
+    assert transiciones(entorno) == [
+        ("INICIO", "Cancelado al vencer"),
+        ("FIN", "Cancelado al vencer"),
+    ]
+    assert entorno.estado.marcador_recinto_abierto is None
+
+
 async def test_sin_cierre_inyectado_el_temporizador_conserva_su_conducta(
     tmp_path: Path,
 ) -> None:

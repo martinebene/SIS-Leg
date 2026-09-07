@@ -67,11 +67,27 @@ class ServicioFronterasTemporales:
                         (cambio, tiempo),
                         return_when=asyncio.FIRST_COMPLETED,
                     )
-                    # Si simultáneamente llegó una mutación, esa publicación ya
-                    # reconstruirá el payload con el reloj vigente. Solo se crea
-                    # una revisión temporal adicional cuando el timer fue la
-                    # única causa del despertar.
-                    if tiempo in completadas and cambio not in completadas:
+                    # Cruzar depende únicamente de que el deadline se haya
+                    # cumplido, nunca de que el timer haya sido la única causa
+                    # del despertar (WP-081).
+                    #
+                    # Antes se salteaba el cruce cuando también llegaba una
+                    # mutación, porque cruzar sólo significaba "publicar una
+                    # revisión" y la mutación ya publicaba una. Desde WP-078 el
+                    # cruce además **escribe un hecho**: el ``FIN`` del período
+                    # de aviso que acaba de vencer. Una mutación ajena —una
+                    # presencia, por ejemplo— reconstruye el DTO y hace
+                    # desaparecer el aviso vencido de la pantalla, pero no
+                    # persiste nada de ese cierre. Con el atajo anterior ese
+                    # ``FIN`` se perdía para siempre: el aviso ya vencido deja
+                    # de aportar demora, así que ninguna frontera posterior
+                    # vuelve a intentarlo (ASTRA-002).
+                    #
+                    # Cruzar de más es inocuo y no puede duplicar eventos: el
+                    # cierre corre bajo el mismo ejecutor serializado y sólo
+                    # actúa si el período sigue abierto, corresponde a ese
+                    # mismo ``aviso_id`` y ya venció.
+                    if tiempo in completadas:
                         await self._cruzar_frontera()
                 finally:
                     for tarea in (cambio, tiempo):
@@ -109,6 +125,12 @@ class ServicioFronterasTemporales:
         vigente. Con ella, el cierre corre bajo el mismo ``EjecutorMutaciones``,
         que ya publica la revisión al salir del lock, así que un cruce sigue
         produciendo una sola publicación.
+
+        Cuando una mutación ajena despierta el ciclo en el mismo instante del
+        vencimiento, ese cruce agrega una publicación además de la de la
+        mutación. Es deliberado: las suscripciones coalescen revisiones y
+        reconstruyen el DTO completo, mientras que ahorrarse el cruce costaría
+        el ``FIN`` institucional, que nadie más va a escribir.
 
         Un fallo de auditoría no puede matar el temporizador. Si lo hiciera, el
         proceso dejaría además de publicar todas las demás fronteras (cuenta
