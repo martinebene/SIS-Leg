@@ -1,11 +1,18 @@
 <script setup lang="ts">
 /**
- * Administración visual de la biblioteca de mensajes precargados (WP-056).
+ * Administración visual de la biblioteca de avisos precargados (WP-056).
  *
  * La biblioteca la persiste el backend en `config/apoyo-tecnico/mensajes.csv`; esta
  * pantalla sólo emite el CRUD REST y representa `EstadoTecnico.biblioteca`, que vuelve
  * por SSE después de cada escritura. Por eso no hay ninguna lista local: recargar la
  * página o abrir un segundo puesto muestra exactamente lo mismo.
+ *
+ * WP-083 renombra lo que **se lee en pantalla**: donde antes decía «mensaje precargado»
+ * ahora dice «aviso precargado», porque eso es lo que el operador termina publicando y
+ * usar dos palabras para la misma cosa confundía. El renombre es deliberadamente sólo
+ * visible: el DTO, el endpoint, el archivo CSV, los `data-testid` y los identificadores
+ * del código siguen diciendo «mensaje». Cambiarlos sería romper contratos por una
+ * cuestión de redacción, y el WP lo prohíbe de forma explícita.
  *
  * Dos comportamientos deliberados:
  *
@@ -90,7 +97,7 @@ function crear(): void {
       // falla, el operador conserva lo que escribió y puede reintentar.
       textoNuevo.value = ''
     },
-    'No se pudo crear el mensaje precargado.',
+    'No se pudo crear el aviso precargado.',
   )
 }
 
@@ -117,7 +124,7 @@ function guardarEdicion(): void {
       await props.cliente.actualizarMensaje(id, texto, destino)
       cancelarEdicion()
     },
-    'No se pudo editar el mensaje precargado.',
+    'No se pudo editar el aviso precargado.',
   )
 }
 
@@ -129,7 +136,7 @@ function eliminar(mensaje: MensajeTecnicoProyectado): void {
       await props.cliente.eliminarMensaje(mensaje.mensaje_id)
       if (editandoId.value === mensaje.mensaje_id) cancelarEdicion()
     },
-    'No se pudo eliminar el mensaje precargado.',
+    'No se pudo eliminar el aviso precargado.',
   )
 }
 
@@ -155,7 +162,7 @@ function cargar(mensaje: MensajeTecnicoProyectado): void {
     <!-- Alta -->
     <div class="space-y-1 rounded border border-slate-800 bg-slate-950/70 p-2">
       <label for="texto-mensaje-nuevo" class="block font-semibold text-slate-300">
-        Nuevo mensaje precargado
+        Nuevo aviso precargado
       </label>
       <input
         id="texto-mensaje-nuevo"
@@ -171,7 +178,7 @@ function cargar(mensaje: MensajeTecnicoProyectado): void {
         <select
           v-model="destinoNuevo"
           data-testid="select-destino-nuevo"
-          aria-label="Destino del nuevo mensaje precargado"
+          aria-label="Destino del nuevo aviso precargado"
           class="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-100 disabled:opacity-50"
           :disabled="!operable"
         >
@@ -204,14 +211,14 @@ function cargar(mensaje: MensajeTecnicoProyectado): void {
             data-testid="input-mensaje-editado"
             type="text"
             :maxlength="LARGO_MAXIMO_TEXTO"
-            aria-label="Texto del mensaje precargado en edición"
+            aria-label="Texto del aviso precargado en edición"
             class="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-100"
           />
           <div class="mt-1 flex flex-wrap items-center gap-2">
             <select
               v-model="destinoEditado"
               data-testid="select-destino-editado"
-              aria-label="Destino del mensaje precargado en edición"
+              aria-label="Destino del aviso precargado en edición"
               class="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-100"
             >
               <option v-for="valor in DESTINOS" :key="valor" :value="valor">{{ valor }}</option>
@@ -325,7 +332,7 @@ function cargar(mensaje: MensajeTecnicoProyectado): void {
       data-testid="biblioteca-vacia"
       class="rounded border border-dashed border-slate-800 px-2 py-2 text-center text-slate-400"
     >
-      No hay mensajes precargados
+      No hay avisos precargados
     </p>
 
     <p

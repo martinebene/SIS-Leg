@@ -34,7 +34,18 @@ const props = defineProps<{
 const CUENTA_REGRESIVA_MINIMA = 1
 const CUENTA_REGRESIVA_MAXIMA = 3600
 
-const segundosSolicitados = ref(10)
+/**
+ * Valor propuesto al abrir la pantalla, en segundos (WP-083).
+ *
+ * Es sólo una **propuesta editable**: el operador puede escribir cualquier entero del
+ * rango del contrato antes de pulsar «Iniciar con cuenta». La quinta ronda bajó la
+ * propuesta de 10 s a 5 s porque la cuenta larga obligaba a corregir el campo casi
+ * siempre; cinco segundos es lo que se usa en la práctica para anunciar la salida al
+ * aire. No cambia ninguna validación: el rango 1..3600 lo sigue fijando el backend.
+ */
+const CUENTA_REGRESIVA_PROPUESTA = 5
+
+const segundosSolicitados = ref(CUENTA_REGRESIVA_PROPUESTA)
 const accionEnVuelo = ref<'INSTANTANEA' | 'CUENTA' | 'DETENER' | null>(null)
 const mensajeError = ref<string | null>(null)
 
@@ -155,6 +166,23 @@ function detener(): void {
       -->
       <div class="flex flex-wrap items-center gap-1">
         <label for="segundos-cuenta-regresiva" class="text-slate-400">Cuenta</label>
+        <!--
+          WP-083 achica este campo de `w-20` (5rem) a `w-12` (3rem).
+
+          El ancho anterior venía de WP-056 y sobraba: la propuesta habitual tiene uno o
+          dos dígitos, así que el campo mostraba una franja vacía tan ancha como el número.
+          3rem es el mínimo práctico medido para dos dígitos con este cuerpo tipográfico:
+          48 px de caja menos 2 px de borde y 8 px de relleno horizontal dejan 38 px de
+          contenido, y dos dígitos `text-xs` ocupan ~14 px. El margen restante existe a
+          propósito, porque el contrato sigue aceptando hasta cuatro dígitos y el operador
+          debe poder escribir 3600 sin que el texto quede cortado; el campo desplaza su
+          contenido, no lo recorta.
+
+          `[appearance:textfield]` suprime las flechas nativas del `type=number`. En un
+          campo de 3rem esas flechas se comerían la mitad del ancho útil justo cuando el
+          puntero está encima, que es el momento en que el operador está por escribir. La
+          entrada por teclado, la validación del rango y el contrato REST no cambian.
+        -->
         <input
           id="segundos-cuenta-regresiva"
           v-model.number="segundosSolicitados"
@@ -163,7 +191,7 @@ function detener(): void {
           :min="CUENTA_REGRESIVA_MINIMA"
           :max="CUENTA_REGRESIVA_MAXIMA"
           step="1"
-          class="w-20 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-100 disabled:opacity-50"
+          class="w-12 rounded border border-slate-700 bg-slate-950 px-1 py-1.5 text-center text-slate-100 tabular-nums [appearance:textfield] disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           :disabled="!puedeIniciar"
         />
         <span class="text-slate-500">s</span>

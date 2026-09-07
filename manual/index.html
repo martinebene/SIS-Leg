@@ -458,8 +458,8 @@
                   <td>Apoyo Técnico</td>
                   <td><code>/tecnico/</code></td>
                   <td>
-                    Indicador de transmisión, avisos sobre las pantallas, biblioteca de mensajes,
-                    reemplazo de botoneras y consulta de eventos.
+                    Indicador de transmisión, avisos sobre las pantallas, biblioteca de avisos
+                    precargados, reemplazo de botoneras y consulta de eventos.
                   </td>
                 </tr>
                 <tr>
@@ -1222,8 +1222,8 @@
           <p>
             El puesto de Apoyo Técnico se abre en <code>/tecnico/</code> desde otro equipo de la red
             local. No reemplaza a Moderación ni puede operar la sesión: se ocupa del indicador de
-            transmisión, de los avisos sobre las pantallas, de la biblioteca de mensajes, del
-            reemplazo de botoneras y de la consulta de eventos.
+            transmisión, de los avisos sobre las pantallas, de la biblioteca de avisos precargados,
+            del reemplazo de botoneras y de la consulta de eventos.
           </p>
 
           <p>
@@ -1240,7 +1240,7 @@
             <a href="#cap-13-navegador">capítulo 13</a>.
           </p>
 
-          <h3>8.1 Transmisión</h3>
+          <h3>8.1 Indicador de transmisión</h3>
 
           <p>
             SIS-Leg <strong>no maneja la señal de audio ni de video</strong>. Lo que administra es el
@@ -1254,6 +1254,8 @@
             <li>
               <strong>Cuenta regresiva.</strong> Se ingresó una cantidad de segundos y el sistema
               descuenta hasta la salida al aire. La Pantalla del Recinto muestra el número en grande.
+              El puesto propone <strong>5 segundos</strong>, que es el valor habitual; el campo es
+              editable y admite cualquier valor entre 1 y 3600 segundos.
             </li>
             <li><strong>En vivo.</strong> Se anuncia la transmisión en curso.</li>
           </ol>
@@ -1339,12 +1341,12 @@
             público ya está viendo el aviso.
           </div>
 
-          <h3>8.3 Mensajes precargados</h3>
+          <h3>8.3 Avisos precargados</h3>
 
           <p>
-            La biblioteca guarda mensajes de uso frecuente para no escribirlos cada vez. Cada mensaje
-            tiene un texto de una sola línea y un destino sugerido. Se pueden crear, editar,
-            eliminar y cargar sobre el formulario de aviso.
+            La biblioteca guarda avisos de uso frecuente para no escribirlos cada vez. Cada aviso
+            precargado tiene un texto de una sola línea y un destino sugerido. Se pueden crear,
+            editar, eliminar y cargar sobre el formulario de aviso.
           </p>
 
           <p>
@@ -1500,9 +1502,9 @@
             Si falta un archivo, si el navegador bloquea la reproducción o si la configuración de
             audio no es válida, la pantalla <strong>sigue funcionando en silencio</strong>. No
             aparece ningún mensaje en pantalla y nada más se degrada. En Apoyo Técnico esto también
-            significa que la transmisión, los avisos, los mensajes precargados y el remapeo siguen
-            funcionando con normalidad: sólo se pierde el sonido. Por eso conviene comprobar el
-            sonido después de cada instalación o actualización, como indica el
+            significa que la transmisión, los avisos, la biblioteca de avisos precargados y el
+            remapeo siguen funcionando con normalidad: sólo se pierde el sonido. Por eso conviene
+            comprobar el sonido después de cada instalación o actualización, como indica el
             <a href="#cap-13-navegador">capítulo 13</a>.
           </p>
 
@@ -1572,7 +1574,7 @@
                   </td>
                 </tr>
                 <tr>
-                  <td>Mensajes precargados</td>
+                  <td>Avisos precargados</td>
                   <td><code>/opt/sis-leg/config/apoyo-tecnico/mensajes.csv</code></td>
                   <td>
                     <code class="ruta" data-archivo="config/apoyo-tecnico/mensajes.example.csv">config/apoyo-tecnico/mensajes.example.csv</code>
@@ -2123,9 +2125,9 @@ curl --fail http://127.0.0.1/manual/</code></pre>
                   </td>
                 </tr>
                 <tr>
-                  <td>La biblioteca de mensajes aparece como no disponible.</td>
+                  <td>La biblioteca de avisos precargados aparece como no disponible.</td>
                   <td>
-                    El archivo de mensajes precargados: si no cumple el formato, el sistema lo
+                    El archivo de avisos precargados: si no cumple el formato, el sistema lo
                     protege y rechaza escribirlo. Se corrige a mano y se reinicia el servicio.
                   </td>
                 </tr>
@@ -2164,7 +2166,7 @@ curl --fail http://127.0.0.1/manual/</code></pre>
           </p>
 
           <p>
-            La configuración funcional, el padrón, los mensajes precargados, el mapa de botoneras y
+            La configuración funcional, el padrón, los avisos precargados, el mapa de botoneras y
             los registros ya escritos <strong>no se modifican</strong>: se mueven tal cual y se
             comprueban por checksum antes y después. El procedimiento completo, con respaldo previo
             y vuelta atrás, está en
