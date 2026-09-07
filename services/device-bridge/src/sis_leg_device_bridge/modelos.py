@@ -20,12 +20,23 @@ from typing import Any
 class EventoTeclaFisica:
     """Representación desacoplada de un evento de tecla física detectado.
 
+    El `fingerprint` responde a «qué teclado es» y sirve para el mapping y el remapeo. La
+    `ruta_dispositivo` responde a «por qué descriptor entró esta pulsación» y es la única
+    respuesta válida a «¿el kernel nos dio la exclusividad de esta fuente?». Son dos
+    preguntas distintas y por eso viajan en dos campos distintos: el kernel concede
+    `EVIOCGRAB` a un descriptor abierto, no a una identidad lógica, así que dos descriptores
+    con el mismo fingerprint pueden diferir en si están capturados o no.
+
     Atributos:
         fingerprint: Cadena canónica que identifica el dispositivo físico.
         codigo_tecla: Código numérico de scancode o keycode del evento.
         nombre_tecla: Nombre textual del evento (ej: 'KEY_1', 'KEY_KP1', 'ENTER').
         es_bajada: True si corresponde a una pulsación (keydown); False para keyup o repeat.
         descripcion_dispositivo: Nombre o información diagnóstica opcional del hardware.
+        ruta_dispositivo: Descriptor de origen del evento (ej: '/dev/input/event3'). Lo
+            completa siempre el adaptador, que es el único componente que sabe de qué
+            descriptor leyó. Un evento sin esta ruta no puede demostrar su origen y, por la
+            política fail-safe del servicio, nunca se despacha al backend.
     """
 
     fingerprint: str
@@ -33,6 +44,7 @@ class EventoTeclaFisica:
     nombre_tecla: str
     es_bajada: bool
     descripcion_dispositivo: str = ""
+    ruta_dispositivo: str = ""
 
 
 @dataclass(frozen=True)

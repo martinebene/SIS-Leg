@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 try:
@@ -278,6 +278,11 @@ class AdaptadorEvdevLinux:
                         nombre_tecla=nombre_tecla,
                         es_bajada=True,
                         descripcion_dispositivo=dispositivo.nombre,
+                        # El descriptor de origen viaja con el evento porque la
+                        # exclusividad la concede el kernel a esta ruta concreta y no al
+                        # fingerprint: el servicio necesita saber por dónde entró la
+                        # pulsación para decidir si está autorizada (WP-082).
+                        ruta_dispositivo=dispositivo.ruta,
                     )
                 )
 
@@ -471,10 +476,16 @@ class AdaptadorFalso:
         return disp
 
     def simular_evento(self, ruta: str, evento: EventoTeclaFisica) -> None:
-        """Encola un evento de tecla física en la cola de lectura del dispositivo simulado."""
+        """Encola un evento de tecla física en la cola de lectura del dispositivo simulado.
+
+        El adaptador falso sella `ruta_dispositivo` igual que el adaptador real: en una
+        prueba, encolar un evento en `ruta` equivale a que el kernel lo haya entregado por
+        ese descriptor. Así una prueba puede simular dos descriptores con el mismo
+        fingerprint y comprobar que sólo el capturado autoriza el despacho.
+        """
         if ruta not in self.eventos_pendientes:
             self.eventos_pendientes[ruta] = []
-        self.eventos_pendientes[ruta].append(evento)
+        self.eventos_pendientes[ruta].append(replace(evento, ruta_dispositivo=ruta))
 
     def simular_desconexion(self, ruta: str) -> None:
         """Marca un dispositivo para fallar con ErrorDispositivoDesconectado al leer."""

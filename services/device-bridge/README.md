@@ -36,7 +36,8 @@ POST /api/v1/entradas/tecla (FastAPI)
 - Filtra estrictamente eventos de pulsación (`keydown`), descartando `keyup` y `repeat/hold`.
 - Valida la integridad de `devices.json` (incluyendo detección de claves JSON duplicadas y unicidad inversa).
 - Despacha a lo sumo **un intento HTTP** por pulsación.
-- Loguea diagnósticos locales (stdout/stderr y journald).
+- Loguea diagnósticos locales (stdout/stderr y journald), sin registrar nunca el
+  contenido de las teclas de dispositivos no mapeados ni no capturados.
 - Se recupera automáticamente de desconexiones y reconexiones de hardware en caliente.
 - **Toma en exclusiva los numpads mapeados** (`EVIOCGRAB`) para que sus pulsaciones no
   lleguen al escritorio ni al navegador de Moderación.
@@ -217,6 +218,30 @@ La decisión se toma exclusivamente por pertenencia al mapping efectivo. No se u
 nombre, el vendor/product ni la mera capacidad `EV_KEY` como heurística, para que ningún
 teclado del operador quede secuestrado por parecerse a una botonera.
 
+### La autorización pertenece al descriptor, no al fingerprint
+
+El kernel concede `EVIOCGRAB` a un **descriptor abierto** concreto, identificado por su
+ruta `/dev/input/eventN`. El fingerprint, en cambio, es una identidad lógica derivada de
+metadatos que el kernel no garantiza única entre nodos distintos: `phys` y `uniq` pueden
+venir vacíos.
+
+Por eso el bridge anota qué **rutas** sostienen la captura y cada evento físico viaja con
+la ruta por la que entró. Una pulsación se despacha únicamente si su descriptor de origen
+es uno de los capturados. Dos descriptores con el mismo fingerprint no comparten la
+autorización: el que no obtuvo el grab no despacha nada, aunque el otro sí lo tenga.
+
+El fingerprint conserva intacto su papel de identidad para `devices.json` y el remapeo. Lo
+que no hace es representar una autorización que el kernel nunca le otorgó.
+
+Cuando dos descriptores activos declaran el mismo fingerprint mapeado, el bridge captura
+sólo al primero y deja al segundo **sin capturar y sin despachar**, registrando un aviso de
+nivel `WARNING` con ambas rutas. Es la salida conservadora: un `devXX` designa una sola
+banca, así que no puede haber dos fuentes simultáneas para él, y tampoco corresponde
+secuestrar un teclado cuya pertenencia es ambigua. El aviso describe lo observado y no
+afirma que exista una colisión de hardware; determinarlo requiere inventario y hardware
+reales. Si el descriptor capturado desaparece, el que quedaba se autoriza solo en la
+reconciliación siguiente.
+
 ### Política fail-safe
 
 La exclusividad es **requisito previo** al despacho funcional. Si `grab()` falla sobre un
@@ -225,13 +250,16 @@ sobre `/dev/input`—, el bridge:
 
 - registra un diagnóstico de nivel `ERROR` con la ruta, el nombre del dispositivo y la
   causa devuelta por el sistema operativo;
-- **no** despacha ninguna pulsación de ese dispositivo al backend, para no operar en modo
+- **no** despacha ninguna pulsación de ese descriptor al backend, para no operar en modo
   compartido de forma silenciosa;
 - reintenta la adquisición en cada ciclo, de modo que el dispositivo vuelve a operar apenas
   se consigue la exclusividad, sin reiniciar el servicio.
 
 Los demás dispositivos mapeados siguen funcionando normalmente: el fallo es por
-dispositivo, no global.
+descriptor, no global.
+
+Un evento que no declare su descriptor de origen tampoco se despacha: sin esa evidencia no
+puede demostrar que proviene de una fuente capturada.
 
 ### Ciclo de vida
 
@@ -248,6 +276,29 @@ dispositivo, no global.
 Adquirir y liberar son idempotentes desde la perspectiva del bridge: el adaptador lleva un
 registro local de qué rutas están tomadas, porque el contrato oficial de `python-evdev`
 indica que liberar un dispositivo que no fue tomado provoca un `OSError`.
+
+### Privacidad del registro
+
+El bridge se ejecuta en el mismo equipo que el teclado del operador y necesita permisos
+sobre `/dev/input`, así que **puede** leer lo que esa persona escribe. Para que esa
+capacidad técnica no se convierta en un registro de su actividad, rige una regla simple:
+
+> El bridge no escribe el nombre ni el código de ninguna tecla que no provenga de un
+> descriptor mapeado y capturado en exclusiva. En ningún nivel de registro, DEBUG incluido.
+
+Consecuencias prácticas:
+
+- de un teclado descubierto pero no mapeado se registra **un solo aviso** de nivel `INFO`
+  con su fingerprint, y no una línea por pulsación: así no queda en el journal ni el texto
+  escrito ni su cadencia;
+- de una botonera mapeada y capturada sí se registra la tecla no reconocida, porque es un
+  dispositivo dedicado al sistema y ese dato es lo que permite diagnosticar un modelo
+  distinto de botonera;
+- bajar el nivel a `DEBUG` para diagnosticar un problema no habilita el registro de teclas
+  ajenas.
+
+Esta regla es de minimización de datos, no de conveniencia: quien amplíe el diagnóstico del
+bridge debe conservarla.
 
 ### Verificación humana sobre Linux real
 

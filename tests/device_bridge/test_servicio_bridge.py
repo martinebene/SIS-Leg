@@ -15,10 +15,15 @@ Verifica:
 11. Política de captura exclusiva (WP-075): un dispositivo mapeado toma exclusividad antes
     de despachar, uno no mapeado nunca la recibe, un fallo de exclusividad no despacha,
     la reconexión vuelve a adquirirla, el remapeo la reconcilia y la parada la libera.
+12. Privacidad del registro (WP-082): las pulsaciones de un dispositivo no mapeado no dejan
+    en el log ni el nombre de la tecla ni una línea por pulsación.
+13. Exclusividad por descriptor (WP-082): la autorización pertenece a la ruta que obtuvo el
+    `EVIOCGRAB`, así que dos descriptores con el mismo fingerprint no la comparten.
 """
 
 from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
 from typing import Any
@@ -472,7 +477,8 @@ def test_dispositivo_mapeado_adquiere_exclusividad_antes_de_despachar(
     servicio.ejecutar_ciclo_descubrimiento()
 
     assert adaptador.tiene_exclusividad(disp) is True
-    assert FINGERPRINT_DEV01 in servicio.fingerprints_exclusivos
+    # La autorización se anota por descriptor, que es a quien el kernel le dio el grab.
+    assert "/dev/input/event0" in servicio.rutas_exclusivas
 
     adaptador.simular_evento("/dev/input/event0", _pulsacion(FINGERPRINT_DEV01))
     servicio.ejecutar_paso()
@@ -497,7 +503,7 @@ def test_dispositivo_no_mapeado_nunca_recibe_captura_exclusiva(
     servicio.ejecutar_paso()
 
     assert adaptador.tiene_exclusividad(teclado_moderador) is False
-    assert servicio.fingerprints_exclusivos == set()
+    assert servicio.rutas_exclusivas == set()
     assert "/dev/input/event9" not in adaptador.conteo_adquisiciones
 
 
@@ -512,7 +518,7 @@ def test_fallo_de_exclusividad_impide_todo_post_funcional(
     servicio.ejecutar_ciclo_descubrimiento()
 
     assert adaptador.tiene_exclusividad(disp) is False
-    assert FINGERPRINT_DEV01 not in servicio.fingerprints_exclusivos
+    assert "/dev/input/event0" not in servicio.rutas_exclusivas
 
     adaptador.simular_evento("/dev/input/event0", _pulsacion(FINGERPRINT_DEV01))
     respuestas = servicio.ejecutar_paso()
@@ -551,19 +557,20 @@ def test_reconexion_de_numpad_mapeado_vuelve_a_adquirir_exclusividad(
 
     adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
     servicio.ejecutar_ciclo_descubrimiento()
-    assert FINGERPRINT_DEV01 in servicio.fingerprints_exclusivos
+    assert "/dev/input/event0" in servicio.rutas_exclusivas
 
     # Desconexión física: el servicio cierra el descriptor y olvida la exclusividad.
     adaptador.simular_desconexion("/dev/input/event0")
     servicio.ejecutar_paso()
-    assert servicio.fingerprints_exclusivos == set()
+    assert servicio.rutas_exclusivas == set()
 
     # Reconexión: el kernel puede asignar otro nodo, pero el fingerprint es el mismo.
     reconectado = adaptador.agregar_dispositivo("/dev/input/event7", FINGERPRINT_DEV01)
     servicio.ejecutar_ciclo_descubrimiento()
 
     assert adaptador.tiene_exclusividad(reconectado) is True
-    assert FINGERPRINT_DEV01 in servicio.fingerprints_exclusivos
+    # El nodo nuevo obtiene su propia autorización; la del nodo viejo no se hereda.
+    assert servicio.rutas_exclusivas == {"/dev/input/event7"}
 
     adaptador.simular_evento("/dev/input/event7", _pulsacion(FINGERPRINT_DEV01))
     servicio.ejecutar_paso()
@@ -604,7 +611,7 @@ def test_remapeo_temporal_reconcilia_quien_queda_capturado(
 
     assert adaptador.tiene_exclusividad(repuesto) is True
     assert adaptador.tiene_exclusividad(original) is False
-    assert servicio.fingerprints_exclusivos == {FINGERPRINT_DESCONOCIDO}
+    assert servicio.rutas_exclusivas == {"/dev/input/event5"}
     assert adaptador.conteo_liberaciones["/dev/input/event0"] == 1
 
     # El repuesto despacha como 'dev01' y el teclado anterior ya no despacha nada.
@@ -624,11 +631,221 @@ def test_detener_libera_la_exclusividad_de_todos_los_dispositivos(
     disp_01 = adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
     disp_02 = adaptador.agregar_dispositivo("/dev/input/event1", FINGERPRINT_DEV02)
     servicio.ejecutar_ciclo_descubrimiento()
-    assert servicio.fingerprints_exclusivos == {FINGERPRINT_DEV01, FINGERPRINT_DEV02}
+    assert servicio.rutas_exclusivas == {"/dev/input/event0", "/dev/input/event1"}
 
     servicio.detener()
 
     assert adaptador.tiene_exclusividad(disp_01) is False
     assert adaptador.tiene_exclusividad(disp_02) is False
     assert adaptador.dispositivos_exclusivos == set()
-    assert servicio.fingerprints_exclusivos == set()
+    assert servicio.rutas_exclusivas == set()
+
+
+# ---------------------------------------------------------------------------
+# Privacidad del registro y exclusividad por descriptor (WP-082)
+#
+# Los dos bloques siguientes cubren ASTRA-003 y ASTRA-004. Ambos defectos eran
+# invisibles para la suite anterior porque las pruebas comprobaban el efecto
+# funcional (no se envía nada al backend) y no lo que quedaba escrito en el
+# registro ni de qué descriptor venía la pulsación aceptada.
+# ---------------------------------------------------------------------------
+
+
+def test_pulsacion_no_mapeada_no_registra_el_nombre_de_la_tecla(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Demuestra ASTRA-003: el teclado del operador no deja su texto en el registro.
+
+    El bridge convive con el teclado normal en el mismo equipo y tiene permisos para
+    leerlo. Antes registraba a INFO el nombre de cada tecla no mapeada, de modo que una
+    contraseña escrita en cualquier ventana quedaba reconstruible en el journal.
+    """
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    adaptador.agregar_dispositivo(
+        "/dev/input/event9",
+        FINGERPRINT_DESCONOCIDO,
+        nombre="Teclado del moderador",
+    )
+    servicio.ejecutar_ciclo_descubrimiento()
+
+    with caplog.at_level(logging.DEBUG, logger="sis_leg_device_bridge.servicio"):
+        for tecla in ("KEY_S", "KEY_E", "KEY_C", "KEY_R", "KEY_E", "KEY_T", "KEY_O"):
+            adaptador.simular_evento(
+                "/dev/input/event9", _pulsacion(FINGERPRINT_DESCONOCIDO, tecla)
+            )
+        servicio.ejecutar_paso()
+
+    registro_completo = "\n".join(registro.getMessage() for registro in caplog.records)
+
+    # Ninguna de las teclas escritas aparece, en ningún nivel de registro.
+    for tecla in ("KEY_S", "KEY_E", "KEY_C", "KEY_R", "KEY_T", "KEY_O"):
+        assert tecla not in registro_completo
+
+    # Tampoco se filtra la cadencia: una línea por dispositivo, no una por pulsación.
+    avisos = [r for r in caplog.records if "no mapeado/no elegible" in r.getMessage()]
+    assert len(avisos) == 1
+    assert avisos[0].levelno == logging.INFO
+    # El aviso conserva la identidad del hardware, que es lo que soporte necesita.
+    assert FINGERPRINT_DESCONOCIDO in avisos[0].getMessage()
+
+    assert cliente_http.peticiones_enviadas == []
+
+
+def test_pulsacion_no_mapeada_tampoco_se_registra_en_nivel_debug(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Demuestra que un keyup ajeno tampoco deja contenido, ni siquiera a DEBUG.
+
+    Bajar el nivel del servicio no puede ser la forma de proteger la privacidad: un
+    operador que activa DEBUG para diagnosticar un problema no debería empezar a grabar
+    lo que escribe.
+    """
+    servicio, adaptador, _cliente_http = entorno_bridge
+
+    adaptador.agregar_dispositivo("/dev/input/event9", FINGERPRINT_DESCONOCIDO)
+    servicio.ejecutar_ciclo_descubrimiento()
+
+    evento_keyup = EventoTeclaFisica(
+        fingerprint=FINGERPRINT_DESCONOCIDO,
+        codigo_tecla=30,
+        nombre_tecla="KEY_A",
+        es_bajada=False,
+    )
+
+    with caplog.at_level(logging.DEBUG, logger="sis_leg_device_bridge.servicio"):
+        adaptador.simular_evento("/dev/input/event9", evento_keyup)
+        servicio.ejecutar_paso()
+
+    assert "KEY_A" not in "\n".join(r.getMessage() for r in caplog.records)
+
+
+def test_solo_el_descriptor_capturado_despacha_pese_a_fingerprint_compartido(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """Demuestra ASTRA-004: la autorización no se hereda entre descriptores.
+
+    Escenario: dos nodos `/dev/input/eventN` activos declaran el mismo fingerprint mapeado
+    y el primero no consigue la captura exclusiva. Con la autorización representada por
+    fingerprint, el grab exitoso del segundo habilitaba también al primero, que seguía
+    compartido con el escritorio. Ahora cada descriptor responde por sí mismo.
+    """
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    compartido_sin_grab = adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    compartido_con_grab = adaptador.agregar_dispositivo("/dev/input/event1", FINGERPRINT_DEV01)
+    adaptador.simular_fallo_exclusividad("/dev/input/event0")
+
+    servicio.ejecutar_ciclo_descubrimiento()
+
+    assert adaptador.tiene_exclusividad(compartido_sin_grab) is False
+    assert adaptador.tiene_exclusividad(compartido_con_grab) is True
+    assert servicio.rutas_exclusivas == {"/dev/input/event1"}
+
+    # La pulsación del descriptor sin grab se descarta aunque su fingerprint esté mapeado
+    # y aunque otro descriptor con esa misma identidad sí esté capturado.
+    adaptador.simular_evento("/dev/input/event0", _pulsacion(FINGERPRINT_DEV01))
+    assert servicio.ejecutar_paso() == []
+    assert cliente_http.peticiones_enviadas == []
+
+    # El descriptor efectivamente capturado sigue despachando con normalidad.
+    adaptador.simular_evento("/dev/input/event1", _pulsacion(FINGERPRINT_DEV01, "KEY_9"))
+    assert len(servicio.ejecutar_paso()) == 1
+    assert cliente_http.peticiones_enviadas == [{"dispositivo": "dev01", "tecla": "9"}]
+
+
+def test_segundo_descriptor_con_identidad_repetida_no_se_captura_ni_despacha(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Demuestra la salida conservadora ante dos descriptores con la misma identidad.
+
+    Un `devXX` designa una sola banca, así que el bridge no puede aceptar dos fuentes
+    simultáneas para él. El segundo descriptor no se captura (no se secuestra un teclado
+    cuya pertenencia es ambigua) y tampoco despacha. El registro describe lo observado sin
+    afirmar que exista una colisión real de hardware, que sólo puede probarse con
+    inventario y hardware reales.
+    """
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    primero = adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    segundo = adaptador.agregar_dispositivo("/dev/input/event1", FINGERPRINT_DEV01)
+
+    with caplog.at_level(logging.WARNING, logger="sis_leg_device_bridge.servicio"):
+        servicio.ejecutar_ciclo_descubrimiento()
+
+    assert adaptador.tiene_exclusividad(primero) is True
+    assert adaptador.tiene_exclusividad(segundo) is False
+    assert "/dev/input/event1" not in adaptador.conteo_adquisiciones
+    assert servicio.rutas_exclusivas == {"/dev/input/event0"}
+
+    ambiguedades = [r for r in caplog.records if "Identidad física ambigua" in r.getMessage()]
+    assert len(ambiguedades) == 1
+
+    adaptador.simular_evento("/dev/input/event1", _pulsacion(FINGERPRINT_DEV01))
+    assert servicio.ejecutar_paso() == []
+    assert cliente_http.peticiones_enviadas == []
+
+    adaptador.simular_evento("/dev/input/event0", _pulsacion(FINGERPRINT_DEV01))
+    servicio.ejecutar_paso()
+    assert cliente_http.peticiones_enviadas == [{"dispositivo": "dev01", "tecla": "1"}]
+
+
+def test_desconexion_del_titular_habilita_al_descriptor_restante(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """Demuestra que la ambigüedad no deja un titular fantasma bloqueando al que queda.
+
+    Si el nodo capturado desaparece (desconexión física o reenumeración del kernel), el
+    descriptor que había quedado sin autorizar debe poder tomar la exclusividad en la
+    reconciliación siguiente, sin reiniciar el servicio.
+    """
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    sobreviviente = adaptador.agregar_dispositivo("/dev/input/event1", FINGERPRINT_DEV01)
+    servicio.ejecutar_ciclo_descubrimiento()
+    assert servicio.rutas_exclusivas == {"/dev/input/event0"}
+
+    adaptador.simular_desconexion("/dev/input/event0")
+    servicio.ejecutar_paso()
+
+    # La reconciliación ocurre al comienzo de cada iteración, así que el descriptor que
+    # queda se autoriza en el paso siguiente (milisegundos en el bucle real), sin ninguna
+    # intervención manual.
+    servicio.ejecutar_paso()
+
+    assert adaptador.tiene_exclusividad(sobreviviente) is True
+    assert servicio.rutas_exclusivas == {"/dev/input/event1"}
+
+    adaptador.simular_evento("/dev/input/event1", _pulsacion(FINGERPRINT_DEV01))
+    servicio.ejecutar_paso()
+    assert cliente_http.peticiones_enviadas == [{"dispositivo": "dev01", "tecla": "1"}]
+
+
+def test_evento_sin_descriptor_de_origen_no_se_despacha(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """Demuestra el fail-safe: sin prueba de origen no hay despacho.
+
+    Un evento que no declara por qué descriptor entró no puede demostrar que proviene de
+    una fuente capturada en exclusiva, así que se descarta aunque su fingerprint esté
+    mapeado y aunque el dispositivo correspondiente esté efectivamente tomado.
+    """
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    servicio.ejecutar_ciclo_descubrimiento()
+    assert servicio.rutas_exclusivas == {"/dev/input/event0"}
+
+    huerfano = EventoTeclaFisica(
+        fingerprint=FINGERPRINT_DEV01,
+        codigo_tecla=2,
+        nombre_tecla="KEY_1",
+        es_bajada=True,
+    )
+    assert huerfano.ruta_dispositivo == ""
+    assert servicio.procesar_evento_tecla(huerfano) is None
+    assert cliente_http.peticiones_enviadas == []
