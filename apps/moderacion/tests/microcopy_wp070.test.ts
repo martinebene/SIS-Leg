@@ -92,6 +92,7 @@ function crearCliente(): ClienteModeracion {
  */
 function crearEstadoSinPreparar(): EstadoModeracion {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-09-04T10:00:00Z',
     estado_global: 'SIN_PREPARAR',

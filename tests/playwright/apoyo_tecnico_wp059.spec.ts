@@ -67,6 +67,7 @@ function crearTransmision(parcial: Record<string, unknown> = {}) {
  */
 function crearEstadoTecnico(parcial: Record<string, unknown> = {}) {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-09-02T10:00:00Z',
     estado_global: 'SESION_ABIERTA',

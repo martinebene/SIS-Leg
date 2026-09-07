@@ -183,6 +183,7 @@ describe('Countdown público de votación (WP-054)', () => {
   /** Sesión abierta con una votación EN_CURSO y cuenta regresiva vigente. */
   function crearSesionConCuentaRegresiva() {
     return crearEstadoRecintoPrueba({
+      instancia: 'instancia-prueba',
       revision: 1,
       generado_en: '2026-08-28T10:00:00Z',
       estado_global: 'SESION_ABIERTA',

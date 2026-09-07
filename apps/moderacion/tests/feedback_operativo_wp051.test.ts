@@ -140,6 +140,7 @@ function crearCapacidades(): EstadoModeracion['capacidades'] {
 
 function crearEstado(parcial: Partial<EstadoModeracion> = {}): EstadoModeracion {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-09-01T10:00:00Z',
     estado_global: 'SESION_ABIERTA',

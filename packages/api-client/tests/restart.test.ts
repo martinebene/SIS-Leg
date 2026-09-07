@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ClienteModeracion, ClienteRecinto } from '../src'
-import { crearMockEstadoModeracion, crearMockEstadoRecinto } from './helpers/datos_prueba'
+import { ClienteApoyoTecnico, ClienteModeracion, ClienteRecinto } from '../src'
+import type { EstadoSincronizable, OpcionesSuscripcion, Suscripcion } from '../src'
+import {
+  INSTANCIA_PRUEBA_A,
+  INSTANCIA_PRUEBA_B,
+  crearMockEstadoModeracion,
+  crearMockEstadoRecinto,
+  crearMockEstadoTecnico,
+} from './helpers/datos_prueba'
 import { MockEventSource } from './helpers/mock_event_source'
 
 describe('Caso crítico: Reinicio (Restart) del backend y nueva baseline', () => {
@@ -138,4 +145,95 @@ describe('Caso crítico: Reinicio (Restart) del backend y nueva baseline', () =>
 
     suscripcion.cancelar()
   })
+})
+
+/**
+ * Reinicio **silencioso**: el backend se reinicia sin que el stream llegue a romperse.
+ *
+ * Es el hueco que WP-080 vino a cerrar. El caso de arriba se apoya en el `onerror` del
+ * `EventSource`: la conexión cae, el cliente pide un snapshot nuevo y ese snapshot vale
+ * como baseline. Pero si el reinicio ocurre en la ventana que va entre el snapshot REST y
+ * la apertura del stream, la conexión que abre es contra el proceso **nuevo** y nunca
+ * falla. Sin identidad de instancia, sus revisiones bajas se descartaban para siempre.
+ *
+ * La tabla recorre las tres superficies con exactamente el mismo guion para demostrar el
+ * criterio de aceptación 4 del WP: Moderación, Recinto y Apoyo Técnico comparten la
+ * semántica porque comparten el motor de sincronización, no porque cada una la reimplemente.
+ */
+describe('Reinicio silencioso entre snapshot REST y apertura del stream (WP-080)', () => {
+  /** Firma común de las tres superficies, que es justamente lo que se quiere demostrar. */
+  interface SuperficieSincronizable<T extends EstadoSincronizable> {
+    suscribirEstado: (opciones: OpcionesSuscripcion<T>) => Suscripcion
+  }
+
+  const superficies = [
+    {
+      nombre: 'Moderación',
+      snapshotProcesoA: crearMockEstadoModeracion(142, 'SESION_ABIERTA', INSTANCIA_PRUEBA_A),
+      eventoProcesoB: crearMockEstadoModeracion(0, 'SIN_PREPARAR', INSTANCIA_PRUEBA_B),
+      crearCliente: (configuracion: ConstructorParameters<typeof ClienteModeracion>[0]) =>
+        new ClienteModeracion(configuracion) as SuperficieSincronizable<EstadoSincronizable>,
+    },
+    {
+      nombre: 'Recinto',
+      snapshotProcesoA: crearMockEstadoRecinto(88, 'SESION_ABIERTA', INSTANCIA_PRUEBA_A),
+      eventoProcesoB: crearMockEstadoRecinto(0, 'SIN_PREPARAR', INSTANCIA_PRUEBA_B),
+      crearCliente: (configuracion: ConstructorParameters<typeof ClienteRecinto>[0]) =>
+        new ClienteRecinto(configuracion) as SuperficieSincronizable<EstadoSincronizable>,
+    },
+    {
+      nombre: 'Apoyo Técnico',
+      snapshotProcesoA: crearMockEstadoTecnico(57, 'SESION_ABIERTA', INSTANCIA_PRUEBA_A),
+      eventoProcesoB: crearMockEstadoTecnico(0, 'SIN_PREPARAR', INSTANCIA_PRUEBA_B),
+      crearCliente: (configuracion: ConstructorParameters<typeof ClienteApoyoTecnico>[0]) =>
+        new ClienteApoyoTecnico(configuracion) as SuperficieSincronizable<EstadoSincronizable>,
+    },
+  ]
+
+  for (const superficie of superficies) {
+    it(`${superficie.nombre} adopta el proceso nuevo sin esperar un corte de conexión`, async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify(superficie.snapshotProcesoA), { status: 200 }),
+        )
+
+      const instanciasEs: MockEventSource[] = []
+      const fabricaEs = vi.fn().mockImplementation((url: string) => {
+        const fuente = new MockEventSource(url)
+        instanciasEs.push(fuente)
+        return fuente
+      })
+
+      const cliente = superficie.crearCliente({ fetch: mockFetch, fabricaEventSource: fabricaEs })
+
+      const adoptados: EstadoSincronizable[] = []
+      const errores: unknown[] = []
+      const suscripcion = cliente.suscribirEstado({
+        alEstado: (estado) => adoptados.push(estado),
+        alError: (error) => errores.push(error),
+      })
+
+      await vi.waitFor(() => expect(instanciasEs.length).toBe(1))
+      expect(adoptados.map((estado) => estado.revision)).toEqual([
+        superficie.snapshotProcesoA.revision,
+      ])
+
+      // El stream abre contra el proceso ya reiniciado y funciona perfectamente.
+      instanciasEs[0].simularApertura()
+      instanciasEs[0].simularEvento('estado', superficie.eventoProcesoB)
+
+      // Se adopta la revisión menor porque viene de otra instancia.
+      expect(adoptados).toHaveLength(2)
+      expect(adoptados[1].revision).toBe(0)
+      expect(adoptados[1].instancia).toBe(INSTANCIA_PRUEBA_B)
+
+      // Y se adopta sin haber pedido un segundo snapshot ni haber visto un solo error.
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      expect(instanciasEs).toHaveLength(1)
+      expect(errores).toEqual([])
+
+      suscripcion.cancelar()
+    })
+  }
 })

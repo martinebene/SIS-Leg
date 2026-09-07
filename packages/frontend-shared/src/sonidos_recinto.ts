@@ -49,6 +49,15 @@
  * de la página y cualquier reconexión, incluida la que ocurre después de reiniciar el
  * backend, cuando la revisión vuelve a empezar.
  *
+ * Desde WP-080 hay un cuarto caso que el indicador de conexión **no** puede distinguir: el
+ * backend puede reiniciar en la ventana que va entre el snapshot REST y la apertura del
+ * stream, sin que la conexión llegue a romperse. El cliente adopta entonces el estado del
+ * proceso nuevo con el stream ya `CONECTADO`, y compararlo contra el estado del proceso
+ * anterior produciría sonidos falsos: una sesión que "se cierra", una votación que
+ * "desaparece", bancas que "se ausentan". Ninguno de esos hechos ocurrió en el salón; lo
+ * único que pasó es que el backend se reinició. Por eso un cambio de instancia también es
+ * una baseline y no suena.
+ *
  * ## Por qué los observadores son síncronos
  *
  * `flush: 'sync'` ejecuta la comparación en el mismo instante en que la referencia cambia.
@@ -129,6 +138,8 @@ export function useSonidosRecinto<T extends InstantaneaSonora>(
   let instantaneaPrevia: T | null = null
   /** Revisión de ese estado, usada como guarda de idempotencia. */
   let revisionPrevia: number | null = null
+  /** Instancia backend de ese estado; delimita contra qué revisiones es comparable. */
+  let instanciaPrevia: string | null = null
 
   watch(
     opciones.estado,
@@ -136,6 +147,7 @@ export function useSonidosRecinto<T extends InstantaneaSonora>(
       if (actual === null) {
         instantaneaPrevia = null
         revisionPrevia = null
+        instanciaPrevia = null
         return
       }
 
@@ -144,10 +156,17 @@ export function useSonidosRecinto<T extends InstantaneaSonora>(
       // archivo precargado.
       motor.configurar(actual.sonidos)
 
-      const esBaseline = instantaneaPrevia === null || opciones.estadoConexion.value !== 'CONECTADO'
-      // Dentro de una misma conexión la revisión sólo crece. Una revisión repetida es el
-      // mismo estado entregado dos veces y no puede volver a sonar.
-      const esRevisionRepetida = revisionPrevia !== null && actual.revision <= revisionPrevia
+      // Un backend distinto no continúa la historia del anterior: su estado es una
+      // baseline, aunque el stream nunca se haya caído y el indicador siga en CONECTADO.
+      const cambioInstancia = instanciaPrevia !== null && actual.instancia !== instanciaPrevia
+      const esBaseline =
+        instantaneaPrevia === null ||
+        cambioInstancia ||
+        opciones.estadoConexion.value !== 'CONECTADO'
+      // Dentro de una misma conexión y una misma instancia la revisión sólo crece. Una
+      // revisión repetida es el mismo estado entregado dos veces y no puede volver a sonar.
+      const esRevisionRepetida =
+        !cambioInstancia && revisionPrevia !== null && actual.revision <= revisionPrevia
 
       if (instantaneaPrevia !== null && !esBaseline && !esRevisionRepetida) {
         for (const evento of detectarTransicionesSonoras(instantaneaPrevia, actual)) {
@@ -157,6 +176,7 @@ export function useSonidosRecinto<T extends InstantaneaSonora>(
 
       instantaneaPrevia = actual
       revisionPrevia = actual.revision
+      instanciaPrevia = actual.instancia
     },
     { immediate: true, flush: 'sync' },
   )

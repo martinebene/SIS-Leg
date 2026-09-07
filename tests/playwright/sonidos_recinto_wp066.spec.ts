@@ -184,6 +184,7 @@ test.describe('Motor de sonidos del Recinto', () => {
           segundos_restantes: 4,
         },
       }),
+      instancia: 'instancia-prueba',
       revision: 2,
       generado_en: new Date(ahora).toISOString(),
     })

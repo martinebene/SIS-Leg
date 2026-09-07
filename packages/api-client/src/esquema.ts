@@ -926,8 +926,16 @@ export interface components {
         /**
          * EstadoModeracion
          * @description Snapshot completo y reconstruible del frontend de Moderación.
+         *
+         *     ``instancia`` (WP-080) identifica de forma opaca al proceso backend que
+         *     construyó este snapshot. El cliente compara el par ``(instancia, revision)``:
+         *     dentro de una misma instancia la revisión sigue siendo monotónica, y un
+         *     cambio de instancia obliga a adoptar la baseline nueva aunque su revisión
+         *     sea menor.
          */
         EstadoModeracion: {
+            /** Instancia */
+            instancia: string;
             /** Revision */
             revision: number;
             /**
@@ -986,8 +994,15 @@ export interface components {
         /**
          * EstadoRecinto
          * @description Snapshot público por allowlist, sin capacidades ni auditoría cruda.
+         *
+         *     ``instancia`` (WP-080) es el mismo identificador técnico y opaco que viaja en
+         *     las otras dos proyecciones. No agrega información institucional ni nombra a
+         *     nadie: sólo dice qué proceso emitió el snapshot, que es lo que el cliente
+         *     necesita para no descartar la primera revisión de un backend reiniciado.
          */
         EstadoRecinto: {
+            /** Instancia */
+            instancia: string;
             /** Revision */
             revision: number;
             /**
@@ -1076,8 +1091,14 @@ export interface components {
          *     de Moderación, de modo que la frontera de secreto de WP-052 se aplica una
          *     sola vez y no puede divergir entre puestos: mientras el sentido individual
          *     de un voto siga siendo secreto, tampoco lo ve Apoyo Técnico.
+         *
+         *     ``instancia`` (WP-080) viaja acá con el mismo significado que en Moderación y
+         *     Recinto, de modo que las tres superficies apliquen exactamente la misma
+         *     regla de continuidad tras un reinicio del backend.
          */
         EstadoTecnico: {
+            /** Instancia */
+            instancia: string;
             /** Revision */
             revision: number;
             /**
@@ -1721,9 +1742,14 @@ export interface components {
          *
          *     ``revision`` se repite acá, además de en el estado técnico que la contiene,
          *     porque la frontera reactiva usa la revisión del objeto que compara para
-         *     descartar una revisión repetida sin volver a sonar.
+         *     descartar una revisión repetida sin volver a sonar. Desde WP-080 ``instancia``
+         *     la acompaña por el mismo motivo: esa frontera necesita reconocer que dos
+         *     revisiones consecutivas pueden venir de procesos distintos y que, en ese
+         *     caso, la segunda es una baseline nueva y no un hecho que deba sonar.
          */
         SonorizacionRecintoProyectada: {
+            /** Instancia */
+            instancia: string;
             /** Revision */
             revision: number;
             estado_global: components["schemas"]["EstadoGlobal"];
@@ -2765,7 +2791,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Stream Server-Sent Events. Cada evento `estado` contiene un EstadoModeracion completo; `id` coincide con su revision. No transporta deltas ni ofrece replay durable. */
+            /** @description Stream Server-Sent Events. Cada evento `estado` contiene un EstadoModeracion completo; `id` coincide con su revision. No transporta deltas ni ofrece replay durable. El campo `instancia` identifica al proceso backend que emite: la revision sólo es monotónica dentro de una misma instancia. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2785,7 +2811,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Stream Server-Sent Events. Cada evento `estado` contiene un EstadoRecinto completo con el secreto público aplicado en servidor; `id` coincide con su revision. */
+            /** @description Stream Server-Sent Events. Cada evento `estado` contiene un EstadoRecinto completo con el secreto público aplicado en servidor; `id` coincide con su revision. El campo `instancia` identifica al proceso backend que emite: la revision sólo es monotónica dentro de una misma instancia. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2805,7 +2831,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Stream Server-Sent Events. Cada evento `estado` contiene un EstadoTecnico completo con transmisión, avisos de ambos destinos, biblioteca, eventos seguros, la allowlist de remapeo y la subproyección de sonorización; `id` coincide con su revision. Es el único stream persistente que necesita el puesto de Apoyo Técnico. */
+            /** @description Stream Server-Sent Events. Cada evento `estado` contiene un EstadoTecnico completo con transmisión, avisos de ambos destinos, biblioteca, eventos seguros, la allowlist de remapeo y la subproyección de sonorización; `id` coincide con su revision. El campo `instancia` identifica al proceso backend que emite: la revision sólo es monotónica dentro de una misma instancia. Es el único stream persistente que necesita el puesto de Apoyo Técnico. */
             200: {
                 headers: {
                     [name: string]: unknown;

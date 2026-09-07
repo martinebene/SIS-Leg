@@ -74,6 +74,9 @@ async def test_estado_tecnico_declara_exactamente_los_campos_del_contrato(
     tecnico = await entorno.servicio.obtener_estado_tecnico()
 
     assert tecnico.model_dump().keys() == {
+        # WP-080: identidad opaca del proceso que emite. Delimita el alcance de
+        # ``revision``, que sólo es monotónica dentro de una misma instancia.
+        "instancia",
         "revision",
         "generado_en",
         "estado_global",
@@ -90,6 +93,9 @@ async def test_estado_tecnico_declara_exactamente_los_campos_del_contrato(
     }
     assert tecnico.remapeo.model_dump().keys() == {"remapeo", "concejales", "capacidades"}
     assert tecnico.sonorizacion.model_dump().keys() == {
+        # La subproyección repite el par completo porque el detector de
+        # transiciones compara este objeto y no el estado que lo contiene.
+        "instancia",
         "revision",
         "estado_global",
         "tecnico",
