@@ -25,10 +25,11 @@ import pytest
 
 from scripts.auditar_identidad_legada import (
     ALLOWLIST,
-    MARCADORES_DE_CONTEXTO_HISTORICO,
+    PALABRAS_DE_CONTEXTO_HISTORICO,
     PATRON_LEGADO,
     RAIZ_REPOSITORIO,
     REGISTROS_HISTORICOS_VIVOS,
+    SUSTANTIVOS_DE_IDENTIDAD,
     ReferenciaPermitida,
     RegistroHistoricoVivo,
     auditar,
@@ -304,11 +305,14 @@ def test_rechaza_una_ruta_declarada_en_las_dos_politicas() -> None:
     assert any("elegí una sola política" in problema for problema in problemas)
 
 
-def test_el_vocabulario_de_marcadores_se_mantiene_acotado() -> None:
+def test_el_vocabulario_historico_se_mantiene_acotado_y_en_palabras_completas() -> None:
     """Cada término agregado debilita el gate; el crecimiento debe ser una decisión visible."""
 
-    assert len(MARCADORES_DE_CONTEXTO_HISTORICO) <= 12
-    assert all(marcador == marcador.lower() for marcador in MARCADORES_DE_CONTEXTO_HISTORICO)
+    assert len(PALABRAS_DE_CONTEXTO_HISTORICO) <= 32
+    assert len(SUSTANTIVOS_DE_IDENTIDAD) <= 24
+    for palabra in PALABRAS_DE_CONTEXTO_HISTORICO + SUSTANTIVOS_DE_IDENTIDAD:
+        assert palabra == palabra.lower(), f"{palabra} debería estar en minúsculas."
+        assert " " not in palabra, f"{palabra} no es una palabra suelta."
 
 
 def test_leer_lineas_tolera_binarios_y_rutas_inexistentes() -> None:
@@ -316,3 +320,87 @@ def test_leer_lineas_tolera_binarios_y_rutas_inexistentes() -> None:
 
     assert leer_lineas("assets/branding/sisleg-logo.png") == []
     assert leer_lineas("archivo/que/no/existe.txt") == []
+
+
+# Los tres contraejemplos que el gate dejaba pasar en la primera versión de la política.
+# Están escritos literalmente, no parafraseados, porque son la regresión que este WP corrige:
+# una raíz suelta que colisiona con lenguaje general (`delegado` contra `legado`), un
+# `anterior` que califica cualquier cosa menos la identidad, y la sola presencia del nombre
+# vigente en una instrucción activa.
+CONTRAEJEMPLOS_QUE_DEBEN_FALLAR = [
+    "El concejal delegado solicitó acceso a /opt/botonera2",
+    "Como se indicó en la sección anterior, el servicio arranca con /opt/botonera2/bin/start",
+    "Para desplegar sis-leg, ejecutar /opt/botonera2/bin/start",
+]
+
+
+@pytest.mark.parametrize("linea", CONTRAEJEMPLOS_QUE_DEBEN_FALLAR)
+def test_no_acepta_los_falsos_negativos_conocidos(linea: str) -> None:
+    """Regresión exacta: estas tres líneas son referencias activas, no historia."""
+
+    assert not linea_tiene_contexto_historico(linea)
+
+
+@pytest.mark.parametrize("linea", CONTRAEJEMPLOS_QUE_DEBEN_FALLAR)
+def test_un_registro_vivo_rechaza_los_falsos_negativos_conocidos(linea: str) -> None:
+    """La misma regresión, comprobada de punta a punta a través de la auditoría."""
+
+    registro = RegistroHistoricoVivo("docs/implementation/PLAN.md", "Bitácora de prueba.")
+
+    problemas = auditar(
+        archivos=[registro.ruta],
+        permitidas=(),
+        registros_vivos=(registro,),
+        lector=lambda _ruta: [linea],
+    )
+
+    assert len(problemas) == 1
+    assert "sin marco histórico" in problemas[0]
+
+
+@pytest.mark.parametrize(
+    "linea",
+    [
+        "El nombre anterior del proyecto quedó documentado.",
+        "Las rutas anteriores siguen apareciendo en el runbook.",
+        "La identidad técnica anterior se retiró en WP-077.",
+    ],
+)
+def test_acepta_anterior_solo_cuando_califica_a_la_identidad(linea: str) -> None:
+    """`anterior` vale como marco cuando dice de qué habla, no cuando flota solo."""
+
+    assert linea_tiene_contexto_historico(linea)
+
+
+@pytest.mark.parametrize(
+    "linea",
+    [
+        "Como se indicó en la sección anterior, revisar el runbook.",
+        "El punto anterior ya fue tratado por el orquestador.",
+        "La votación anterior quedó INCONCLUSA.",
+    ],
+)
+def test_rechaza_anterior_cuando_no_califica_a_la_identidad(linea: str) -> None:
+    """Una sección, un punto o una votación previos no dicen nada sobre la identidad."""
+
+    assert not linea_tiene_contexto_historico(linea)
+
+
+def test_las_lineas_historicas_reales_del_plan_siguen_aceptadas() -> None:
+    """La política tiene que seguir admitiendo la evidencia que hoy vive en el PLAN.
+
+    Este test mira el archivo real, no un fixture: si un endurecimiento futuro de la regla
+    dejara afuera una de esas líneas, la tentación sería reescribir la historia para volver
+    al verde, que es exactamente lo que WP-079 prohíbe.
+    """
+
+    ruta = "docs/implementation/PLAN.md"
+    historicas = [
+        (numero, linea)
+        for numero, linea in enumerate(leer_lineas(ruta), start=1)
+        if PATRON_LEGADO.search(linea)
+    ]
+
+    assert historicas, "El PLAN dejó de contener menciones históricas; revisá la política."
+    for numero, linea in historicas:
+        assert linea_tiene_contexto_historico(linea), f"{ruta}:{numero} quedó sin marco: {linea}"

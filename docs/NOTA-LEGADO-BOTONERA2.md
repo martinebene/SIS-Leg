@@ -82,10 +82,20 @@ nueva a un archivo ya permitido también falle.
 menciones legítimas cada vez que se cierra un Work Package, así que exigirle un conteo fijo rompía
 el gate por su propio uso normal. Eso fue el hallazgo ASTRA-010 que corrigió WP-079. Para esas
 rutas, declaradas una por una y nunca por directorio, la regla no es cuántas veces aparece el
-nombre anterior sino **cómo** aparece: cada línea que lo mencione debe nombrar además la identidad
-vigente o encuadrar el pasado con una palabra del vocabulario declarado (legado, histórico,
-anterior, migración, renombrar). Una línea que copie una referencia activa, como una ruta de
-instalación o un módulo, no cumple esa condición y sigue fallando.
+nombre anterior sino **cómo** aparece. Se acepta una línea que cumpla alguna de estas tres
+condiciones:
+
+1. describe la transición hacia la identidad vigente, por ejemplo `/opt/<ruta anterior>` seguido
+   de una flecha o de la preposición «a» y de la ruta actual;
+2. contiene una palabra completa del vocabulario histórico cerrado: legado, histórico, migración,
+   renombrar y sus variantes de género, número y acentuación;
+3. dice «anterior» o «anteriores» junto a un sustantivo de identidad, como «el nombre anterior» o
+   «las rutas anteriores».
+
+Nombrar SIS-Leg no alcanza por sí solo: una instrucción de despliegue que mencione el proyecto
+vigente y a la vez una ruta antigua sigue siendo una referencia activa. Las condiciones se evalúan
+sobre palabras completas y no sobre raíces sueltas, para que «delegado» no se lea como «legado» ni
+«la sección anterior» como una afirmación sobre la identidad del proyecto.
 
 ```bash
 uv run python scripts/auditar_identidad_legada.py

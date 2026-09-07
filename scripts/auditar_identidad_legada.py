@@ -24,9 +24,13 @@ es el caso claro: cada cierre de Work Package puede necesitar contar qué pasó 
 o las rutas anteriores. Exigirles un conteo exacto convierte el gate en un obstáculo que se
 rompe solo, y fue exactamente lo que ocurrió (hallazgo ASTRA-010, WP-079). Para esas rutas
 --declaradas una por una, nunca por directorio-- la regla no es cuántas veces aparece el
-nombre legado sino **cómo** aparece: cada línea que lo mencione debe mencionar además la
-identidad vigente o una palabra que enmarque el pasado. Una línea que copie una referencia
-activa, como una ruta de instalación o un módulo, no cumple esa condición y sigue fallando.
+nombre legado sino **cómo** aparece: cada línea que lo mencione debe describir la transición
+hacia la identidad vigente, usar una palabra completa del vocabulario histórico o decir
+«anterior» junto a un sustantivo de identidad. Nombrar SIS-Leg no alcanza por sí solo, y las
+raíces sueltas quedaron descartadas para que `delegado` no se lea como `legado`; el bloque de
+comentarios que precede a los patrones detalla las tres formas y los falsos negativos que
+motivaron endurecerlas. Una línea que copie una referencia activa, como una ruta de
+instalación o un módulo, no cumple ninguna de las tres y sigue fallando.
 
 Ninguna de las dos políticas autoriza borrar o reescribir un hecho histórico para conseguir
 verde: la historia es evidencia y el gate existe para protegerla, no para empujarla afuera.
@@ -181,7 +185,7 @@ PRUEBAS_DE_AUSENCIA = (
 HERRAMIENTAS_DE_AUDITORIA = (
     ReferenciaPermitida(
         "scripts/auditar_identidad_legada.py",
-        11,
+        13,
         "Patrón de búsqueda, allowlist y mensajes de esta misma auditoría.",
     ),
     ReferenciaPermitida(
@@ -191,7 +195,7 @@ HERRAMIENTAS_DE_AUDITORIA = (
     ),
     ReferenciaPermitida(
         "tests/test_auditoria_identidad_legada.py",
-        19,
+        22,
         "Prueba que la auditoría detecte una reintroducción del nombre legado.",
     ),
 )
@@ -219,29 +223,116 @@ class RegistroHistoricoVivo:
     motivo: str
 
 
-# Vocabulario cerrado que marca una línea como enunciado sobre el pasado y no como uso
-# activo de la identidad legada. Dos familias:
+# Cómo se reconoce un enunciado sobre el pasado.
 #
-# 1. la identidad vigente en la misma línea (`SIS-Leg`, `sis-leg`, `sis_leg`, `sisleg`), que
-#    aparece cuando la frase contrasta el nombre viejo con el nuevo o describe una migración
-#    de una ruta a la otra;
-# 2. palabras que enmarcan temporalmente la mención (`legado`, `histórico`, `anterior`,
-#    `migración`, `renombrar`), que aparecen cuando la frase habla del estado previo.
+# La primera versión de esta regla buscaba subcadenas sueltas y producía falsos negativos
+# graves, es decir dejaba pasar referencias activas: `delegado` contiene `legad`, `sección
+# anterior` contiene `anterior`, y una instrucción de despliegue que nombrara la identidad
+# vigente pasaba por el solo hecho de nombrarla. Las tres formas siguientes tienen que
+# fallar, y hay pruebas exactas para cada una:
 #
-# La comparación es en minúsculas y por subcadena, por eso alcanza con la raíz de cada
-# palabra. `histor`/`histór` están las dos porque el acento cambia la subcadena real.
-# Es un vocabulario deliberadamente corto: cada término agregado debilita el gate, así que
-# ampliarlo exige la misma justificación que agregar una entrada a la allowlist.
-MARCADORES_DE_CONTEXTO_HISTORICO: tuple[str, ...] = (
-    "sis-leg",
-    "sis_leg",
-    "sisleg",
-    "legad",
-    "histor",
-    "histór",
-    "anterior",
-    "migrac",
-    "renombr",
+#     El concejal delegado solicitó acceso a /opt/<legado>
+#     Como se indicó en la sección anterior, el servicio arranca con /opt/<legado>/bin/start
+#     Para desplegar sis-leg, ejecutar /opt/<legado>/bin/start
+#
+# Por eso ahora se exige una expresión explícita, no una subcadena. Hay tres formas
+# aceptadas, y ninguna se activa por casualidad:
+#
+# 1. una **transición de identidad**: el nombre legado seguido, dentro de la misma frase, de
+#    un conector de movimiento (`a`, `hacia`, `por`, `->`, `→`) y de la identidad vigente.
+#    Es la forma de «Renombrar <legado> a SIS-Leg» y de «`/opt/<legado>` -> `/opt/sis-leg`».
+#    El orden importa: nombrar la identidad vigente *antes* del literal no alcanza, porque
+#    eso es lo que hace una instrucción activa que además menciona el proyecto;
+# 2. una **palabra completa** del vocabulario histórico cerrado, con sus variantes de género,
+#    número y acentuación escritas una por una. Al exigir `\b` en los dos extremos, `legado`
+#    ya no se activa dentro de `delegado`;
+# 3. `anterior`/`anteriores` **vinculado** a un sustantivo de identidad, como «el nombre
+#    anterior» o «las rutas anteriores». Aislado no alcanza: «la sección anterior» no dice
+#    nada sobre la identidad del proyecto.
+#
+# Cada forma agregada debilita el gate, así que ampliar cualquiera de las tres exige la misma
+# justificación explícita que agregar una entrada a la allowlist.
+
+# La identidad vigente, escrita como aparece realmente: `SIS-Leg`, `sis-leg`, `sis_leg`,
+# `sisleg`. Se usa sólo dentro de la transición, nunca como marcador por sí misma.
+_IDENTIDAD_VIGENTE = r"sis[-_ ]?leg"
+
+# Forma 1. Entre el literal legado y la identidad vigente se toleran unos pocos caracteres
+# (comillas, barras, un prefijo de ruta), no una oración entera, para que la transición sea
+# de verdad una sola frase y no dos ideas separadas que casualmente conviven en la línea.
+PATRON_TRANSICION_DE_IDENTIDAD = re.compile(
+    rf"botonera2[^\n]{{0,40}}?(?:\s(?:a|hacia|por)\s|\s*(?:->|-->|=>|→)\s*)"
+    rf"[^\n]{{0,25}}?{_IDENTIDAD_VIGENTE}",
+    re.IGNORECASE,
+)
+
+# Forma 2. Vocabulario cerrado, palabras completas. Las variantes con y sin tilde se listan
+# por separado porque `\b` trata la vocal acentuada como otra letra: `\bhistorico\b` no
+# encuentra `histórico`.
+PALABRAS_DE_CONTEXTO_HISTORICO: tuple[str, ...] = (
+    "legado",
+    "legada",
+    "legados",
+    "legadas",
+    "historico",
+    "historica",
+    "historicos",
+    "historicas",
+    "histórico",
+    "histórica",
+    "históricos",
+    "históricas",
+    "migracion",
+    "migración",
+    "migraciones",
+    "migrar",
+    "migrado",
+    "migrada",
+    "migrados",
+    "migradas",
+    "renombrar",
+    "renombrado",
+    "renombrada",
+    "renombrados",
+    "renombradas",
+    "renombro",
+    "renombró",
+)
+
+PATRON_PALABRA_HISTORICA = re.compile(
+    r"\b(?:" + "|".join(PALABRAS_DE_CONTEXTO_HISTORICO) + r")\b",
+    re.IGNORECASE,
+)
+
+# Forma 3. Sustantivos que convierten a `anterior` en una afirmación sobre la identidad del
+# proyecto y no sobre cualquier otra cosa que haya venido antes.
+SUSTANTIVOS_DE_IDENTIDAD: tuple[str, ...] = (
+    "nombre",
+    "nombres",
+    "identidad",
+    "identidades",
+    "ruta",
+    "rutas",
+    "proyecto",
+    "marca",
+    "repositorio",
+    "repositorios",
+    "instalacion",
+    "instalación",
+    "directorio",
+    "directorios",
+    "unidad",
+    "unidades",
+    "checkout",
+    "checkouts",
+)
+
+# Sólo se acepta el orden «sustantivo ... anterior», con a lo sumo una palabra intermedia
+# («identidad técnica anterior»). El orden inverso se descarta a propósito: en «la sección
+# anterior, el servicio arranca...» el sustantivo aparece después y no califica nada.
+PATRON_ANTERIOR_VINCULADO = re.compile(
+    r"\b(?:" + "|".join(SUSTANTIVOS_DE_IDENTIDAD) + r")\b(?:\s+\w+)?\s+anterior(?:es)?\b",
+    re.IGNORECASE,
 )
 
 # Registros históricos vivos declarados. La lista es corta a propósito: no es un mecanismo
@@ -304,18 +395,27 @@ def leer_lineas(ruta_relativa: str) -> list[str]:
 def linea_tiene_contexto_historico(linea: str) -> bool:
     """Decide si una línea menciona el nombre legado *hablando del pasado*.
 
-    La regla, deliberadamente simple para que sea auditable a ojo: la línea debe contener
-    alguno de los `MARCADORES_DE_CONTEXTO_HISTORICO`. Así, «la migración de `/opt/botonera2`
-    a `/opt/sis-leg` sigue pendiente» pasa, porque nombra la ruta nueva y la palabra
-    «migración»; en cambio una línea que sólo dijera `WorkingDirectory=/opt/botonera2` no
-    pasa, porque es indistinguible de una configuración activa copiada por error.
+    Devuelve `True` si la línea contiene alguna de las tres expresiones descritas arriba:
+    una transición de identidad, una palabra completa del vocabulario histórico o
+    `anterior` vinculado a un sustantivo de identidad. Cualquiera alcanza; ninguna se
+    activa por casualidad.
 
-    No pretende entender el idioma: pretende obligar a que la mención venga acompañada de
-    su marco. Es una condición necesaria, no una prueba de que el texto sea correcto.
+    Así, «la migración de `/opt/botonera2` a `/opt/sis-leg` sigue pendiente» pasa dos veces,
+    por la palabra «migración» y por la transición; en cambio `WorkingDirectory=/opt/botonera2`
+    no pasa, porque es indistinguible de una configuración activa copiada por error, y
+    «Para desplegar sis-leg, ejecutar /opt/botonera2/bin/start» tampoco, porque nombrar el
+    proyecto vigente no convierte una instrucción de despliegue en un enunciado histórico.
+
+    No pretende entender el idioma: obliga a que la mención venga acompañada de su marco.
+    Es una condición necesaria para que la línea sea aceptable, no una prueba de que el
+    texto sea correcto.
     """
 
-    minuscula = linea.lower()
-    return any(marcador in minuscula for marcador in MARCADORES_DE_CONTEXTO_HISTORICO)
+    return (
+        PATRON_TRANSICION_DE_IDENTIDAD.search(linea) is not None
+        or PATRON_PALABRA_HISTORICA.search(linea) is not None
+        or PATRON_ANTERIOR_VINCULADO.search(linea) is not None
+    )
 
 
 def _revisar_registro_vivo(
@@ -340,9 +440,11 @@ def _revisar_registro_vivo(
             recorte = recorte[:117] + "..."
         problemas.append(
             f"{registro.ruta}:{numero}: nombra la identidad legada sin marco histórico. "
-            "Una mención permitida en este registro debe nombrar además la identidad "
-            "vigente o encuadrar el pasado (legado, histórico, anterior, migración, "
-            f"renombrar). Línea: {recorte}"
+            "Una mención permitida en este registro debe describir la transición hacia la "
+            "identidad vigente (por ejemplo «/opt/... -> /opt/sis-leg»), usar una palabra "
+            "completa del vocabulario histórico (legado, histórico, migración, renombrar y "
+            "sus variantes) o decir «anterior» junto a un sustantivo de identidad como "
+            f"nombre o ruta. Nombrar SIS-Leg no alcanza por sí solo. Línea: {recorte}"
         )
     return problemas
 
