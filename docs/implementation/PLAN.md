@@ -225,7 +225,16 @@ WP-033 quedó integrado antes de continuar WP-026 y deja disponible el harness m
 | WP-071 | Replicar en Apoyo Técnico todos los eventos sonoros del Recinto | INTEGRADO | WP-056, WP-066 | claude |
 | WP-072 | Incorporar gobernanza de actualización del manual de ayuda | INTEGRADO | WP-067 | claude |
 | WP-073 | Separar configuración operativa local de plantillas versionadas | INTEGRADO | WP-069 | claude |
-| WP-029 | Validar bridge/hardware real, regresión funcional y candidato de producción | BLOQUEADO | WP-019, WP-020, WP-027, WP-028, WP-034, WP-035, WP-036, WP-037, WP-038, WP-039, WP-040, WP-041, WP-043, WP-044, WP-045, WP-046, WP-047, WP-048, WP-049, WP-050, WP-051, WP-052, WP-053, WP-054, WP-055, WP-056, WP-057, WP-058, WP-059, WP-060, WP-061, WP-062, WP-063, WP-064, WP-065, WP-066, WP-067, WP-069, WP-070, WP-071, WP-072, WP-073 | - |
+| WP-079 | Restablecer el gate de identidad histórica sin borrar evidencia legítima | EN_CURSO | WP-077 | claude |
+| WP-080 | Garantizar continuidad de sincronización REST/SSE tras reinicio del backend | PENDIENTE | WP-079, WP-074 | claude |
+| WP-081 | Garantizar cierre FIN de avisos ante carreras entre timers y mutaciones | PENDIENTE | WP-079, WP-078 | claude |
+| WP-082 | Endurecer privacidad y exclusividad efectiva del Device Bridge | PENDIENTE | WP-079, WP-075 | claude |
+| WP-083 | Aplicar ajustes UX de quinta ronda en Apoyo Técnico y Q3 | PENDIENTE | WP-079, WP-049, WP-076 | claude |
+| WP-084 | Generalizar identidad institucional y hacer configurable el cuerpo legislativo | PENDIENTE | WP-079, WP-077 | claude |
+| WP-085 | Generar informe formal de acta y copia externa opcional de registros al cierre | PENDIENTE | WP-081, WP-073, WP-078 | claude |
+| WP-086 | Rechazar NaN e infinitos en todos los temporizadores configurables | PENDIENTE | WP-079, WP-003 | claude |
+| WP-087 | Endurecer migración, systemd y smoke de release antes del despliegue | BLOQUEADO | WP-029, WP-077 | claude |
+| WP-029 | Validar bridge/hardware real, regresión funcional y candidato de producción | BLOQUEADO | WP-019, WP-020, WP-027, WP-028, WP-034, WP-035, WP-036, WP-037, WP-038, WP-039, WP-040, WP-041, WP-043, WP-044, WP-045, WP-046, WP-047, WP-048, WP-049, WP-050, WP-051, WP-052, WP-053, WP-054, WP-055, WP-056, WP-057, WP-058, WP-059, WP-060, WP-061, WP-062, WP-063, WP-064, WP-065, WP-066, WP-067, WP-069, WP-070, WP-071, WP-072, WP-073, WP-079, WP-080, WP-081, WP-082, WP-083, WP-084, WP-085, WP-086 | - |
 
 HUMAN_GATE seleccionó Codex como implementador y Antigravity/AGY como revisor independiente de WP-047. WP-047 queda `EN_CURSO`; WP-048 y WP-049 permanecen bloqueados por esta dependencia y todavía no tienen agente asignado.
 
@@ -490,3 +499,16 @@ WP-077 queda **VERIFIED_COMPLETE** después del corte físico de identidad. Los 
 La cuarta ronda de pruebas humanas queda **VERIFIED_COMPLETE**: WP-074, WP-075, WP-076, WP-078 y el corte final WP-077 fueron integrados, validados y cerrados. No queda ningún WP correctivo activo de esa ronda.
 
 HUMAN_GATE decide realizar una **quinta ronda de pruebas humanas** sobre el estado vigente de SIS-Leg antes de reconsiderar WP-029. Durante esta ronda no se activa ningún nuevo WP por anticipado: los hallazgos se clasificarán después de la prueba y, si requieren corrección, se convertirán en WPs específicos. **WP-029 permanece BLOQUEADO** hasta que HUMAN_GATE evalúe expresamente el resultado de esta nueva prueba y decida si corresponde desbloquear la validación final de hardware/regresión/candidato de producción. La migración de la instalación productiva permanece separada y no se ejecuta durante estas pruebas.
+
+
+## Quinta campaña correctiva/evolutiva - prueba humana 06/09/2026
+
+HUMAN_GATE aprobó el triage consolidado de la quinta ronda humana y la auditoría Astra. Se crean y aprueban documentalmente WP-079..WP-087. WP-079 se activa primero porque ASTRA-010 rompe en HEAD el gate de identidad histórica y bloquearía la próxima CI funcional; debe restaurarse preservando la evidencia histórica legítima, no borrándola.
+
+Después de integrar WP-079, WP-080, WP-081, WP-082 y WP-083 son materialmente independientes y pueden mantenerse lógicamente paralelos en worktrees separados. En este VPS, cualquier ejecución real que utilice navegador/Playwright conserva `max_concurrency=1` salvo nueva autorización HUMAN_GATE. WP-084, WP-085 y WP-086 se ejecutarán de forma secuencial respecto de cambios concurrentes sobre configuración/documentación para minimizar staleness y conflictos. WP-085 depende además de la corrección de carreras de WP-081 porque el informe institucional debe reflejar un L3 completo y durable.
+
+Decisiones HUMAN_GATE cerradas para esta campaña: en Técnico el panel se titulará `Indicador de transmisión`, sin subtítulos de panel, cuenta regresiva propuesta de 5 segundos y control numérico compacto; la biblioteca visible se denominará `Avisos precargados`; en Q3 sólo la banca NORMAL sin etiqueta tendrá borde transparente sin alterar Recinto ni la paleta compartida; la institución se configurará desde `system.toml` y la documentación activa se redactará de forma general para un cuerpo legislativo; al cierre se mantendrán siempre los registros locales, podrá copiarse el conjunto a una ruta externa opcional y se generará un TXT formal de acta con encabezado simple y líneas `HH:MM:SS — evento`, usando `Inicio:`/`Fin:` para marcadores de Recinto.
+
+El hallazgo HUMAN-ROUND5-001 sobre el virtualenv trasladado queda cerrado operacionalmente mediante regeneración local del `.venv`; no genera WP propio mientras no reaparezca una necesidad de mover el checkout. ASTRA-009 permanece como decisión de gobernanza pendiente de HUMAN_GATE antes del freeze productivo y no se convierte por ahora en WP. Las hipótesis HIP-01..HIP-08 continúan pendientes de validación y podrán incorporarse como casos de prueba en hardware, staging o rehearsal sin tratarlas como bugs confirmados.
+
+WP-029 permanece `BLOQUEADO` y pasa a depender también de WP-079..WP-086. WP-087 queda posterior a WP-029 y reservado para hardening/rehearsal de despliegue antes de cualquier migración productiva. La migración física de `/opt/botonera2` a `/opt/sis-leg` sigue fuera de esta campaña hasta una ventana operativa explícita.
