@@ -9,8 +9,8 @@
  * 2. Alimentar la cabecera con conexión, estado global y estado de transmisión.
  * 3. Disponer los cinco bloques operativos en una grilla que entra completa a 1366×768 y
  *    a 1920×1080, sin scroll de página.
- * 4. Conectar la biblioteca de mensajes con el formulario de avisos, de modo que elegir
- *    un preset lo precargue sin publicarlo.
+ * 4. Conectar la biblioteca de avisos precargados con el formulario de avisos, de modo
+ *    que elegir un preset lo precargue sin publicarlo.
  * 5. Reproducir los mismos quince sonidos que la Pantalla del Recinto (WP-071), sin
  *    agregar ningún control visible.
  *
@@ -22,8 +22,9 @@
  *
  * ```text
  * ┌──────────────┬──────────────┬─────────────────┬──────────────────┐
- * │ Transmisión  │   Remapeo    │    Mensajes     │                  │
- * ├──────────────┴──────────────┴─────────────────┤     Eventos      │
+ * │  Indicador   │   Remapeo    │     Avisos      │                  │
+ * │de transmisión│              │   precargados   │     Eventos      │
+ * ├──────────────┴──────────────┴─────────────────┤                  │
  * │                    Avisos                     │                  │
  * └───────────────────────────────────────────────┴──────────────────┘
  * ```
@@ -34,15 +35,21 @@
  * necesita todo el alto útil.
  *
  * WP-070 desbalancea levemente esas tres columnas izquierdas: `2fr 2fr 2,6fr` en lugar de
- * `2fr 2fr 2fr`. El motivo es medible y no estético. En cada mensaje precargado, la
+ * `2fr 2fr 2fr`. El motivo es medible y no estético. En cada aviso precargado, la
  * etiqueta de destino más los botones «Usar en el formulario», «Editar» y «Eliminar»
  * necesitan ~311 px de renglón una vez achicados los botones, y a 1366×768 la columna de
  * 2fr sólo ofrecía ~259 px útiles: la fila envolvía a dos y hasta tres renglones. Con
- * 2,6fr la columna de Mensajes pasa a ~359 px y deja ~323 px útiles, que alcanzan con
- * margen. El costo se reparte proporcionalmente entre las otras tres columnas (~6 % cada
- * una) y no cambia la estructura: Eventos sigue quedándose con algo más del 30 % del
- * ancho y las tres izquierdas con algo menos del 70 %, exactamente el reparto que cerró
- * WP-059. Es el ajuste mínimo que resuelve la fila única sin rediseñar ningún panel.
+ * 2,6fr la columna de Avisos precargados pasa a ~359 px y deja ~323 px útiles, que
+ * alcanzan con margen. El costo se reparte proporcionalmente entre las otras tres
+ * columnas (~6 % cada una) y no cambia la estructura: Eventos sigue quedándose con algo
+ * más del 30 % del ancho y las tres izquierdas con algo menos del 70 %, exactamente el
+ * reparto que cerró WP-059. Es el ajuste mínimo que resuelve la fila única sin rediseñar
+ * ningún panel.
+ *
+ * WP-083 no toca ese reparto: sólo cambia rótulos y saca los subtítulos de los
+ * encabezados. Como el subtítulo ocupaba un renglón fijo en los cinco encabezados, cada
+ * panel gana ese alto para su propio cuerpo; ninguna columna cambia de ancho y la grilla
+ * conserva exactamente las mismas fracciones verificadas por WP-059 y WP-070.
  *
  * Las dos filas se reparten con fracciones y no con alturas fijas —9fr arriba y 11fr
  * abajo— porque Avisos es la superficie de trabajo grande del puesto: debe poder
@@ -181,8 +188,7 @@ useSonidosRecinto({
         class="grid min-h-0 min-w-0 flex-1 auto-rows-[minmax(45dvh,auto)] grid-cols-1 gap-2 overflow-y-auto lg:auto-rows-auto lg:grid-cols-[repeat(2,minmax(0,2fr))_minmax(0,2.6fr)_minmax(0,3fr)] lg:grid-rows-[minmax(0,9fr)_minmax(0,11fr)] lg:overflow-hidden"
       >
         <PanelTecnico
-          titulo="Transmisión"
-          subtitulo="Indicador institucional; no controla la señal audiovisual"
+          titulo="Indicador de transmisión"
           data-testid="panel-transmision"
           class="lg:col-start-1 lg:row-start-1"
         >
@@ -196,7 +202,6 @@ useSonidosRecinto({
 
         <PanelTecnico
           titulo="Remapeo de dispositivos"
-          subtitulo="Misma operación y capacidades que Moderación"
           data-testid="panel-remapeo-tecnico"
           class="lg:col-start-2 lg:row-start-1"
         >
@@ -208,8 +213,7 @@ useSonidosRecinto({
           permanente: la biblioteca es una lista que crece con el uso y no puede recortarse.
         -->
         <PanelTecnico
-          titulo="Mensajes precargados"
-          subtitulo="Persistidos por el backend en CSV"
+          titulo="Avisos precargados"
           data-testid="panel-biblioteca"
           class="lg:col-start-3 lg:row-start-1"
         >
@@ -224,7 +228,6 @@ useSonidosRecinto({
         <!-- Avisos toma la fila inferior completa de las tres columnas izquierdas. -->
         <PanelTecnico
           titulo="Avisos"
-          subtitulo="Reemplazan temporalmente una superficie de Moderación o del Recinto"
           data-testid="panel-avisos"
           class="lg:col-span-3 lg:col-start-1 lg:row-start-2"
         >
@@ -241,7 +244,6 @@ useSonidosRecinto({
         <!-- Eventos ocupa la columna derecha completa: es la única lista que crece sola. -->
         <PanelTecnico
           titulo="Eventos"
-          subtitulo="Misma franja segura que ve Moderación"
           data-testid="panel-eventos-tecnico"
           class="lg:col-start-4 lg:row-span-2 lg:row-start-1"
         >

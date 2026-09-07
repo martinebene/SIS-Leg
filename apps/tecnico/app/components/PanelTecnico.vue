@@ -12,13 +12,19 @@
  * altura ni crece con su contenido. Ocupa exactamente la celda que le asigna el shell y
  * confina cualquier desborde a su cuerpo, de modo que ningún panel pueda empujar a otro
  * ni provocar scroll de página.
+ *
+ * WP-083 elimina el subtítulo del encabezado. Hasta la quinta ronda cada panel llevaba
+ * una línea explicativa debajo del título; la revisión humana concluyó que ninguna de
+ * esas frases le decía nada nuevo al operador entrenado y que todas competían con el
+ * contenido por un alto que en este puesto es escaso. La aclaración no se movió a otro
+ * lugar de la pantalla: vive en el manual, que es donde se explica el sistema. Como el
+ * subtítulo desaparece del *contrato* del componente y no sólo de las llamadas, ningún
+ * panel futuro puede reintroducirlo por descuido.
  */
 
 defineProps<{
   /** Título del área operativa. */
   titulo: string
-  /** Aclaración breve de una línea. */
-  subtitulo?: string
   /** Texto informativo compacto alineado a la derecha del encabezado. */
   badge?: string
   /** Clases del badge cuando conviene destacarlo. */
@@ -36,11 +42,9 @@ defineProps<{
     <header
       class="flex shrink-0 items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-2.5 py-1"
     >
+      <!-- Encabezado de una sola línea desde WP-083: título y, si corresponde, badge. -->
       <div class="min-w-0 flex-1">
         <h2 class="truncate text-sm font-semibold text-slate-100">{{ titulo }}</h2>
-        <p v-if="subtitulo" class="truncate text-[11px] leading-tight text-slate-400">
-          {{ subtitulo }}
-        </p>
       </div>
       <div v-if="badge || $slots.acciones" class="flex shrink-0 items-center gap-2">
         <span
