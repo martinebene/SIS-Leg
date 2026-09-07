@@ -69,17 +69,50 @@ dentro, y por eso está enumerada archivo por archivo en la auditoría automatiz
 ## Auditoría automatizada
 
 `scripts/auditar_identidad_legada.py` recorre todos los archivos versionados y falla si aparece
-una referencia activa al nombre legado fuera de una allowlist explícita. Cada entrada de esa
-allowlist declara la cantidad exacta de ocurrencias esperadas y el motivo por el que son válidas,
-de modo que agregar una referencia nueva a un archivo ya permitido también falle.
+una referencia activa al nombre legado fuera de una excepción explícita. Hay dos clases de
+excepción, y ninguna de las dos consiste en excluir un directorio completo.
+
+**Allowlist por ruta y conteo exacto.** Es la política por defecto y cubre archivos cuyo contenido
+histórico ya está congelado: contratos de WP cerrados, pruebas de regresión que usan el literal
+como valor bajo prueba, el manual y la propia herramienta. Cada entrada declara la cantidad exacta
+de ocurrencias esperadas y el motivo por el que son válidas, de modo que agregar una referencia
+nueva a un archivo ya permitido también falle.
+
+**Registros históricos vivos.** `docs/implementation/PLAN.md` acumula trazabilidad y suma
+menciones legítimas cada vez que se cierra un Work Package, así que exigirle un conteo fijo rompía
+el gate por su propio uso normal. Eso fue el hallazgo ASTRA-010 que corrigió WP-079. Para esas
+rutas, declaradas una por una y nunca por directorio, la regla no es cuántas veces aparece el
+nombre anterior sino **cómo** aparece. La pregunta se hace por cada mención, no por la línea
+entera, y siempre dentro de la cláusula donde esa mención vive: una coma o un punto y coma cortan
+el alcance del marco. Se acepta la mención que cumpla alguna de estas dos condiciones:
+
+1. una flecha (`->`, `-->`, `=>`, `→`) la conecta con la ruta o el nombre actual;
+2. viene precedida por una palabra completa del vocabulario histórico cerrado (legado, histórico,
+   migración, renombrar, anterior y sus variantes de género, número y acentuación), con la palabra
+   pegada a la mención siendo o bien ese calificador o bien una preposición de pertenencia como
+   «de», «del» o «en».
+
+La transición narrada con palabras sigue siendo válida, pero por la segunda condición y no por la
+primera: «Renombrar <nombre anterior> a SIS-Leg» y «la migración física de /opt/<ruta anterior> a
+/opt/sis-leg» se admiten porque el texto además dice que está hablando del pasado.
+
+Lo que queda deliberadamente afuera son los dos casos que obligaron a endurecer la regla. Primero,
+una palabra histórica que aparece en la línea pero califica otra cosa, con la ruta antigua como
+objeto de un verbo en presente: «El sistema legado de expedientes usa /opt/<ruta anterior>» y
+«Durante la migración de usuarios, ejecutar /opt/<ruta anterior>». Segundo, las dos identidades
+unidas por una preposición suelta, que describe dos sistemas conviviendo y no uno reemplazado por
+el otro: «Conectar <nombre anterior> a SIS-Leg», «Redirigir <nombre anterior> hacia SIS-Leg» y
+«Usar <nombre anterior> por compatibilidad con SIS-Leg». Todas son referencias activas y siguen
+fallando. Todo se evalúa sobre palabras completas, para que «delegado» no se lea como «legado».
 
 ```bash
 uv run python scripts/auditar_identidad_legada.py
 ```
 
 `tests/test_auditoria_identidad_legada.py` ejecuta esa auditoría dentro de la suite y comprueba
-además que la propia allowlist no se degrade: rutas inexistentes, motivos vacíos o conteos
-desactualizados hacen fallar la CI.
+además que ninguna de las dos políticas se degrade: rutas inexistentes, motivos vacíos, conteos
+desactualizados, una ruta declarada a la vez en las dos políticas o una referencia activa colada
+dentro de un registro vivo hacen fallar la CI.
 
 ## Redirects de GitHub
 
