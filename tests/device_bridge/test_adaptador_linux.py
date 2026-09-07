@@ -16,6 +16,8 @@ Verifica:
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from sis_leg_device_bridge.adaptador_linux import (
     AdaptadorEvdevLinux,
@@ -78,8 +80,10 @@ def test_adaptador_falso_lectura_eventos() -> None:
 
     leidos = adaptador.leer_eventos(disp)
     assert len(leidos) == 2
-    assert leidos[0] == ev1
-    assert leidos[1] == ev2
+    # El adaptador falso sella el descriptor de origen igual que el real (WP-082): el
+    # evento devuelto es el encolado más la ruta por la que «entró».
+    assert leidos[0] == replace(ev1, ruta_dispositivo="/dev/input/event0")
+    assert leidos[1] == replace(ev2, ruta_dispositivo="/dev/input/event0")
 
     # Segunda lectura debe estar vacía
     assert adaptador.leer_eventos(disp) == []
@@ -206,6 +210,9 @@ def test_adaptador_evdev_leer_eventos_filtra_estrictamente_keydown_value_1() -> 
     assert ev.nombre_tecla == "KEY_1"
     assert ev.es_bajada is True
     assert ev.descripcion_dispositivo == "Teclado A"
+    # El adaptador real sella el descriptor de origen: es la única evidencia con la que el
+    # servicio puede comprobar que la pulsación viene de una ruta capturada (WP-082).
+    assert ev.ruta_dispositivo == "/dev/input/event0"
 
 
 def test_adaptador_evdev_leer_eventos_descarta_keyup_value_0() -> None:

@@ -2062,6 +2062,20 @@ curl --fail http://127.0.0.1/moderacion/
 curl --fail http://127.0.0.1/recinto/
 curl --fail http://127.0.0.1/manual/</code></pre>
 
+          <p>
+            Conviene saber qué contiene el registro del puente de dispositivos antes de
+            exportarlo o enviarlo a soporte. El puente reconoce solamente las botoneras
+            declaradas en el mapa de dispositivos, y solamente después de haber reservado
+            cada una para uso exclusivo del sistema. De todo lo demás que esté conectado al
+            equipo, incluido el teclado con el que se trabaja, el registro anota una única
+            línea informativa por dispositivo indicando que sus pulsaciones se ignoran.
+            <strong>Nunca anota qué teclas se pulsaron en él.</strong> Un registro del puente
+            no contiene, por lo tanto, texto escrito por el operador, y esa propiedad se
+            mantiene aunque se aumente el nivel de detalle del servicio para diagnosticar un
+            problema. Si en un registro apareciera el contenido de teclas de un teclado común,
+            eso es una anomalía que debe informarse a soporte técnico.
+          </p>
+
           <h3>12.5 Problemas frecuentes</h3>
 
           <div class="tabla-contenedor">
@@ -2116,6 +2130,25 @@ curl --fail http://127.0.0.1/manual/</code></pre>
                     el dispositivo o a permisos insuficientes sobre los teclados. Mientras la
                     reserva no se consiga, esa botonera no envía pulsaciones al sistema; se
                     recupera sola apenas la obtiene, sin reiniciar nada.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Una banca deja de responder y en el registro del servicio aparece un
+                    aviso de identidad ambigua entre dos dispositivos.
+                  </td>
+                  <td>
+                    El puente encontró dos dispositivos conectados que se presentan ante el
+                    sistema operativo con los mismos datos de identificación, y no puede
+                    decidir cuál de los dos corresponde a esa banca. Reserva solamente el
+                    primero y deja al segundo sin reservar y sin enviar pulsaciones, para no
+                    atribuir a una banca las pulsaciones de un dispositivo equivocado. El
+                    aviso indica las dos conexiones involucradas. Corresponde revisar el
+                    inventario físico de botoneras junto con soporte técnico: normalmente se
+                    resuelve retirando el dispositivo que no pertenece al recinto o
+                    reemplazando la botonera duplicada y rehaciendo su asignación con el
+                    procedimiento de reemplazo del
+                    <a href="#cap-08-apoyo-tecnico">capítulo 8</a>.
                   </td>
                 </tr>
                 <tr>
