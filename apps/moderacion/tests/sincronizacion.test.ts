@@ -29,6 +29,7 @@ import type {
 // Fixture pedagógica de EstadoModeracion para pruebas
 function crearEstadoModeracionPrueba(parcial: Partial<EstadoModeracion> = {}): EstadoModeracion {
   return {
+    instancia: parcial.instancia ?? 'instancia-prueba',
     revision: parcial.revision ?? 1,
     generado_en: parcial.generado_en ?? '2026-08-24T12:00:00Z',
     estado_global: parcial.estado_global ?? 'SIN_PREPARAR',

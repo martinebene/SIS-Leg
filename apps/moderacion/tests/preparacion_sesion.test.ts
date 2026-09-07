@@ -182,6 +182,7 @@ function crearConcejalesPrueba(cantidad = 12): ConcejalModeracion[] {
 
 function crearEstadoBase(parcial: Partial<EstadoModeracion> = {}): EstadoModeracion {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-08-25T10:00:00Z',
     estado_global: 'SIN_PREPARAR',

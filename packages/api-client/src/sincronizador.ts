@@ -11,6 +11,32 @@
  * 4. Ante cualquier fallo del stream SSE, se cierra la instancia inmediatamente para
  *    evitar la reconexión nativa que omitiría el snapshot de recuperación.
  * 5. La reconexión aplica un backoff acotado y cancelable antes de pedir el snapshot.
+ *
+ * ## Continuidad tras un reinicio del backend (WP-080)
+ *
+ * Los cinco principios anteriores cubrían el reinicio que **rompe** el stream: al caer la
+ * conexión se pide un snapshot nuevo y ese snapshot vuelve a ser baseline, así que una
+ * revisión menor se acepta.
+ *
+ * Faltaba el caso en que el reinicio ocurre en la ventana que va entre el snapshot REST y
+ * la apertura del stream, donde nunca hay un `onerror` que lo delate:
+ *
+ * 1. el snapshot REST llega del proceso A con revisión 142 y se adopta;
+ * 2. el backend reinicia; el proceso B arranca con su contador otra vez en 0;
+ * 3. el `EventSource` abre **sano** contra B y entrega revisiones 0, 1, 2...
+ *
+ * Comparando sólo números, todas esas revisiones son menores que 142 y se descartaban.
+ * La pantalla quedaba congelada mostrando el estado de A, con el indicador en verde y sin
+ * un solo error visible, hasta que B alcanzara la revisión 142.
+ *
+ * La corrección no agrega ningún sondeo ni depende del reloj: el backend publica en cada
+ * estado un identificador opaco de instancia y este motor compara el par
+ * `(instancia, revision)`.
+ *
+ * - **Misma instancia**: la revisión conserva su significado monotónico y la regla del
+ *   punto 3 se aplica sin cambios.
+ * - **Instancia distinta**: el estado pertenece a otro proceso, no puede compararse con el
+ *   anterior y se adopta de inmediato como baseline nueva, aunque su revisión sea menor.
  */
 
 import { EstrategiaBackoff } from './backoff'
@@ -25,9 +51,24 @@ import type {
 } from './tipos'
 
 /**
+ * Forma mínima que debe cumplir todo estado sincronizable.
+ *
+ * Las tres proyecciones del backend (`EstadoModeracion`, `EstadoRecinto` y `EstadoTecnico`)
+ * la satisfacen porque el contrato declara ambos campos como obligatorios. Nombrarla acá
+ * evita repetir la restricción en cada firma y deja explícito que la unidad de comparación
+ * es el par, no la revisión sola.
+ */
+export interface EstadoSincronizable {
+  /** Identificador opaco del proceso backend que emitió el estado (WP-080). */
+  instancia: string
+  /** Revisión monotónica **dentro** de esa instancia. */
+  revision: number
+}
+
+/**
  * Parámetros internos para instanciar el sincronizador de estado.
  */
-export interface ParametrosSincronizador<T extends { revision: number }> {
+export interface ParametrosSincronizador<T extends EstadoSincronizable> {
   /** Función para obtener el snapshot REST completo */
   obtenerSnapshot: (signal?: AbortSignal) => Promise<T>
   /** URL completa para la conexión SSE */
@@ -41,7 +82,7 @@ export interface ParametrosSincronizador<T extends { revision: number }> {
 /**
  * Gestiona el ciclo de vida de la sincronización reactiva de estado.
  */
-export class SincronizadorEstado<T extends { revision: number }> implements Suscripcion {
+export class SincronizadorEstado<T extends EstadoSincronizable> implements Suscripcion {
   private readonly obtenerSnapshot: (signal?: AbortSignal) => Promise<T>
   private readonly urlStream: string
   private readonly opciones: OpcionesSuscripcion<T>
@@ -50,6 +91,13 @@ export class SincronizadorEstado<T extends { revision: number }> implements Susc
 
   private _activa = true
   private revisionActual = -1
+  /**
+   * Instancia del último estado adoptado, o `null` antes del primer snapshot.
+   *
+   * Es la mitad de la clave de comparación que hace que `revisionActual` signifique algo:
+   * una revisión sólo puede compararse contra otra de la misma instancia.
+   */
+  private instanciaActual: string | null = null
   private estadoActual: T | null = null
   private eventSourceActivo: InterfazEventSource | null = null
   private abortControllerCiclo: AbortController | null = null
@@ -239,11 +287,25 @@ export class SincronizadorEstado<T extends { revision: number }> implements Susc
             )
           }
 
-          // Control de revision dentro de la baseline vigente:
-          // - revision < revisionActual: descartar (evento desordenado o antiguo)
-          // - revision == revisionActual: tratar de forma idempotente
-          // - revision > revisionActual: aceptar y avanzar (incluso con saltos numéricos)
-          if (payload.revision >= this.revisionActual) {
+          if (typeof payload.instancia !== 'string' || payload.instancia === '') {
+            // Sin instancia no hay forma de saber si la revisión es comparable. Se trata
+            // como una violación de contrato y no como un estado a adoptar a ciegas: el
+            // ciclo cierra el stream y se recupera con un snapshot REST completo.
+            throw new ErrorProtocolo(
+              "El payload SSE no contiene un campo 'instancia' válido (WP-080)",
+            )
+          }
+
+          // Un cambio de instancia significa que el proceso backend que emite ya no es el
+          // que produjo la baseline vigente. Sus revisiones pertenecen a otra numeración,
+          // así que compararlas sería un error: el estado se adopta de inmediato.
+          if (payload.instancia !== this.instanciaActual) {
+            this.adoptarNuevaBaseline(payload)
+          } else if (payload.revision >= this.revisionActual) {
+            // Control de revision dentro de la baseline vigente:
+            // - revision < revisionActual: descartar (evento desordenado o antiguo)
+            // - revision == revisionActual: tratar de forma idempotente
+            // - revision > revisionActual: aceptar y avanzar (incluso con saltos numéricos)
             this.procesarEstadoSSE(payload)
           }
         } catch (error) {
@@ -271,14 +333,19 @@ export class SincronizadorEstado<T extends { revision: number }> implements Susc
   }
 
   /**
-   * Adopta un nuevo snapshot REST como baseline nueva.
+   * Adopta un estado como baseline nueva, sin compararlo con el anterior.
    *
-   * IMPORTANTE PARA RESTART:
-   * Al provenir de un snapshot explícito, reemplaza siempre el estado previo sin importar
-   * si la revisión numérica es menor que la anterior (por ejemplo, tras un reinicio de FastAPI
-   * donde el backend vuelve a revision 0 en SIN_PREPARAR).
+   * Se usa en los dos únicos casos en que la comparación numérica no aplica:
+   *
+   * - un snapshot REST, que por definición describe el presente del backend;
+   * - un evento SSE de una instancia distinta de la vigente (WP-080), porque su revisión
+   *   pertenece a la numeración de otro proceso.
+   *
+   * En ambos el estado previo se reemplaza aunque la revisión sea menor: tras reiniciar
+   * FastAPI el backend vuelve a `revision` 0 en `SIN_PREPARAR`, y ese 0 es el presente.
    */
   private adoptarNuevaBaseline(snapshot: T): void {
+    this.instanciaActual = snapshot.instancia
     this.revisionActual = snapshot.revision
     this.estadoActual = snapshot
     this.notificarEstado(snapshot)
@@ -286,6 +353,9 @@ export class SincronizadorEstado<T extends { revision: number }> implements Susc
 
   /**
    * Procesa un evento SSE recibido dentro de la baseline activa.
+   *
+   * Sólo se llama cuando la instancia coincide con la vigente, de modo que avanzar
+   * `revisionActual` nunca mezcla numeraciones de dos procesos distintos.
    */
   private procesarEstadoSSE(nuevoEstado: T): void {
     this.revisionActual = nuevoEstado.revision
@@ -340,7 +410,7 @@ export class SincronizadorEstado<T extends { revision: number }> implements Susc
 /**
  * Inicia la sincronización de estado y devuelve la suscripción cancelable.
  */
-export function iniciarSincronizacionEstado<T extends { revision: number }>(
+export function iniciarSincronizacionEstado<T extends EstadoSincronizable>(
   parametros: ParametrosSincronizador<T>,
 ): Suscripcion {
   const sincronizador = new SincronizadorEstado<T>(parametros)

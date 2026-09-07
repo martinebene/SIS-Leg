@@ -43,6 +43,10 @@ async def test_snapshots_sin_preparar_son_completos_y_sin_contexto(tmp_path: Pat
     assert recinto.estado_global is EstadoGlobal.SIN_PREPARAR
     assert recinto.filas_bancas is None
     assert recinto.model_dump().keys() == {
+        # WP-080: identidad opaca del proceso emisor. Es lo que permite al
+        # cliente distinguir una revisión atrasada de la primera revisión de un
+        # backend reiniciado.
+        "instancia",
         "revision",
         "generado_en",
         "estado_global",

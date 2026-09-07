@@ -116,6 +116,7 @@ function crearVotacion(parcial: Partial<VotacionModeracion> = {}): VotacionModer
 
 function crearEstado(parcial: Partial<EstadoModeracion> = {}): EstadoModeracion {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-08-26T10:00:01Z',
     estado_global: 'SESION_ABIERTA',

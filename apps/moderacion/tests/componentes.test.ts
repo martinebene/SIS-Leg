@@ -41,6 +41,7 @@ async function renderizarComponente(
 
 function crearEstadoFixture(parcial: Partial<EstadoModeracion> = {}): EstadoModeracion {
   return {
+    instancia: parcial.instancia ?? 'instancia-prueba',
     revision: parcial.revision ?? 5,
     generado_en: parcial.generado_en ?? '2026-08-24T12:00:00Z',
     estado_global: parcial.estado_global ?? 'PREPARANDO',

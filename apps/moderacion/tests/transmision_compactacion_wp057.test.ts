@@ -191,6 +191,7 @@ function crearTecnico(estado: EstadoTransmision): ApoyoTecnicoProyectado {
 
 function crearEstadoConTecnico(tecnico: ApoyoTecnicoProyectado): EstadoModeracion {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-09-03T12:30:15',
     estado_global: 'SESION_ABIERTA',
@@ -301,6 +302,7 @@ function crearCapacidadesVotacion(): EstadoModeracion['capacidades'] {
 /** Sesión abierta con el resultado de la votación anterior todavía proyectado. */
 function crearEstadoConResultadoAnterior(): EstadoModeracion {
   return {
+    instancia: 'instancia-prueba',
     revision: 9,
     generado_en: '2026-09-03T12:30:15',
     estado_global: 'SESION_ABIERTA',

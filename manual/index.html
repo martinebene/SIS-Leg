@@ -556,6 +556,10 @@
             <em>sin preparar</em>: hay que preparar el recinto otra vez y volver a abrir la sesión
             según el procedimiento del cuerpo. Los registros ya escritos se conservan; el estado en
             curso, no.
+            <br /><br />
+            Las pantallas abiertas no necesitan recargarse: en cuanto el servidor vuelve a
+            responder, adoptan solas el estado nuevo y pasan a mostrar <em>sin preparar</em>.
+            Ninguna queda mostrando la sesión anterior.
           </div>
 
           <h3>1.4 Registro de lo que ocurre</h3>
@@ -1479,6 +1483,11 @@
               reconectar se adopta en silencio, aunque el servidor se haya reiniciado.
             </li>
             <li>
+              Un <strong>reinicio del servidor</strong>, aun cuando la pantalla no haya llegado a
+              perder la conexión. El estado del servidor reiniciado se adopta en silencio: no
+              suena un cierre de sesión que nadie dispuso.
+            </li>
+            <li>
               El <strong>sentido de un voto</strong>. Ningún sonido depende de cómo votó nadie ni
               permite deducirlo.
             </li>
@@ -2070,6 +2079,21 @@ curl --fail http://127.0.0.1/manual/</code></pre>
                     El servicio del servidor y la red entre el puesto y el equipo servidor. La
                     pantalla se recupera sola al restablecerse; mientras tanto lo mostrado puede
                     estar atrasado.
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Se reinició el servicio del servidor y hay pantallas abiertas.
+                  </td>
+                  <td>
+                    No hay que recargar ni reabrir nada. Cada pantalla vuelve sola al estado
+                    nuevo, que después de un reinicio es <em>sin preparar</em>, y su indicador
+                    de conexión queda en <strong>«En línea»</strong>. Puede pasar por «sin
+                    conexión» o «(Sin conexion)» durante el corte, o no llegar a mostrarlo si el
+                    reinicio fue breve; en los dos casos el resultado esperado es el mismo. Si
+                    una pantalla siguiera mostrando la sesión anterior con el indicador en
+                    «En línea», eso <strong>no</strong> es el comportamiento previsto y debe
+                    informarse.
                   </td>
                 </tr>
                 <tr>

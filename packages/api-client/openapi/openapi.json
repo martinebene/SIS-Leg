@@ -873,12 +873,12 @@
         "operationId": "transmitir_estado_moderacion_api_v1_estado_moderacion_stream_get",
         "responses": {
           "200": {
-            "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoModeracion completo; `id` coincide con su revision. No transporta deltas ni ofrece replay durable.",
+            "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoModeracion completo; `id` coincide con su revision. No transporta deltas ni ofrece replay durable. El campo `instancia` identifica al proceso backend que emite: la revision sólo es monotónica dentro de una misma instancia.",
             "content": {
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoModeracion completo; `id` coincide con su revision. No transporta deltas ni ofrece replay durable."
+                  "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoModeracion completo; `id` coincide con su revision. No transporta deltas ni ofrece replay durable. El campo `instancia` identifica al proceso backend que emite: la revision sólo es monotónica dentro de una misma instancia."
                 }
               }
             }
@@ -896,12 +896,12 @@
         "operationId": "transmitir_estado_recinto_api_v1_estado_recinto_stream_get",
         "responses": {
           "200": {
-            "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoRecinto completo con el secreto público aplicado en servidor; `id` coincide con su revision.",
+            "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoRecinto completo con el secreto público aplicado en servidor; `id` coincide con su revision. El campo `instancia` identifica al proceso backend que emite: la revision sólo es monotónica dentro de una misma instancia.",
             "content": {
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoRecinto completo con el secreto público aplicado en servidor; `id` coincide con su revision."
+                  "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoRecinto completo con el secreto público aplicado en servidor; `id` coincide con su revision. El campo `instancia` identifica al proceso backend que emite: la revision sólo es monotónica dentro de una misma instancia."
                 }
               }
             }
@@ -919,12 +919,12 @@
         "operationId": "transmitir_estado_tecnico_api_v1_estado_tecnico_stream_get",
         "responses": {
           "200": {
-            "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoTecnico completo con transmisión, avisos de ambos destinos, biblioteca, eventos seguros, la allowlist de remapeo y la subproyección de sonorización; `id` coincide con su revision. Es el único stream persistente que necesita el puesto de Apoyo Técnico.",
+            "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoTecnico completo con transmisión, avisos de ambos destinos, biblioteca, eventos seguros, la allowlist de remapeo y la subproyección de sonorización; `id` coincide con su revision. El campo `instancia` identifica al proceso backend que emite: la revision sólo es monotónica dentro de una misma instancia. Es el único stream persistente que necesita el puesto de Apoyo Técnico.",
             "content": {
               "text/event-stream": {
                 "schema": {
                   "type": "string",
-                  "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoTecnico completo con transmisión, avisos de ambos destinos, biblioteca, eventos seguros, la allowlist de remapeo y la subproyección de sonorización; `id` coincide con su revision. Es el único stream persistente que necesita el puesto de Apoyo Técnico."
+                  "description": "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoTecnico completo con transmisión, avisos de ambos destinos, biblioteca, eventos seguros, la allowlist de remapeo y la subproyección de sonorización; `id` coincide con su revision. El campo `instancia` identifica al proceso backend que emite: la revision sólo es monotónica dentro de una misma instancia. Es el único stream persistente que necesita el puesto de Apoyo Técnico."
                 }
               }
             }
@@ -2439,6 +2439,10 @@
       },
       "EstadoModeracion": {
         "properties": {
+          "instancia": {
+            "type": "string",
+            "title": "Instancia"
+          },
           "revision": {
             "type": "integer",
             "title": "Revision"
@@ -2554,6 +2558,7 @@
         },
         "type": "object",
         "required": [
+          "instancia",
           "revision",
           "generado_en",
           "estado_global",
@@ -2572,7 +2577,7 @@
           "tecnico"
         ],
         "title": "EstadoModeracion",
-        "description": "Snapshot completo y reconstruible del frontend de Moderación."
+        "description": "Snapshot completo y reconstruible del frontend de Moderación.\n\n``instancia`` (WP-080) identifica de forma opaca al proceso backend que\nconstruyó este snapshot. El cliente compara el par ``(instancia, revision)``:\ndentro de una misma instancia la revisión sigue siendo monotónica, y un\ncambio de instancia obliga a adoptar la baseline nueva aunque su revisión\nsea menor."
       },
       "EstadoPalabraModeracion": {
         "properties": {
@@ -2656,6 +2661,10 @@
       },
       "EstadoRecinto": {
         "properties": {
+          "instancia": {
+            "type": "string",
+            "title": "Instancia"
+          },
           "revision": {
             "type": "integer",
             "title": "Revision"
@@ -2755,6 +2764,7 @@
         },
         "type": "object",
         "required": [
+          "instancia",
           "revision",
           "generado_en",
           "estado_global",
@@ -2770,7 +2780,7 @@
           "sonidos"
         ],
         "title": "EstadoRecinto",
-        "description": "Snapshot público por allowlist, sin capacidades ni auditoría cruda."
+        "description": "Snapshot público por allowlist, sin capacidades ni auditoría cruda.\n\n``instancia`` (WP-080) es el mismo identificador técnico y opaco que viaja en\nlas otras dos proyecciones. No agrega información institucional ni nombra a\nnadie: sólo dice qué proceso emitió el snapshot, que es lo que el cliente\nnecesita para no descartar la primera revisión de un backend reiniciado."
       },
       "EstadoRemapeoModeracion": {
         "properties": {
@@ -2894,6 +2904,10 @@
       },
       "EstadoTecnico": {
         "properties": {
+          "instancia": {
+            "type": "string",
+            "title": "Instancia"
+          },
           "revision": {
             "type": "integer",
             "title": "Revision"
@@ -2951,6 +2965,7 @@
         },
         "type": "object",
         "required": [
+          "instancia",
           "revision",
           "generado_en",
           "estado_global",
@@ -2964,7 +2979,7 @@
           "sonorizacion"
         ],
         "title": "EstadoTecnico",
-        "description": "Snapshot completo del puesto de Apoyo Técnico (WP-055, consolidado por WP-074).\n\nReúne todo lo que ese puesto necesita observar y nada más: el estado de\ntransmisión, los avisos vigentes de **ambos** destinos, la biblioteca de\nmensajes precargados, la misma franja de eventos L1/L2/L3 que ve Moderación\ny, desde WP-074, las dos allowlists que faltaban: la del remapeo y la de la\nsonorización.\n\n## Por qué WP-074 amplió este DTO\n\nEl puesto técnico observaba tres proyecciones a la vez y abría, por lo\ntanto, tres streams SSE. Con Moderación, Recinto, Simulador y Apoyo Técnico\nabiertos en el mismo navegador y bajo el mismo origen, eso daba seis\nconexiones persistentes: más de las que HTTP/1.1 permite por origen. La\nséptima petición —cualquier comando REST, por ejemplo «Preparar sala»—\nquedaba encolada en el navegador sin llegar nunca al backend, y el operador\nlo vivía como una caída del servidor.\n\nLa corrección consiste en que esta proyección transporte lo que el puesto\nnecesitaba pedirles a las otras dos. No se copia ``EstadoModeracion`` ni\n``EstadoRecinto``: ``remapeo`` y ``sonorizacion`` son allowlists mínimas,\ndocumentadas en sus propias clases, construidas con los mismos helpers\nautoritativos que usan las otras dos proyecciones.\n\n``eventos_recientes`` se construye con el mismo método que la proyección\nde Moderación, de modo que la frontera de secreto de WP-052 se aplica una\nsola vez y no puede divergir entre puestos: mientras el sentido individual\nde un voto siga siendo secreto, tampoco lo ve Apoyo Técnico."
+        "description": "Snapshot completo del puesto de Apoyo Técnico (WP-055, consolidado por WP-074).\n\nReúne todo lo que ese puesto necesita observar y nada más: el estado de\ntransmisión, los avisos vigentes de **ambos** destinos, la biblioteca de\nmensajes precargados, la misma franja de eventos L1/L2/L3 que ve Moderación\ny, desde WP-074, las dos allowlists que faltaban: la del remapeo y la de la\nsonorización.\n\n## Por qué WP-074 amplió este DTO\n\nEl puesto técnico observaba tres proyecciones a la vez y abría, por lo\ntanto, tres streams SSE. Con Moderación, Recinto, Simulador y Apoyo Técnico\nabiertos en el mismo navegador y bajo el mismo origen, eso daba seis\nconexiones persistentes: más de las que HTTP/1.1 permite por origen. La\nséptima petición —cualquier comando REST, por ejemplo «Preparar sala»—\nquedaba encolada en el navegador sin llegar nunca al backend, y el operador\nlo vivía como una caída del servidor.\n\nLa corrección consiste en que esta proyección transporte lo que el puesto\nnecesitaba pedirles a las otras dos. No se copia ``EstadoModeracion`` ni\n``EstadoRecinto``: ``remapeo`` y ``sonorizacion`` son allowlists mínimas,\ndocumentadas en sus propias clases, construidas con los mismos helpers\nautoritativos que usan las otras dos proyecciones.\n\n``eventos_recientes`` se construye con el mismo método que la proyección\nde Moderación, de modo que la frontera de secreto de WP-052 se aplica una\nsola vez y no puede divergir entre puestos: mientras el sentido individual\nde un voto siga siendo secreto, tampoco lo ve Apoyo Técnico.\n\n``instancia`` (WP-080) viaja acá con el mismo significado que en Moderación y\nRecinto, de modo que las tres superficies apliquen exactamente la misma\nregla de continuidad tras un reinicio del backend."
       },
       "EstadoTransmision": {
         "type": "string",
@@ -4045,6 +4060,10 @@
       },
       "SonorizacionRecintoProyectada": {
         "properties": {
+          "instancia": {
+            "type": "string",
+            "title": "Instancia"
+          },
           "revision": {
             "type": "integer",
             "title": "Revision"
@@ -4088,6 +4107,7 @@
         },
         "type": "object",
         "required": [
+          "instancia",
           "revision",
           "estado_global",
           "tecnico",
@@ -4097,7 +4117,7 @@
           "sonidos"
         ],
         "title": "SonorizacionRecintoProyectada",
-        "description": "Subproyección pública mínima que permite sonorizar igual que el Recinto (WP-074).\n\n## Por qué existe\n\nLos quince sonidos de WP-065 no son eventos que publique el backend: se\ndeducen comparando dos estados públicos consecutivos. Hasta WP-074 el puesto\ntécnico obtenía esos estados abriendo un tercer stream SSE al Recinto. Este\nsubmodelo transporta, dentro del **único** stream técnico, exactamente los\ncampos que esa comparación consulta y ninguno más.\n\n## Por qué no expone de más\n\nCada campo se construye con el mismo helper que arma la proyección pública\ndel Recinto y después se recorta. De ``VotacionPublica`` sólo sobreviven la\nidentidad y la recepción; de cada banca, la presencia; de la palabra, las\nbancas. En consecuencia esta porción contiene **menos** información que la\npantalla del salón, que cualquiera puede mirar: nunca puede convertirse en\nuna vía de fuga del secreto temporal del voto.\n\n``tecnico`` sí viaja completo porque es el mismo submodelo pequeño que ve el\nRecinto, con el aviso del destino ``RECINTO``. Que se construya con\n``_apoyo_tecnico`` —el helper que usa la proyección pública— es lo que\ngarantiza que un aviso o una transmisión suenen en el puesto técnico en la\nmisma revisión en que suenan en el salón.\n\n``revision`` se repite acá, además de en el estado técnico que la contiene,\nporque la frontera reactiva usa la revisión del objeto que compara para\ndescartar una revisión repetida sin volver a sonar."
+        "description": "Subproyección pública mínima que permite sonorizar igual que el Recinto (WP-074).\n\n## Por qué existe\n\nLos quince sonidos de WP-065 no son eventos que publique el backend: se\ndeducen comparando dos estados públicos consecutivos. Hasta WP-074 el puesto\ntécnico obtenía esos estados abriendo un tercer stream SSE al Recinto. Este\nsubmodelo transporta, dentro del **único** stream técnico, exactamente los\ncampos que esa comparación consulta y ninguno más.\n\n## Por qué no expone de más\n\nCada campo se construye con el mismo helper que arma la proyección pública\ndel Recinto y después se recorta. De ``VotacionPublica`` sólo sobreviven la\nidentidad y la recepción; de cada banca, la presencia; de la palabra, las\nbancas. En consecuencia esta porción contiene **menos** información que la\npantalla del salón, que cualquiera puede mirar: nunca puede convertirse en\nuna vía de fuga del secreto temporal del voto.\n\n``tecnico`` sí viaja completo porque es el mismo submodelo pequeño que ve el\nRecinto, con el aviso del destino ``RECINTO``. Que se construya con\n``_apoyo_tecnico`` —el helper que usa la proyección pública— es lo que\ngarantiza que un aviso o una transmisión suenen en el puesto técnico en la\nmisma revisión en que suenan en el salón.\n\n``revision`` se repite acá, además de en el estado técnico que la contiene,\nporque la frontera reactiva usa la revisión del objeto que compara para\ndescartar una revisión repetida sin volver a sonar. Desde WP-080 ``instancia``\nla acompaña por el mismo motivo: esa frontera necesita reconocer que dos\nrevisiones consecutivas pueden venir de procesos distintos y que, en ese\ncaso, la segunda es una baseline nueva y no un hecho que deba sonar."
       },
       "TextoOmitible": {
         "type": "string"

@@ -670,9 +670,13 @@ class SonorizacionRecintoProyectada(ModeloProyeccion):
 
     ``revision`` se repite acá, además de en el estado técnico que la contiene,
     porque la frontera reactiva usa la revisión del objeto que compara para
-    descartar una revisión repetida sin volver a sonar.
+    descartar una revisión repetida sin volver a sonar. Desde WP-080 ``instancia``
+    la acompaña por el mismo motivo: esa frontera necesita reconocer que dos
+    revisiones consecutivas pueden venir de procesos distintos y que, en ese
+    caso, la segunda es una baseline nueva y no un hecho que deba sonar.
     """
 
+    instancia: str
     revision: int
     estado_global: EstadoGlobal
     tecnico: ApoyoTecnicoProyectado
@@ -683,8 +687,16 @@ class SonorizacionRecintoProyectada(ModeloProyeccion):
 
 
 class EstadoModeracion(ModeloProyeccion):
-    """Snapshot completo y reconstruible del frontend de Moderación."""
+    """Snapshot completo y reconstruible del frontend de Moderación.
 
+    ``instancia`` (WP-080) identifica de forma opaca al proceso backend que
+    construyó este snapshot. El cliente compara el par ``(instancia, revision)``:
+    dentro de una misma instancia la revisión sigue siendo monotónica, y un
+    cambio de instancia obliga a adoptar la baseline nueva aunque su revisión
+    sea menor.
+    """
+
+    instancia: str
     revision: int
     generado_en: datetime
     estado_global: EstadoGlobal
@@ -704,8 +716,15 @@ class EstadoModeracion(ModeloProyeccion):
 
 
 class EstadoRecinto(ModeloProyeccion):
-    """Snapshot público por allowlist, sin capacidades ni auditoría cruda."""
+    """Snapshot público por allowlist, sin capacidades ni auditoría cruda.
 
+    ``instancia`` (WP-080) es el mismo identificador técnico y opaco que viaja en
+    las otras dos proyecciones. No agrega información institucional ni nombra a
+    nadie: sólo dice qué proceso emitió el snapshot, que es lo que el cliente
+    necesita para no descartar la primera revisión de un backend reiniciado.
+    """
+
+    instancia: str
     revision: int
     generado_en: datetime
     estado_global: EstadoGlobal
@@ -750,8 +769,13 @@ class EstadoTecnico(ModeloProyeccion):
     de Moderación, de modo que la frontera de secreto de WP-052 se aplica una
     sola vez y no puede divergir entre puestos: mientras el sentido individual
     de un voto siga siendo secreto, tampoco lo ve Apoyo Técnico.
+
+    ``instancia`` (WP-080) viaja acá con el mismo significado que en Moderación y
+    Recinto, de modo que las tres superficies apliquen exactamente la misma
+    regla de continuidad tras un reinicio del backend.
     """
 
+    instancia: str
     revision: int
     generado_en: datetime
     estado_global: EstadoGlobal
@@ -863,6 +887,7 @@ class ServicioProyecciones:
         contexto = self._estado.contexto_operativo_activo()
         sesion = self._estado.sesion_activa
         return EstadoModeracion(
+            instancia=self._coordinador.instancia,
             revision=self._coordinador.revision,
             generado_en=generado_en,
             estado_global=self._estado.estado_global,
@@ -894,6 +919,7 @@ class ServicioProyecciones:
         contexto = self._estado.contexto_operativo_activo()
         sesion = self._estado.sesion_activa
         return EstadoRecinto(
+            instancia=self._coordinador.instancia,
             revision=self._coordinador.revision,
             generado_en=generado_en,
             estado_global=self._estado.estado_global,
@@ -938,6 +964,7 @@ class ServicioProyecciones:
         contexto = self._estado.contexto_operativo_activo()
         sesion = self._estado.sesion_activa
         return EstadoTecnico(
+            instancia=self._coordinador.instancia,
             revision=self._coordinador.revision,
             generado_en=generado_en,
             estado_global=self._estado.estado_global,
@@ -1022,6 +1049,7 @@ class ServicioProyecciones:
         palabra_publica = self._palabra_publica(sesion, contexto)
         votacion_publica = self._votacion_publica(contexto, generado_en)
         return SonorizacionRecintoProyectada(
+            instancia=self._coordinador.instancia,
             revision=self._coordinador.revision,
             estado_global=self._estado.estado_global,
             # Misma ranura que recibe el Recinto: el puesto técnico debe sonar

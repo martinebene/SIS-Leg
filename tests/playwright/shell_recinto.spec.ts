@@ -27,6 +27,7 @@ function crearConcejales(cantidad: number) {
 
 function crearEstado(parcial: Record<string, unknown> = {}) {
   return {
+    instancia: 'instancia-prueba',
     revision: 0,
     generado_en: '2026-08-27T10:00:00Z',
     estado_global: 'SIN_PREPARAR',
@@ -309,6 +310,7 @@ for (const viewport of [
     ).toBe(true)
 
     const sesion = crearEstado({
+      instancia: 'instancia-prueba',
       revision: 2,
       generado_en: '2026-08-28T10:00:00',
       estado_global: 'SESION_ABIERTA',
@@ -398,6 +400,7 @@ for (const viewport of [
     const ahoraCountdown = await page.evaluate(() => Date.now())
     const enCurso = {
       ...sesion,
+      instancia: 'instancia-prueba',
       revision: 3,
       generado_en: new Date(ahoraCountdown).toISOString(),
       votacion: crearVotacion({
@@ -509,6 +512,7 @@ for (const viewport of [
     const ahoraAprobada = await page.evaluate(() => Date.now())
     const aprobada = {
       ...sesion,
+      instancia: 'instancia-prueba',
       revision: 5,
       generado_en: new Date(ahoraAprobada).toISOString(),
       votacion: crearVotacion({
@@ -551,6 +555,7 @@ for (const viewport of [
 
     const empatada = {
       ...sesion,
+      instancia: 'instancia-prueba',
       revision: 6,
       generado_en: new Date(await page.evaluate(() => Date.now())).toISOString(),
       votacion: crearVotacion({
@@ -577,6 +582,7 @@ for (const viewport of [
     const ahoraDesempate = await page.evaluate(() => Date.now())
     await publicar(page, {
       ...empatada,
+      instancia: 'instancia-prueba',
       revision: 7,
       generado_en: new Date(ahoraDesempate).toISOString(),
       votacion: crearVotacion({
@@ -603,6 +609,7 @@ for (const viewport of [
     const ahoraInconclusa = await page.evaluate(() => Date.now())
     const inconclusa = {
       ...sesion,
+      instancia: 'instancia-prueba',
       revision: 8,
       generado_en: new Date(ahoraInconclusa).toISOString(),
       votacion: crearVotacion({
@@ -689,6 +696,7 @@ for (const viewport of [
       secretaria_legislativa: 'Luis Secretaría',
     }
     const sesion = crearEstado({
+      instancia: 'instancia-prueba',
       revision: 1,
       generado_en: '2026-08-28T10:00:00',
       estado_global: 'SESION_ABIERTA',
@@ -1016,6 +1024,7 @@ for (const viewport of [
       { nombre: 'Lorena', apellido: 'Moreno', banca: 1 },
     ]
     const sesion = crearEstado({
+      instancia: 'instancia-prueba',
       revision: 1,
       generado_en: '2026-08-28T10:00:00',
       estado_global: 'SESION_ABIERTA',
@@ -1198,6 +1207,7 @@ for (const viewport of [
     const ahoraCountdown = await page.evaluate(() => Date.now())
     await publicar(page, {
       ...sesion,
+      instancia: 'instancia-prueba',
       revision: 4,
       generado_en: new Date(ahoraCountdown).toISOString(),
       votacion: crearVotacion({
@@ -1293,6 +1303,7 @@ for (const viewport of [
       aviso: null,
     }
     const sesion = crearEstado({
+      instancia: 'instancia-prueba',
       revision: 1,
       generado_en: '2026-08-28T10:00:00',
       estado_global: 'SESION_ABIERTA',
@@ -1561,6 +1572,7 @@ for (const viewport of [
     const ahoraCountdown = await page.evaluate(() => Date.now())
     await publicar(page, {
       ...sesion,
+      instancia: 'instancia-prueba',
       revision: 5,
       generado_en: new Date(ahoraCountdown).toISOString(),
       votacion: crearVotacion({
@@ -1849,3 +1861,76 @@ for (const viewport of [
     exigirGeometriaEstable(await medirCola())
   })
 }
+
+/**
+ * WP-080 — la pantalla se rebaselina sola tras un reinicio silencioso del backend.
+ *
+ * El reinicio que esta prueba reproduce **no rompe el stream**. Ocurre en la ventana que va
+ * entre el snapshot REST y la apertura del `EventSource`, así que la pantalla nunca ve un
+ * error de transporte: abre una conexión sana contra el proceso nuevo y recibe de él
+ * revisiones que empiezan otra vez en 0.
+ *
+ * Antes de WP-080 esas revisiones se descartaban por menores y el salón seguía mostrando
+ * una sesión que ya no existía, con el indicador en «En línea». Acá se exige lo contrario:
+ * el estado del proceso nuevo se adopta sin reconexión, sin recarga y sin polling.
+ */
+test('adopta el estado de un backend reiniciado sin perder la conexión (WP-080)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.clock.install({ time: new Date('2026-08-28T09:59:00Z') })
+
+  // El proceso A viene trabajando hace rato: sesión abierta y revisión alta.
+  const sesionProcesoA = crearEstado({
+    instancia: 'instancia-proceso-a',
+    revision: 142,
+    estado_global: 'SESION_ABIERTA',
+    sesion: {
+      fecha_hora_inicio_preparacion: '2026-08-28T09:30:00',
+      fecha_hora_apertura: '2026-08-28T09:45:00',
+      numero_sesion: 59,
+      presidencia: 'Ana Presidencia',
+      secretaria_legislativa: 'Luis Secretaría',
+    },
+    filas_bancas: [6, 6],
+    concejales: crearConcejales(12),
+  })
+
+  await instalarBackendPublico(page, sesionProcesoA)
+  await page.goto('http://localhost:3001/recinto/')
+  await page.getByTestId('estado-conexion').waitFor()
+  await page.clock.runFor(20)
+  await page.clock.pauseAt(HORA_RELOJ_E2E)
+
+  await expect(page.getByTestId('grilla-bancas')).toBeVisible()
+  await expect(page.getByTestId('estado-conexion')).toContainText('En línea')
+
+  // Regresión de la regla que WP-080 debe preservar: dentro de la MISMA instancia, una
+  // revisión menor sigue siendo un evento atrasado y se ignora.
+  await publicar(
+    page,
+    crearEstado({
+      instancia: 'instancia-proceso-a',
+      revision: 100,
+      estado_global: 'SIN_PREPARAR',
+    }),
+  )
+  await expect(page.getByTestId('grilla-bancas')).toBeVisible()
+  await expect(page.getByTestId('estado-sin-preparar')).toHaveCount(0)
+
+  // Ahora sí: el backend reinició. Misma conexión, sin ningún error, revisión 0 y una
+  // instancia distinta.
+  await publicar(
+    page,
+    crearEstado({
+      instancia: 'instancia-proceso-b',
+      revision: 0,
+      estado_global: 'SIN_PREPARAR',
+    }),
+  )
+
+  await expect(page.getByTestId('estado-sin-preparar')).toBeVisible()
+  await expect(page.getByTestId('grilla-bancas')).toHaveCount(0)
+  // Nunca hubo desconexión: el indicador jamás pasó por «(Sin conexion)».
+  await expect(page.getByTestId('estado-conexion')).toContainText('En línea')
+})

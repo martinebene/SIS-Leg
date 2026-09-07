@@ -183,6 +183,7 @@ const VOTOS_FINALES = [
 
 function crearEstadoModeracion(votacion: Record<string, unknown> | null) {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-08-25T10:00:00Z',
     estado_global: 'SESION_ABIERTA',
@@ -212,6 +213,7 @@ function crearEstadoModeracion(votacion: Record<string, unknown> | null) {
 
 function crearEstadoRecinto(votacion: Record<string, unknown> | null) {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-08-25T10:00:00Z',
     estado_global: 'SESION_ABIERTA',

@@ -66,7 +66,14 @@ import type {
  * individuales.
  */
 export interface InstantaneaSonora {
-  /** Revisión monotónica; quien llama la usa para no sonorizar dos veces la misma. */
+  /**
+   * Instancia opaca del proceso backend que emitió la instantánea (WP-080).
+   *
+   * Quien llama la usa junto a `revision`: dos instantáneas de instancias distintas no
+   * describen una transición, sino dos historias separadas por un reinicio del backend.
+   */
+  instancia: string
+  /** Revisión monotónica **dentro de esa instancia**; evita sonorizar dos veces la misma. */
   revision: number
   /** Estado global, que delimita qué hechos de sesión pueden compararse. */
   estado_global: EstadoGlobal
