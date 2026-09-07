@@ -25,12 +25,14 @@ o las rutas anteriores. Exigirles un conteo exacto convierte el gate en un obst�
 rompe solo, y fue exactamente lo que ocurrió (hallazgo ASTRA-010, WP-079). Para esas rutas
 --declaradas una por una, nunca por directorio-- la regla no es cuántas veces aparece el
 nombre legado sino **cómo** aparece, y la pregunta se hace por cada mención y no por la línea
-entera: una mención se admite si describe la transición hacia la identidad vigente o si viene
+entera: una mención se admite si una flecha la conecta con la identidad vigente o si viene
 precedida, en su misma cláusula y sin verbos en el medio, por una palabra completa del
-vocabulario histórico. Nombrar SIS-Leg no alcanza por sí solo, una palabra histórica que
-califique otra cosa tampoco, y las raíces sueltas quedaron descartadas para que `delegado` no
-se lea como `legado`. El bloque de comentarios que precede a los patrones detalla las dos
-formas admitidas y los seis falsos negativos que obligaron a endurecerlas. Una referencia
+vocabulario histórico. Una preposición suelta hacia SIS-Leg no basta, porque no distingue un
+reemplazo de una conexión entre dos sistemas vivos. Nombrar SIS-Leg no alcanza por sí solo,
+una palabra histórica que califique otra cosa tampoco, y las raíces sueltas quedaron
+descartadas para que `delegado` no se lea como `legado`. El bloque de comentarios que precede
+a los patrones detalla las dos formas admitidas y los nueve falsos negativos que obligaron a
+endurecerlas. Una referencia
 activa, como una ruta de instalación o un módulo, no cumple ninguna de las dos y sigue
 fallando.
 
@@ -197,7 +199,7 @@ HERRAMIENTAS_DE_AUDITORIA = (
     ),
     ReferenciaPermitida(
         "tests/test_auditoria_identidad_legada.py",
-        39,
+        49,
         "Prueba que la auditoría detecte una reintroducción del nombre legado.",
     ),
 )
@@ -242,10 +244,14 @@ class RegistroHistoricoVivo:
 #     Para migrar la base de datos, ejecutar /opt/<legado>/bin/start
 #     El sistema legado de expedientes usa /opt/<legado>/bin/start
 #     Durante la migración de usuarios, ejecutar /opt/<legado>/bin/start
+#     Usar <legado> por compatibilidad con SIS-Leg
+#     Conectar <legado> a SIS-Leg
+#     Redirigir <legado> hacia SIS-Leg
 #
-# Las tres últimas comparten la misma raíz del problema: la palabra histórica califica otra
-# cosa (una base de datos, un sistema de expedientes, unos usuarios) y la ruta legada es el
-# objeto de un verbo activo.
+# Las tres del medio comparten la misma raíz: la palabra histórica califica otra cosa (una
+# base de datos, un sistema de expedientes, unos usuarios) y la ruta legada es el objeto de
+# un verbo activo. Las tres últimas comparten otra: nombran las dos identidades unidas por
+# una preposición, pero describen dos sistemas conviviendo, no uno reemplazado por el otro.
 #
 # Por eso ahora la pregunta no es «¿esta línea habla del pasado?» sino «¿**esta mención**
 # viene enmarcada?». La evaluación es por ocurrencia y ocurre dentro de dos límites:
@@ -258,11 +264,12 @@ class RegistroHistoricoVivo:
 #
 # Dentro de esos límites se aceptan dos formas, y basta con una:
 #
-# 1. **transición de identidad**: justo después de la mención aparece un conector de
-#    movimiento (`a`, `hacia`, `por`, `->`, `→`) y la identidad vigente. Es la forma de
-#    «Renombrar <legado> a SIS-Leg» y de «`/opt/<legado>` -> `/opt/sis-leg`». El orden es
-#    parte de la regla: nombrar la identidad vigente *antes* del literal no alcanza, porque
-#    eso es justamente lo que hace una instrucción de despliegue que menciona el proyecto;
+# 1. **transición de identidad**: justo después de la mención aparece una flecha (`->`,
+#    `-->`, `=>`, `→`) y la identidad vigente, como en «`/opt/<legado>` -> `/opt/sis-leg`».
+#    Sólo la flecha, porque una preposición suelta no distingue un reemplazo de una
+#    conexión entre dos sistemas vivos. El orden también es parte de la regla: nombrar la
+#    identidad vigente *antes* del literal no alcanza, porque eso es justamente lo que hace
+#    una instrucción de despliegue que menciona el proyecto;
 # 2. **calificador ligado**: la mención viene precedida por una palabra completa del
 #    vocabulario histórico, separada de ella a lo sumo por una palabra libre y una
 #    preposición de pertenencia (`de`, `del`, `en`). Lo decisivo es qué hay pegado a la
@@ -286,11 +293,26 @@ PATRON_PUNTUACION_DE_CORTE = re.compile(r"[.;,:!?|()\[\]]")
 # una ruta) forma parte de ella: `/workspace/<legado>` es una palabra sola, no tres.
 SEPARADORES_DE_TOKEN = frozenset(" \t`\"'()[]{}<>,;")
 
-# Forma 1, aplicada al texto que sigue a la mención dentro de su segmento. Las cotas son
-# perezosas y cortas para que la transición sea una frase y no dos ideas que conviven.
+# Forma 1, aplicada al texto que sigue a la mención dentro de su segmento. El conector tiene
+# que ser una flecha, y nada más.
+#
+# Al principio esta forma también aceptaba las preposiciones `a`, `hacia` y `por`, y eso
+# volvía a abrir el gate: «Conectar <legado> a SIS-Leg», «Redirigir <legado> hacia SIS-Leg» y
+# «Usar <legado> por compatibilidad con SIS-Leg» son instrucciones activas que describen dos
+# sistemas conviviendo, no una identidad que fue reemplazada por otra. Una preposición sola
+# no distingue «esto pasó a ser aquello» de «esto se conecta con aquello».
+#
+# La flecha sí lo distingue, porque en este repositorio se usa exactamente para eso: anotar
+# que algo dejó de estar en un lado y pasó al otro. Las transiciones narradas con palabras
+# siguen siendo válidas, pero por la otra forma: necesitan un calificador histórico ligado a
+# la mención, como en «Renombrar <legado> a SIS-Leg» o «migración física de /opt/<legado> a
+# /opt/sis-leg». Es decir, la palabra sigue alcanzando cuando el texto además dice que está
+# hablando del pasado.
+#
+# Las cotas son perezosas y cortas para que la transición sea una frase y no dos ideas que
+# casualmente conviven en el mismo segmento.
 PATRON_TRANSICION_DESDE_LA_MENCION = re.compile(
-    rf"^[^\n]{{0,40}}?(?:\s(?:a|hacia|por)\s|\s*(?:->|-->|=>|→)\s*)"
-    rf"[^\n]{{0,25}}?{_IDENTIDAD_VIGENTE}",
+    rf"^[^\n]{{0,40}}?\s*(?:->|-->|=>|→)\s*[^\n]{{0,25}}?{_IDENTIDAD_VIGENTE}",
     re.IGNORECASE,
 )
 
@@ -522,8 +544,9 @@ def _revisar_registro_vivo(
             problemas.append(
                 f"{registro.ruta}:{numero}:{columna}: la mención «{token}» no viene "
                 "enmarcada como historia. Para ser admitida en este registro debe describir "
-                "la transición hacia la identidad vigente (por ejemplo «/opt/... -> "
-                "/opt/sis-leg») o venir precedida, en la misma cláusula, por una palabra "
+                "la transición con una flecha hacia la identidad vigente (por ejemplo "
+                "«/opt/... -> /opt/sis-leg») o venir precedida, en la misma cláusula, por "
+                "una palabra "
                 "completa del vocabulario histórico (legado, histórico, migración, "
                 "renombrar, anterior y sus variantes). Una palabra histórica suelta en otra "
                 "parte de la línea no alcanza, y nombrar SIS-Leg tampoco."

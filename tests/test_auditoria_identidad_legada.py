@@ -323,17 +323,21 @@ def test_leer_lineas_tolera_binarios_y_rutas_inexistentes() -> None:
     assert leer_lineas("archivo/que/no/existe.txt") == []
 
 
-# Los seis contraejemplos que el gate llegó a dejar pasar. Están escritos literalmente, no
-# parafraseados, porque son la regresión exacta que este WP corrige.
+# Los nueve contraejemplos que el gate llegó a dejar pasar, en tres tandas. Están escritos
+# literalmente, no parafraseados, porque son la regresión exacta que este WP corrige.
 #
 # Los tres primeros venían de la versión que comparaba subcadenas: una raíz suelta que
 # colisiona con lenguaje general (`delegado` contra `legado`), un `anterior` que califica
 # cualquier cosa menos la identidad, y la sola presencia del nombre vigente en una
 # instrucción activa.
 #
-# Los tres siguientes venían de la versión que ya usaba palabras completas pero preguntaba
-# por la línea entera: la palabra histórica está, pero califica otra cosa y la ruta legada es
-# el objeto de un verbo en presente.
+# Los tres del medio venían de la versión que ya usaba palabras completas pero preguntaba por
+# la línea entera: la palabra histórica está, pero califica otra cosa y la ruta legada es el
+# objeto de un verbo en presente.
+#
+# Los tres últimos venían de la transición desnuda: nombran las dos identidades unidas por
+# una preposición, pero describen dos sistemas conviviendo, no uno reemplazado por el otro.
+# Son la razón por la que la transición quedó limitada a flechas.
 CONTRAEJEMPLOS_QUE_DEBEN_FALLAR = [
     "El concejal delegado solicitó acceso a /opt/botonera2",
     "Como se indicó en la sección anterior, el servicio arranca con /opt/botonera2/bin/start",
@@ -341,6 +345,9 @@ CONTRAEJEMPLOS_QUE_DEBEN_FALLAR = [
     "Para migrar la base de datos, ejecutar /opt/botonera2/bin/start",
     "El sistema legado de expedientes usa /opt/botonera2/bin/start",
     "Durante la migración de usuarios, ejecutar /opt/botonera2/bin/start",
+    "Usar Botonera2 por compatibilidad con SIS-Leg",
+    "Conectar Botonera2 a SIS-Leg",
+    "Redirigir Botonera2 hacia SIS-Leg",
 ]
 
 
@@ -408,6 +415,28 @@ def test_rechaza_un_verbo_activo_pegado_a_la_mencion(linea: str) -> None:
     """Aunque la palabra histórica esté cerca, un verbo en presente delata un uso actual."""
 
     assert not linea_tiene_contexto_historico(linea)
+
+
+@pytest.mark.parametrize(
+    ("linea", "admitida"),
+    [
+        ("Mover `/opt/botonera2` -> `/opt/sis-leg` en la ventana operativa", True),
+        ("Mover `/opt/botonera2` → `/opt/sis-leg` en la ventana operativa", True),
+        ("Conectar Botonera2 a SIS-Leg", False),
+        ("Redirigir Botonera2 hacia SIS-Leg", False),
+        ("Usar Botonera2 por compatibilidad con SIS-Leg", False),
+        ("Renombrar Botonera2 a SIS-Leg cerró WP-077", True),
+        ("La migración física de /opt/botonera2 a /opt/sis-leg sigue pendiente", True),
+    ],
+)
+def test_la_transicion_desnuda_exige_flecha(linea: str, admitida: bool) -> None:
+    """Una preposición no distingue un reemplazo de una conexión entre dos sistemas vivos.
+
+    Las dos últimas filas muestran la salida para el texto narrado: siguen admitidas, pero
+    por el calificador ligado (`Renombrar`, `migración`), no por la preposición.
+    """
+
+    assert linea_tiene_contexto_historico(linea) is admitida
 
 
 def test_el_marco_no_cruza_la_puntuacion_de_la_clausula() -> None:

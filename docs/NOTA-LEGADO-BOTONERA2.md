@@ -86,19 +86,24 @@ nombre anterior sino **cómo** aparece. La pregunta se hace por cada mención, n
 entera, y siempre dentro de la cláusula donde esa mención vive: una coma o un punto y coma cortan
 el alcance del marco. Se acepta la mención que cumpla alguna de estas dos condiciones:
 
-1. describe la transición hacia la identidad vigente, es decir la mención seguida de una flecha o
-   de una preposición de movimiento y de la ruta o el nombre actual;
+1. una flecha (`->`, `-->`, `=>`, `→`) la conecta con la ruta o el nombre actual;
 2. viene precedida por una palabra completa del vocabulario histórico cerrado (legado, histórico,
    migración, renombrar, anterior y sus variantes de género, número y acentuación), con la palabra
    pegada a la mención siendo o bien ese calificador o bien una preposición de pertenencia como
    «de», «del» o «en».
 
-Lo que queda deliberadamente afuera es el caso que motivó endurecer la regla dos veces: una
-palabra histórica que aparece en la línea pero califica otra cosa, con la ruta antigua como objeto
-de un verbo en presente. «El sistema legado de expedientes usa /opt/<ruta anterior>» y «Durante la
-migración de usuarios, ejecutar /opt/<ruta anterior>» son referencias activas y siguen fallando,
-igual que nombrar SIS-Leg en una instrucción de despliegue que además usa una ruta antigua. Todo
-se evalúa sobre palabras completas, para que «delegado» no se lea como «legado».
+La transición narrada con palabras sigue siendo válida, pero por la segunda condición y no por la
+primera: «Renombrar <nombre anterior> a SIS-Leg» y «la migración física de /opt/<ruta anterior> a
+/opt/sis-leg» se admiten porque el texto además dice que está hablando del pasado.
+
+Lo que queda deliberadamente afuera son los dos casos que obligaron a endurecer la regla. Primero,
+una palabra histórica que aparece en la línea pero califica otra cosa, con la ruta antigua como
+objeto de un verbo en presente: «El sistema legado de expedientes usa /opt/<ruta anterior>» y
+«Durante la migración de usuarios, ejecutar /opt/<ruta anterior>». Segundo, las dos identidades
+unidas por una preposición suelta, que describe dos sistemas conviviendo y no uno reemplazado por
+el otro: «Conectar <nombre anterior> a SIS-Leg», «Redirigir <nombre anterior> hacia SIS-Leg» y
+«Usar <nombre anterior> por compatibilidad con SIS-Leg». Todas son referencias activas y siguen
+fallando. Todo se evalúa sobre palabras completas, para que «delegado» no se lea como «legado».
 
 ```bash
 uv run python scripts/auditar_identidad_legada.py
