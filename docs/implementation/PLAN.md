@@ -230,7 +230,7 @@ WP-033 quedó integrado antes de continuar WP-026 y deja disponible el harness m
 | WP-076 | Alinear destino y acciones de mensajes precargados | INTEGRADO | WP-070 | - |
 | WP-078 | Registrar mensajes al Recinto como eventos principales INICIO/FIN | INTEGRADO | WP-055, WP-056 | - |
 | WP-077 | Renombrar Botonera2 a SIS-Leg en repositorios y código vigente | INTEGRADO | WP-074, WP-075, WP-076, WP-078 | - |
-| WP-079 | Restablecer el gate de identidad histórica sin borrar evidencia legítima | EN_CURSO | WP-077 | claude |
+| WP-079 | Restablecer el gate de identidad histórica sin borrar evidencia legítima | INTEGRADO | WP-077 | - |
 | WP-080 | Garantizar continuidad de sincronización REST/SSE tras reinicio del backend | PENDIENTE | WP-079, WP-074 | claude |
 | WP-081 | Garantizar cierre FIN de avisos ante carreras entre timers y mutaciones | PENDIENTE | WP-079, WP-078 | claude |
 | WP-082 | Endurecer privacidad y exclusividad efectiva del Device Bridge | PENDIENTE | WP-079, WP-075 | claude |
@@ -517,3 +517,5 @@ Decisiones HUMAN_GATE cerradas para esta campaña: en Técnico el panel se titul
 El hallazgo HUMAN-ROUND5-001 sobre el virtualenv trasladado queda cerrado operacionalmente mediante regeneración local del `.venv`; no genera WP propio mientras no reaparezca una necesidad de mover el checkout. ASTRA-009 permanece como decisión de gobernanza pendiente de HUMAN_GATE antes del freeze productivo y no se convierte por ahora en WP. Las hipótesis HIP-01..HIP-08 continúan pendientes de validación y podrán incorporarse como casos de prueba en hardware, staging o rehearsal sin tratarlas como bugs confirmados.
 
 WP-029 permanece `BLOQUEADO` y pasa a depender también de WP-079..WP-086. WP-087 queda posterior a WP-029 y reservado para hardening/rehearsal de despliegue antes de cualquier migración productiva. La migración física de `/opt/botonera2` a `/opt/sis-leg` sigue fuera de esta campaña hasta una ventana operativa explícita.
+
+WP-079 quedó integrado mediante squash merge de PR #88 sobre el candidato final `344ad1c3ff15c7a9f2274163138db40c0d003f08` / tree `9a4207921e5674198d3718e1571de53e16b8887e`, implementado por Claude Code / Claude Opus 5 (High). La re-revisión independiente final de Antigravity/AGY / Gemini 3.8 Flash (High) concluyó con 0 BLOQUEANTES, 0 IMPORTANTES y 1 MENOR, veredicto `LISTA PARA INTEGRAR`; el riesgo residual locativo de la heurística fue aceptado como menor por estar confinado a PLAN y a contextos explícitamente históricos. La auditoría sustantiva del ORCHESTRATOR quedó `APROBADO_PARA_MERGE`. Squash: `11fb6408fdfd630ec9151054b49bd37ff5a9ca88`; CI candidata #492 y CI post-merge #493 terminaron `success` 8/8. El gate de identidad histórica vuelve a ser reproducible sin reescribir evidencia legítima.
