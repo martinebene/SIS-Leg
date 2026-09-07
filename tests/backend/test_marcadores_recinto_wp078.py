@@ -542,6 +542,7 @@ async def test_una_mutacion_simultanea_al_vencimiento_no_suprime_el_fin(
         entorno.coordinador,
         esperar=esperar,
         cerrar_marcadores_vencidos=servicio.cerrar_marcadores_recinto_vencidos,
+        hay_efecto_pendiente=servicio.hay_marcador_recinto_vencido,
     )
     tarea = asyncio.create_task(fronteras.ejecutar())
     try:
@@ -590,6 +591,7 @@ async def test_la_carrera_no_duplica_el_fin_de_un_aviso_ya_cancelado(
         entorno.coordinador,
         esperar=esperar,
         cerrar_marcadores_vencidos=servicio.cerrar_marcadores_recinto_vencidos,
+        hay_efecto_pendiente=servicio.hay_marcador_recinto_vencido,
     )
     tarea = asyncio.create_task(fronteras.ejecutar())
     try:
@@ -605,6 +607,120 @@ async def test_la_carrera_no_duplica_el_fin_de_un_aviso_ya_cancelado(
         ("FIN", "Cancelado al vencer"),
     ]
     assert entorno.estado.marcador_recinto_abierto is None
+
+
+async def test_el_fin_se_registra_aunque_la_espera_del_deadline_quede_pendiente(
+    tmp_path: Path,
+) -> None:
+    """WP-081: el cruce se decide por el reloj, no por el estado de la tarea.
+
+    Ésta es la intercalación que la corrección anterior no cubría. El deadline
+    real ya pasó, pero el callback que iba a completar la tarea de espera todavía
+    no fue despachado por el planificador; mientras tanto una mutación ajena
+    publica su revisión y despierta el ciclo. ``asyncio.wait`` devuelve entonces
+    **sólo** la tarea del cambio, el cleanup cancela la de tiempo y el aviso ya
+    vencido deja de aportar frontera, así que ninguna espera futura volvería a
+    intentar el cierre.
+
+    La espera inyectada reproduce eso exactamente: adelanta el reloj más allá del
+    vencimiento, publica la revisión y después se bloquea para siempre. Nunca
+    completa por su cuenta: la cancela el propio servicio durante el cleanup.
+
+    Lo que demuestra la prueba es que el ``FIN`` se registra igual, porque la
+    vuelta siguiente pregunta si quedó un efecto institucional pendiente en vez
+    de mirar qué tarea alcanzó a marcarse ``done``.
+    """
+
+    entorno = crear_entorno_proyecciones(tmp_path)
+    servicio = crear_servicio_apoyo_tecnico(entorno, tmp_path / "mensajes.csv")
+    await servicio.publicar_aviso("Deadline sin despachar", DestinoAvisoTecnico.RECINTO, 30)
+
+    async def esperar(demora: float) -> None:
+        # El tiempo real transcurre: el aviso queda vencido para cualquiera que
+        # consulte el reloj. Un segundo extra deja explícito que la frontera no
+        # sólo se alcanzó sino que quedó atrás.
+        entorno.reloj.avanzar(demora + 1)
+        entorno.coordinador.publicar()
+        # Y sin embargo esta corrutina —la que representa el wakeup del
+        # deadline— nunca completa por sí sola.
+        await asyncio.Event().wait()
+
+    fronteras = ServicioFronterasTemporales(
+        entorno.servicio,
+        entorno.ejecutor,
+        entorno.coordinador,
+        esperar=esperar,
+        cerrar_marcadores_vencidos=servicio.cerrar_marcadores_recinto_vencidos,
+        hay_efecto_pendiente=servicio.hay_marcador_recinto_vencido,
+    )
+    tarea = asyncio.create_task(fronteras.ejecutar())
+    try:
+        for _ in range(20):
+            await asyncio.sleep(0)
+            if ("FIN", "Deadline sin despachar") in transiciones(entorno):
+                break
+    finally:
+        tarea.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tarea
+
+    assert transiciones(entorno) == [
+        ("INICIO", "Deadline sin despachar"),
+        ("FIN", "Deadline sin despachar"),
+    ]
+    assert entorno.estado.marcador_recinto_abierto is None
+
+
+async def test_un_cierre_pendiente_irrecuperable_no_produce_un_ciclo_ocupado(
+    tmp_path: Path,
+) -> None:
+    """WP-081: un escritor en fallo cerrado no convierte el ciclo en un bucle.
+
+    Preguntar por el efecto pendiente introduce un riesgo obvio: si el cierre
+    falla, el efecto sigue pendiente y el temporizador podría reintentarlo sin
+    pausa, consumiendo CPU sin poder auditar nada. La corrección espera un cambio
+    real después de un intento fallido, así que el cierre se invoca una sola vez
+    aunque el ciclo siga vivo durante muchas vueltas del event loop.
+    """
+
+    entorno = crear_entorno_proyecciones(tmp_path)
+    servicio = crear_servicio_apoyo_tecnico(entorno, tmp_path / "mensajes.csv")
+    await servicio.publicar_aviso("Nunca se puede auditar", DestinoAvisoTecnico.RECINTO, 20)
+    intentos = 0
+
+    async def cerrar_fallando() -> None:
+        nonlocal intentos
+        intentos += 1
+        raise ErrorAuditoria("no se pudo sincronizar")
+
+    async def esperar(demora: float) -> None:
+        entorno.reloj.avanzar(demora)
+        entorno.coordinador.publicar()
+        await asyncio.Event().wait()
+
+    fronteras = ServicioFronterasTemporales(
+        entorno.servicio,
+        entorno.ejecutor,
+        entorno.coordinador,
+        esperar=esperar,
+        cerrar_marcadores_vencidos=cerrar_fallando,
+        hay_efecto_pendiente=servicio.hay_marcador_recinto_vencido,
+    )
+    tarea = asyncio.create_task(fronteras.ejecutar())
+    try:
+        for _ in range(50):
+            await asyncio.sleep(0)
+        seguia_viva = not tarea.done()
+    finally:
+        tarea.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tarea
+
+    assert seguia_viva
+    assert intentos == 1
+    # Fallo cerrado intacto: no se anuncia una transición que no se persistió.
+    assert entorno.estado.marcador_recinto_abierto is not None
+    assert transiciones(entorno) == [("INICIO", "Nunca se puede auditar")]
 
 
 async def test_sin_cierre_inyectado_el_temporizador_conserva_su_conducta(
@@ -753,3 +869,11 @@ async def test_el_ciclo_de_vida_inyecta_el_cierre_automatico() -> None:
     assert cierre is not None
     assert getattr(cierre, "__self__", None).__class__ is ServicioApoyoTecnico
     assert getattr(cierre, "__name__", "") == "cerrar_marcadores_recinto_vencidos"
+
+    # WP-081: la consulta de efecto pendiente viaja por la misma costura y debe
+    # apuntar al mismo servicio, porque un cierre y un predicado que miraran
+    # estados distintos volverían a dejar el FIN a merced del planificador.
+    pendiente = capturado.get("hay_efecto_pendiente")
+    assert pendiente is not None
+    assert getattr(pendiente, "__self__", None) is getattr(cierre, "__self__", None)
+    assert getattr(pendiente, "__name__", "") == "hay_marcador_recinto_vencido"

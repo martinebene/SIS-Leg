@@ -206,12 +206,18 @@ más de un `FIN` aunque coincidan temporizador, cancelación y reintento. El
 vencimiento automático se convierte en hecho durable desde el temporizador único
 de fronteras temporales, sin introducir polling.
 
-Ese cierre depende exclusivamente de que la frontera temporal se haya cumplido y
-no de que el vencimiento haya sido la única causa del despertar del temporizador.
-Una mutación ajena que ocurra en el mismo instante reconstruye la proyección y
-retira el aviso vencido de la pantalla, pero no registra nada: si el cruce se
-salteara por esa coincidencia, el período quedaría sin `FIN` de forma permanente,
-porque un aviso ya vencido no vuelve a aportar una frontera futura.
+La autoridad de ese cierre es el reloj, no la mecánica interna del temporizador.
+El sistema comprueba en cada vuelta si quedó un período abierto cuyo aviso ya
+venció, y en ese caso lo cierra, sin importar por qué causa despertó el ciclo ni
+en qué orden se hayan resuelto sus esperas. La garantía no puede depender de esa
+mecánica porque una mutación ajena simultánea reconstruye la proyección y retira
+el aviso vencido de la pantalla sin registrar nada, y un aviso ya vencido no
+vuelve a aportar una frontera futura: un cierre omitido se perdería para siempre.
+
+Si el escritor institucional no puede persistir ese `FIN`, el período permanece
+abierto y el sistema espera un cambio real antes de volver a intentarlo, en vez
+de reintentar sin pausa. Rige el fallo cerrado: no se anuncia una transición que
+no pudo registrarse.
 
 Si la persistencia del `INICIO` falla, el aviso tampoco se publica: rige el
 fallo cerrado general y no se anuncia una transición que no pudo registrarse. Un

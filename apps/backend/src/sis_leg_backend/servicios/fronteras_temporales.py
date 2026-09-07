@@ -27,6 +27,13 @@ class ServicioFronterasTemporales:
     evento principal ``FIN``. Ese trabajo no vive acá sino en
     ``cerrar_marcadores_vencidos``, una corrutina inyectada por el lifespan, de
     modo que el temporizador siga sin conocer reglas del plano técnico.
+
+    Desde WP-081 ese hecho tampoco se decide observando qué tarea de espera
+    quedó ``done``. El lifespan inyecta además ``hay_efecto_pendiente``, una
+    consulta síncrona que responde si una frontera ya alcanzada dejó un efecto
+    institucional sin ejecutar. Preguntarlo al comienzo de cada vuelta es lo
+    que vuelve al cierre independiente del orden en que el planificador de
+    asyncio despachó los callbacks del ciclo anterior.
     """
 
     def __init__(
@@ -37,12 +44,14 @@ class ServicioFronterasTemporales:
         *,
         esperar: Callable[[float], Awaitable[None]] = asyncio.sleep,
         cerrar_marcadores_vencidos: Callable[[], Awaitable[None]] | None = None,
+        hay_efecto_pendiente: Callable[[], bool] | None = None,
     ) -> None:
         self._proyecciones = servicio_proyecciones
         self._ejecutor = ejecutor_mutaciones
         self._coordinador = coordinador
         self._esperar = esperar
         self._cerrar_marcadores_vencidos = cerrar_marcadores_vencidos
+        self._hay_efecto_pendiente = hay_efecto_pendiente
 
     async def ejecutar(self) -> None:
         """Mantiene el ciclo hasta que el lifespan cancela esta tarea."""
@@ -50,12 +59,33 @@ class ServicioFronterasTemporales:
         suscripcion = self._coordinador.suscribir()
         try:
             while True:
-                revision, demora = await self._ejecutor.leer_coherente(
+                revision, demora, pendiente = await self._ejecutor.leer_coherente(
                     lambda: (
                         self._coordinador.revision,
                         self._proyecciones.demora_hasta_proxima_frontera(),
+                        self._hay_efecto_pendiente is not None and self._hay_efecto_pendiente(),
                     )
                 )
+
+                # Autoridad de tiempo, no estado de tarea (WP-081).
+                #
+                # Una frontera ya alcanzada deja de aportar demora: el cálculo
+                # sólo devuelve vencimientos futuros. Si el efecto institucional
+                # de esa frontera todavía no se ejecutó, nadie más va a
+                # ejecutarlo, y esperar una frontera nueva sería perderlo para
+                # siempre. Por eso el cruce se decide acá, comparando el estado
+                # real contra el reloj, y no por si la tarea de espera del ciclo
+                # anterior alcanzó a marcarse ``done`` antes de ser cancelada.
+                if pendiente:
+                    if not await self._cruzar_frontera():
+                        # El escritor institucional está en fallo cerrado. El
+                        # efecto sigue pendiente, así que reintentar de
+                        # inmediato sería un ciclo ocupado que no puede auditar
+                        # nada. Se espera un cambio real antes de volver a
+                        # intentarlo.
+                        await suscripcion.esperar_revision_superior(revision)
+                    continue
+
                 if demora is None:
                     await suscripcion.esperar_revision_superior(revision)
                     continue
@@ -67,27 +97,17 @@ class ServicioFronterasTemporales:
                         (cambio, tiempo),
                         return_when=asyncio.FIRST_COMPLETED,
                     )
-                    # Cruzar depende únicamente de que el deadline se haya
-                    # cumplido, nunca de que el timer haya sido la única causa
-                    # del despertar (WP-081).
+                    # Este cruce cubre únicamente la parte *publicable* del
+                    # despertar: reconstruir el payload cuando el mero paso del
+                    # tiempo cambió qué datos puede contener. Si simultáneamente
+                    # llegó una mutación, su propia publicación ya hace ese
+                    # trabajo y repetirla sería una revisión de más.
                     #
-                    # Antes se salteaba el cruce cuando también llegaba una
-                    # mutación, porque cruzar sólo significaba "publicar una
-                    # revisión" y la mutación ya publicaba una. Desde WP-078 el
-                    # cruce además **escribe un hecho**: el ``FIN`` del período
-                    # de aviso que acaba de vencer. Una mutación ajena —una
-                    # presencia, por ejemplo— reconstruye el DTO y hace
-                    # desaparecer el aviso vencido de la pantalla, pero no
-                    # persiste nada de ese cierre. Con el atajo anterior ese
-                    # ``FIN`` se perdía para siempre: el aviso ya vencido deja
-                    # de aportar demora, así que ninguna frontera posterior
-                    # vuelve a intentarlo (ASTRA-002).
-                    #
-                    # Cruzar de más es inocuo y no puede duplicar eventos: el
-                    # cierre corre bajo el mismo ejecutor serializado y sólo
-                    # actúa si el período sigue abierto, corresponde a ese
-                    # mismo ``aviso_id`` y ya venció.
-                    if tiempo in completadas:
+                    # Los efectos institucionales de una frontera **no** dependen
+                    # de esta condición: los resuelve la comprobación de efecto
+                    # pendiente al comienzo de la vuelta siguiente, que mira el
+                    # reloj y no el estado de estas dos tareas (WP-081).
+                    if tiempo in completadas and cambio not in completadas:
                         await self._cruzar_frontera()
                 finally:
                     for tarea in (cambio, tiempo):
@@ -117,7 +137,7 @@ class ServicioFronterasTemporales:
         finally:
             suscripcion.cancelar()
 
-    async def _cruzar_frontera(self) -> None:
+    async def _cruzar_frontera(self) -> bool:
         """Publica el cruce y, si corresponde, cierra los períodos vencidos.
 
         Sin la corrutina de cierre inyectada el comportamiento es el histórico:
@@ -126,29 +146,32 @@ class ServicioFronterasTemporales:
         que ya publica la revisión al salir del lock, así que un cruce sigue
         produciendo una sola publicación.
 
-        Cuando una mutación ajena despierta el ciclo en el mismo instante del
-        vencimiento, ese cruce agrega una publicación además de la de la
-        mutación. Es deliberado: las suscripciones coalescen revisiones y
-        reconstruyen el DTO completo, mientras que ahorrarse el cruce costaría
-        el ``FIN`` institucional, que nadie más va a escribir.
-
         Un fallo de auditoría no puede matar el temporizador. Si lo hiciera, el
         proceso dejaría además de publicar todas las demás fronteras (cuenta
         regresiva, revelado, resultado público) por un escritor que de todos
         modos ya quedó en fallo cerrado permanente. El error se registra, el
         período queda abierto —no se anuncia una transición que no se persistió—
         y el ciclo continúa; el ``finally`` del ejecutor ya publicó la revisión.
+
+        Devuelve:
+            ``True`` cuando el cruce quedó resuelto y ``False`` cuando la
+            auditoría impidió ejecutar su efecto institucional. Quien cruza por
+            un efecto pendiente usa ese valor para no reintentarlo en un ciclo
+            ocupado: un escritor en fallo cerrado no se recupera solo, así que
+            volver a intentar sin esperar un cambio real sólo quemaría CPU.
         """
 
         if self._cerrar_marcadores_vencidos is None:
             await self._ejecutor.publicar_frontera_temporal()
-            return
+            return True
         try:
             await self._cerrar_marcadores_vencidos()
         except ErrorAuditoria:
             REGISTRO.exception(
                 "No se pudo registrar el FIN automático de un aviso de la Pantalla del Recinto"
             )
+            return False
+        return True
 
     async def _esperar_demora(self, demora: float) -> None:
         """Convierte el ``Awaitable`` inyectable en una coroutine tipada."""

@@ -100,6 +100,7 @@ class ServicioFronterasRastreado(ServicioFronterasTemporales):
         *,
         esperar: Callable[[float], Awaitable[None]],
         cerrar_marcadores_vencidos: Callable[[], Awaitable[None]] | None = None,
+        hay_efecto_pendiente: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__(
             servicio_proyecciones,
@@ -107,6 +108,7 @@ class ServicioFronterasRastreado(ServicioFronterasTemporales):
             coordinador,
             esperar=esperar,
             cerrar_marcadores_vencidos=cerrar_marcadores_vencidos,
+            hay_efecto_pendiente=hay_efecto_pendiente,
         )
         self.tarea_ejecucion: asyncio.Task[None] | None = None
 
@@ -179,13 +181,15 @@ async def test_lifespan_no_pierde_cancelacion_durante_cleanup_de_frontera(
         _coordinador: CoordinadorPublicacion,
         *,
         cerrar_marcadores_vencidos: Callable[[], Awaitable[None]] | None = None,
+        hay_efecto_pendiente: Callable[[], bool] | None = None,
     ) -> ServicioFronterasTemporales:
         """Sustituye solo dependencias temporales sin cambiar el lifespan probado.
 
-        El cierre de marcadores de WP-078 se reenvía tal como lo arma el
-        lifespan: esta prueba sustituye el reloj y las proyecciones, no el
-        cableado que está probando. Acá nunca llega a ejecutarse porque el timer
-        queda bloqueado antes de cruzar ninguna frontera.
+        El cierre de marcadores de WP-078 y la consulta de efecto pendiente de
+        WP-081 se reenvían tal como los arma el lifespan: esta prueba sustituye
+        el reloj y las proyecciones, no el cableado que está probando. Acá nunca
+        llegan a ejecutarse porque el timer queda bloqueado antes de cruzar
+        ninguna frontera.
         """
 
         nonlocal servicio_creado
@@ -195,6 +199,7 @@ async def test_lifespan_no_pierde_cancelacion_durante_cleanup_de_frontera(
             coordinador,
             esperar=esperar_controlado,
             cerrar_marcadores_vencidos=cerrar_marcadores_vencidos,
+            hay_efecto_pendiente=hay_efecto_pendiente,
         )
         return servicio_creado
 

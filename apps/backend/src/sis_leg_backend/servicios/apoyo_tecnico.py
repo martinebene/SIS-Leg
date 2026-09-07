@@ -353,6 +353,38 @@ class ServicioApoyoTecnico:
 
         await self._ejecutor.ejecutar(aplicar)
 
+    def hay_marcador_recinto_vencido(self) -> bool:
+        """Informa si queda un período abierto cuyo aviso ya venció.
+
+        Es una consulta **síncrona y sin efectos**: el temporizador de
+        ``servicios/fronteras_temporales.py`` la evalúa dentro de la misma
+        lectura coherente con la que calcula la próxima frontera, así que
+        observa el estado bajo el lock y no puede leerlo a mitad de una
+        mutación.
+
+        Por qué existe: un aviso ya vencido deja de aportar una frontera futura
+        (``_demoras_tecnicas`` sólo considera vencimientos con ``faltante > 0``),
+        de modo que el temporizador necesita una forma de reconocer que la
+        frontera **ya se alcanzó** y que su efecto institucional sigue
+        pendiente. Sin esta pregunta, el cruce dependería de que la tarea de
+        espera haya sido marcada como completada, es decir, del orden en que el
+        planificador de asyncio despachó sus callbacks.
+
+        Devuelve exactamente la misma condición que aplica
+        ``cerrar_marcadores_recinto_vencidos``. Compartir el predicado es
+        deliberado: si las dos condiciones pudieran divergir, el temporizador
+        podría quedar preguntando eternamente por un cierre que el cierre real
+        se niega a ejecutar.
+        """
+
+        marcador = self._estado.marcador_recinto_abierto
+        aviso = self._estado.aviso_tecnico_recinto
+        if marcador is None or aviso is None:
+            return False
+        # Comparar el identificador evita confundir el período abierto con otro
+        # aviso que un comando acaba de instalar en la misma ranura.
+        return aviso.aviso_id == marcador.aviso_id and not aviso.vigente(self._reloj())
+
     async def cerrar_marcadores_recinto_vencidos(self) -> None:
         """Convierte el vencimiento por duración en un ``FIN`` durable.
 
@@ -378,14 +410,10 @@ class ServicioApoyoTecnico:
         """
 
         async def aplicar() -> None:
-            marcador = self._estado.marcador_recinto_abierto
-            aviso = self._estado.aviso_tecnico_recinto
-            if marcador is None or aviso is None:
-                return
-            # Sólo cierra el período que corresponde exactamente a este aviso y
-            # únicamente si ya venció. Comparar el identificador evita cerrar por
-            # error un período que otro comando acaba de abrir en la misma ranura.
-            if aviso.aviso_id != marcador.aviso_id or aviso.vigente(self._reloj()):
+            # La condición se evalúa de nuevo **dentro** del lock: entre que el
+            # temporizador decidió cruzar y que obtuvo el turno exclusivo, una
+            # cancelación o un reemplazo pudo haber cerrado ya este período.
+            if not self.hay_marcador_recinto_vencido():
                 return
             self._cerrar_marcador_recinto()
 
