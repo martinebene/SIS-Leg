@@ -458,8 +458,8 @@
                   <td>Apoyo Técnico</td>
                   <td><code>/tecnico/</code></td>
                   <td>
-                    Indicador de transmisión, avisos sobre las pantallas, biblioteca de mensajes,
-                    reemplazo de botoneras y consulta de eventos.
+                    Indicador de transmisión, avisos sobre las pantallas, biblioteca de avisos
+                    precargados, reemplazo de botoneras y consulta de eventos.
                   </td>
                 </tr>
                 <tr>
@@ -1226,8 +1226,8 @@
           <p>
             El puesto de Apoyo Técnico se abre en <code>/tecnico/</code> desde otro equipo de la red
             local. No reemplaza a Moderación ni puede operar la sesión: se ocupa del indicador de
-            transmisión, de los avisos sobre las pantallas, de la biblioteca de mensajes, del
-            reemplazo de botoneras y de la consulta de eventos.
+            transmisión, de los avisos sobre las pantallas, de la biblioteca de avisos precargados,
+            del reemplazo de botoneras y de la consulta de eventos.
           </p>
 
           <p>
@@ -1244,7 +1244,7 @@
             <a href="#cap-13-navegador">capítulo 13</a>.
           </p>
 
-          <h3>8.1 Transmisión</h3>
+          <h3>8.1 Indicador de transmisión</h3>
 
           <p>
             SIS-Leg <strong>no maneja la señal de audio ni de video</strong>. Lo que administra es el
@@ -1258,6 +1258,8 @@
             <li>
               <strong>Cuenta regresiva.</strong> Se ingresó una cantidad de segundos y el sistema
               descuenta hasta la salida al aire. La Pantalla del Recinto muestra el número en grande.
+              El puesto propone <strong>5 segundos</strong>, que es el valor habitual; el campo es
+              editable y admite cualquier valor entre 1 y 3600 segundos.
             </li>
             <li><strong>En vivo.</strong> Se anuncia la transmisión en curso.</li>
           </ol>
@@ -1343,12 +1345,12 @@
             público ya está viendo el aviso.
           </div>
 
-          <h3>8.3 Mensajes precargados</h3>
+          <h3>8.3 Avisos precargados</h3>
 
           <p>
-            La biblioteca guarda mensajes de uso frecuente para no escribirlos cada vez. Cada mensaje
-            tiene un texto de una sola línea y un destino sugerido. Se pueden crear, editar,
-            eliminar y cargar sobre el formulario de aviso.
+            La biblioteca guarda avisos de uso frecuente para no escribirlos cada vez. Cada aviso
+            precargado tiene un texto de una sola línea y un destino sugerido. Se pueden crear,
+            editar, eliminar y cargar sobre el formulario de aviso.
           </p>
 
           <p>
@@ -1509,9 +1511,9 @@
             Si falta un archivo, si el navegador bloquea la reproducción o si la configuración de
             audio no es válida, la pantalla <strong>sigue funcionando en silencio</strong>. No
             aparece ningún mensaje en pantalla y nada más se degrada. En Apoyo Técnico esto también
-            significa que la transmisión, los avisos, los mensajes precargados y el remapeo siguen
-            funcionando con normalidad: sólo se pierde el sonido. Por eso conviene comprobar el
-            sonido después de cada instalación o actualización, como indica el
+            significa que la transmisión, los avisos, la biblioteca de avisos precargados y el
+            remapeo siguen funcionando con normalidad: sólo se pierde el sonido. Por eso conviene
+            comprobar el sonido después de cada instalación o actualización, como indica el
             <a href="#cap-13-navegador">capítulo 13</a>.
           </p>
 
@@ -1581,7 +1583,7 @@
                   </td>
                 </tr>
                 <tr>
-                  <td>Mensajes precargados</td>
+                  <td>Avisos precargados</td>
                   <td><code>/opt/sis-leg/config/apoyo-tecnico/mensajes.csv</code></td>
                   <td>
                     <code class="ruta" data-archivo="config/apoyo-tecnico/mensajes.example.csv">config/apoyo-tecnico/mensajes.example.csv</code>
@@ -2062,6 +2064,20 @@ curl --fail http://127.0.0.1/moderacion/
 curl --fail http://127.0.0.1/recinto/
 curl --fail http://127.0.0.1/manual/</code></pre>
 
+          <p>
+            Conviene saber qué contiene el registro del puente de dispositivos antes de
+            exportarlo o enviarlo a soporte. El puente reconoce solamente las botoneras
+            declaradas en el mapa de dispositivos, y solamente después de haber reservado
+            cada una para uso exclusivo del sistema. De todo lo demás que esté conectado al
+            equipo, incluido el teclado con el que se trabaja, el registro anota una única
+            línea informativa por dispositivo indicando que sus pulsaciones se ignoran.
+            <strong>Nunca anota qué teclas se pulsaron en él.</strong> Un registro del puente
+            no contiene, por lo tanto, texto escrito por el operador, y esa propiedad se
+            mantiene aunque se aumente el nivel de detalle del servicio para diagnosticar un
+            problema. Si en un registro apareciera el contenido de teclas de un teclado común,
+            eso es una anomalía que debe informarse a soporte técnico.
+          </p>
+
           <h3>12.5 Problemas frecuentes</h3>
 
           <div class="tabla-contenedor">
@@ -2119,6 +2135,25 @@ curl --fail http://127.0.0.1/manual/</code></pre>
                   </td>
                 </tr>
                 <tr>
+                  <td>
+                    Una banca deja de responder y en el registro del servicio aparece un
+                    aviso de identidad ambigua entre dos dispositivos.
+                  </td>
+                  <td>
+                    El puente encontró dos dispositivos conectados que se presentan ante el
+                    sistema operativo con los mismos datos de identificación, y no puede
+                    decidir cuál de los dos corresponde a esa banca. Reserva solamente el
+                    primero y deja al segundo sin reservar y sin enviar pulsaciones, para no
+                    atribuir a una banca las pulsaciones de un dispositivo equivocado. El
+                    aviso indica las dos conexiones involucradas. Corresponde revisar el
+                    inventario físico de botoneras junto con soporte técnico: normalmente se
+                    resuelve retirando el dispositivo que no pertenece al recinto o
+                    reemplazando la botonera duplicada y rehaciendo su asignación con el
+                    procedimiento de reemplazo del
+                    <a href="#cap-08-apoyo-tecnico">capítulo 8</a>.
+                  </td>
+                </tr>
+                <tr>
                   <td>Una banca responde pero se ilumina otra.</td>
                   <td>
                     El mapa físico de botoneras y la columna de dispositivo del padrón. La tecla
@@ -2147,9 +2182,9 @@ curl --fail http://127.0.0.1/manual/</code></pre>
                   </td>
                 </tr>
                 <tr>
-                  <td>La biblioteca de mensajes aparece como no disponible.</td>
+                  <td>La biblioteca de avisos precargados aparece como no disponible.</td>
                   <td>
-                    El archivo de mensajes precargados: si no cumple el formato, el sistema lo
+                    El archivo de avisos precargados: si no cumple el formato, el sistema lo
                     protege y rechaza escribirlo. Se corrige a mano y se reinicia el servicio.
                   </td>
                 </tr>
@@ -2188,7 +2223,7 @@ curl --fail http://127.0.0.1/manual/</code></pre>
           </p>
 
           <p>
-            La configuración funcional, el padrón, los mensajes precargados, el mapa de botoneras y
+            La configuración funcional, el padrón, los avisos precargados, el mapa de botoneras y
             los registros ya escritos <strong>no se modifican</strong>: se mueven tal cual y se
             comprueban por checksum antes y después. El procedimiento completo, con respaldo previo
             y vuelta atrás, está en

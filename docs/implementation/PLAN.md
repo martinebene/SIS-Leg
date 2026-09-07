@@ -231,10 +231,10 @@ WP-033 quedó integrado antes de continuar WP-026 y deja disponible el harness m
 | WP-078 | Registrar mensajes al Recinto como eventos principales INICIO/FIN | INTEGRADO | WP-055, WP-056 | - |
 | WP-077 | Renombrar Botonera2 a SIS-Leg en repositorios y código vigente | INTEGRADO | WP-074, WP-075, WP-076, WP-078 | - |
 | WP-079 | Restablecer el gate de identidad histórica sin borrar evidencia legítima | INTEGRADO | WP-077 | - |
-| WP-080 | Garantizar continuidad de sincronización REST/SSE tras reinicio del backend | EN_CURSO | WP-079, WP-074 | claude |
+| WP-080 | Garantizar continuidad de sincronización REST/SSE tras reinicio del backend | INTEGRADO | WP-079, WP-074 | - |
 | WP-081 | Garantizar cierre FIN de avisos ante carreras entre timers y mutaciones | EN_CURSO | WP-079, WP-078 | claude |
-| WP-082 | Endurecer privacidad y exclusividad efectiva del Device Bridge | EN_CURSO | WP-079, WP-075 | claude |
-| WP-083 | Aplicar ajustes UX de quinta ronda en Apoyo Técnico y Q3 | EN_CURSO | WP-079, WP-049, WP-076 | claude |
+| WP-082 | Endurecer privacidad y exclusividad efectiva del Device Bridge | INTEGRADO | WP-079, WP-075 | - |
+| WP-083 | Aplicar ajustes UX de quinta ronda en Apoyo Técnico y Q3 | INTEGRADO | WP-079, WP-049, WP-076 | - |
 | WP-084 | Generalizar identidad institucional y hacer configurable el cuerpo legislativo | PENDIENTE | WP-079, WP-077 | claude |
 | WP-085 | Generar informe formal de acta y copia externa opcional de registros al cierre | PENDIENTE | WP-081, WP-073, WP-078 | claude |
 | WP-086 | Rechazar NaN e infinitos en todos los temporizadores configurables | PENDIENTE | WP-079, WP-003 | claude |

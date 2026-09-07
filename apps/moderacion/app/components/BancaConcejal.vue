@@ -14,6 +14,9 @@
  *
  * El componente representa el snapshot recibido: no emite comandos ni modifica
  * presencia o test.
+ *
+ * WP-083 agrega una única diferencia visual respecto del Recinto: en Q3 la banca
+ * `NORMAL` pinta su borde transparente. Está explicado junto a la regla CSS, más abajo.
  */
 
 import { computed, ref, watch } from 'vue'
@@ -153,6 +156,34 @@ watch(claveImagen, () => {
   border-radius: 8px;
   background: var(--fondo-banca);
   user-select: none;
+}
+
+/*
+  Borde invisible de la banca presente sin novedad (WP-083).
+
+  La tarjeta NORMAL es blanca sobre el fondo oscuro de Q3, y el bitmap institucional
+  también está compuesto sobre blanco. El borde `#c7d2dd` de la familia BLANCA quedaba
+  entonces como una línea gris flotando **dentro** del blanco, y en la grilla completa se
+  leía como un recuadro superpuesto a la imagen. La revisión de quinta ronda pidió que la
+  banca sin novedad no dibuje ese recuadro.
+
+  La corrección es sólo de color y sólo en Moderación:
+
+  - se mantiene `border-width: 2px`, así que la caja mide exactamente lo mismo que antes y
+    ni la imagen ni la franja de estado se mueven o escalan un píxel;
+  - se pinta `transparent` en lugar de tocar `--borde-banca`, porque esa custom property
+    sale de la paleta compartida `PALETA_BANCAS` que también consume la Pantalla del
+    Recinto: cambiarla ahí habría cambiado el Recinto, que este WP debe dejar intacto;
+  - el selector es exactamente `NORMAL`, de modo que AUSENTE, PALABRA, TEST, VOTO_EMITIDO
+    y los tres estados de resultado conservan su borde tal como está hoy.
+
+  NORMAL es además el único estado que llega acá sin etiqueta y sin halo: `TEST` tampoco
+  dibuja etiqueta pero es un estado propio con su propio color, y los halos sólo existen
+  cuando test o palabra quedaron subordinados a un estado de mayor prioridad, cosa que
+  por construcción nunca ocurre en NORMAL.
+*/
+.banca-concejal-moderacion[data-estado-banca='NORMAL'] {
+  border-color: transparent;
 }
 
 /* Señal secundaria no textual de test o palabra subordinados a otro estado. */
