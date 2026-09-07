@@ -69,17 +69,32 @@ dentro, y por eso está enumerada archivo por archivo en la auditoría automatiz
 ## Auditoría automatizada
 
 `scripts/auditar_identidad_legada.py` recorre todos los archivos versionados y falla si aparece
-una referencia activa al nombre legado fuera de una allowlist explícita. Cada entrada de esa
-allowlist declara la cantidad exacta de ocurrencias esperadas y el motivo por el que son válidas,
-de modo que agregar una referencia nueva a un archivo ya permitido también falle.
+una referencia activa al nombre legado fuera de una excepción explícita. Hay dos clases de
+excepción, y ninguna de las dos consiste en excluir un directorio completo.
+
+**Allowlist por ruta y conteo exacto.** Es la política por defecto y cubre archivos cuyo contenido
+histórico ya está congelado: contratos de WP cerrados, pruebas de regresión que usan el literal
+como valor bajo prueba, el manual y la propia herramienta. Cada entrada declara la cantidad exacta
+de ocurrencias esperadas y el motivo por el que son válidas, de modo que agregar una referencia
+nueva a un archivo ya permitido también falle.
+
+**Registros históricos vivos.** `docs/implementation/PLAN.md` acumula trazabilidad y suma
+menciones legítimas cada vez que se cierra un Work Package, así que exigirle un conteo fijo rompía
+el gate por su propio uso normal. Eso fue el hallazgo ASTRA-010 que corrigió WP-079. Para esas
+rutas, declaradas una por una y nunca por directorio, la regla no es cuántas veces aparece el
+nombre anterior sino **cómo** aparece: cada línea que lo mencione debe nombrar además la identidad
+vigente o encuadrar el pasado con una palabra del vocabulario declarado (legado, histórico,
+anterior, migración, renombrar). Una línea que copie una referencia activa, como una ruta de
+instalación o un módulo, no cumple esa condición y sigue fallando.
 
 ```bash
 uv run python scripts/auditar_identidad_legada.py
 ```
 
 `tests/test_auditoria_identidad_legada.py` ejecuta esa auditoría dentro de la suite y comprueba
-además que la propia allowlist no se degrade: rutas inexistentes, motivos vacíos o conteos
-desactualizados hacen fallar la CI.
+además que ninguna de las dos políticas se degrade: rutas inexistentes, motivos vacíos, conteos
+desactualizados, una ruta declarada a la vez en las dos políticas o una referencia activa colada
+dentro de un registro vivo hacen fallar la CI.
 
 ## Redirects de GitHub
 
