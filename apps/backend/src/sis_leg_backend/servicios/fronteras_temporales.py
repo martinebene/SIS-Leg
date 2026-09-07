@@ -83,7 +83,25 @@ class ServicioFronterasTemporales:
                         # inmediato sería un ciclo ocupado que no puede auditar
                         # nada. Se espera un cambio real antes de volver a
                         # intentarlo.
-                        await suscripcion.esperar_revision_superior(revision)
+                        #
+                        # La espera se ancla en la revisión observada **después**
+                        # del intento, no en la de antes. El intento fallido
+                        # publica su propia revisión: ``EjecutorMutaciones``
+                        # notifica en su ``finally`` incluso cuando la mutación
+                        # lanza, política deliberada que mantiene a REST/SSE
+                        # alineados con los flujos de fallo cerrado parcial.
+                        # Anclarla antes haría que esa publicación propia contara
+                        # como cambio externo y el ciclo reintentaría sin pausa,
+                        # publicando una revisión por vuelta.
+                        #
+                        # Leer la revisión acá es exacto: entre el retorno del
+                        # cruce y esta línea no hay ningún ``await``, así que
+                        # ninguna otra corrutina pudo intercalarse. El valor
+                        # incluye todo lo publicado hasta este instante —el
+                        # propio fallo y cualquier mutación que haya corrido
+                        # mientras tanto—, de modo que sólo un cambio realmente
+                        # posterior vuelve a habilitar el reintento.
+                        await suscripcion.esperar_revision_superior(self._coordinador.revision)
                     continue
 
                 if demora is None:

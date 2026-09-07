@@ -674,13 +674,19 @@ async def test_el_fin_se_registra_aunque_la_espera_del_deadline_quede_pendiente(
 async def test_un_cierre_pendiente_irrecuperable_no_produce_un_ciclo_ocupado(
     tmp_path: Path,
 ) -> None:
-    """WP-081: un escritor en fallo cerrado no convierte el ciclo en un bucle.
+    """WP-081: un cierre que falla no convierte el ciclo en un bucle.
 
     Preguntar por el efecto pendiente introduce un riesgo obvio: si el cierre
     falla, el efecto sigue pendiente y el temporizador podría reintentarlo sin
     pausa, consumiendo CPU sin poder auditar nada. La corrección espera un cambio
     real después de un intento fallido, así que el cierre se invoca una sola vez
     aunque el ciclo siga vivo durante muchas vueltas del event loop.
+
+    Acá el cierre se inyecta como una corrutina que lanza directamente, de modo
+    que la prueba aísla la decisión del temporizador y **no** atraviesa el
+    ``EjecutorMutaciones``. El escenario de producción, en el que el propio
+    intento fallido publica una revisión al salir del lock, lo cubre
+    ``test_un_fin_irrecuperable_real_no_reintenta_en_ciclo_apretado``.
     """
 
     entorno = crear_entorno_proyecciones(tmp_path)
@@ -721,6 +727,116 @@ async def test_un_cierre_pendiente_irrecuperable_no_produce_un_ciclo_ocupado(
     # Fallo cerrado intacto: no se anuncia una transición que no se persistió.
     assert entorno.estado.marcador_recinto_abierto is not None
     assert transiciones(entorno) == [("INICIO", "Nunca se puede auditar")]
+
+
+async def test_un_fin_irrecuperable_real_no_reintenta_en_ciclo_apretado(
+    tmp_path: Path,
+) -> None:
+    """WP-081: la revisión que publica el propio fallo no habilita el reintento.
+
+    Ésta es la versión de producción del escenario anterior y la que expone el
+    matiz que una corrutina inyectada no puede mostrar. El cierre real pasa por
+    ``EjecutorMutaciones.ejecutar``, y ese ejecutor publica una revisión en su
+    ``finally`` **también** cuando la mutación lanza: es una política deliberada
+    que mantiene a REST/SSE alineados con los flujos de fallo cerrado parcial.
+
+    Consecuencia: si la espera posterior a un intento fallido se anclara en la
+    revisión leída antes del intento, la publicación provocada por el propio
+    fallo alcanzaría para darla por cumplida al instante. El ciclo reintentaría,
+    volvería a fallar, volvería a publicar y así indefinidamente, sin ceder el
+    control ni poder auditar nada.
+
+    El montaje reproduce eso con las piezas reales: un escritor institucional
+    cuyo ``sincronizar`` falla de forma persistente desde el momento en que hay
+    que registrar el ``FIN``, y el aviso ya vencido antes de arrancar el
+    temporizador, de modo que la primera vuelta encuentre el efecto pendiente sin
+    depender de ninguna espera de tiempo.
+
+    Lo que se demuestra: el intento no se repite, el período queda abierto, no
+    aparece un ``FIN`` falso, el servicio sigue vivo y un cambio externo posterior
+    todavía puede despertarlo para reconsiderar.
+    """
+
+    fallo_activo = False
+
+    def sincronizar(_descriptor: int) -> None:
+        """Reemplaza el ``fsync`` real y falla sólo cuando la prueba lo decide."""
+
+        if fallo_activo:
+            raise OSError("disco no disponible")
+
+    entorno = crear_entorno_proyecciones(tmp_path)
+    entorno.contexto.escritor_auditoria = EscritorAuditoriaCsv(
+        tmp_path / "logs-fin-irrecuperable",
+        entorno.reloj.ahora(),
+        reloj=entorno.reloj.ahora,
+        sincronizar=sincronizar,
+    )
+    servicio = crear_servicio_apoyo_tecnico(entorno, tmp_path / "mensajes.csv")
+    await servicio.publicar_aviso("Cierre imposible", DestinoAvisoTecnico.RECINTO, 10)
+
+    # El aviso ya venció y recién entonces el escritor deja de poder persistir.
+    entorno.reloj.avanzar(10)
+    fallo_activo = True
+
+    intentos = 0
+    limite_de_intentos = 5
+
+    async def cerrar_real() -> None:
+        """Delega en el cierre real y sólo cuenta cuántas veces se lo intenta.
+
+        El corte por ``limite_de_intentos`` es una red de seguridad de la propia
+        prueba. Una implementación con ciclo apretado nunca cede el control al
+        event loop, así que sin este corte la regresión colgaría la suite en vez
+        de fallar. La excepción elegida no es ``ErrorAuditoria``, de modo que el
+        temporizador no la absorbe y el fallo queda explícito.
+        """
+
+        nonlocal intentos
+        intentos += 1
+        if intentos > limite_de_intentos:
+            raise RuntimeError(
+                "ciclo apretado: el cierre se reintentó sin esperar un cambio externo"
+            )
+        await servicio.cerrar_marcadores_recinto_vencidos()
+
+    fronteras = ServicioFronterasTemporales(
+        entorno.servicio,
+        entorno.ejecutor,
+        entorno.coordinador,
+        cerrar_marcadores_vencidos=cerrar_real,
+        hay_efecto_pendiente=servicio.hay_marcador_recinto_vencido,
+    )
+    tarea = asyncio.create_task(fronteras.ejecutar())
+    try:
+        for _ in range(50):
+            await asyncio.sleep(0)
+        intentos_tras_el_fallo = intentos
+        revision_tras_el_fallo = entorno.coordinador.revision
+        seguia_viva = not tarea.done()
+
+        # Un cambio externo real —cualquier publicación que no sea la del propio
+        # intento— sí debe poder despertar al ciclo para que reconsidere.
+        await entorno.ejecutor.publicar_frontera_temporal()
+        for _ in range(50):
+            await asyncio.sleep(0)
+        intentos_tras_cambio_externo = intentos
+    finally:
+        tarea.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tarea
+
+    # El intento fallido publicó su revisión, exactamente como en producción...
+    assert revision_tras_el_fallo > 0
+    # ...y aun así no alcanzó para habilitar un segundo intento.
+    assert intentos_tras_el_fallo == 1
+    assert seguia_viva
+    # Un cambio externo posterior sí devuelve la capacidad de avanzar.
+    assert intentos_tras_cambio_externo == 2
+
+    # Fallo cerrado intacto: el período sigue abierto y no hay FIN falso.
+    assert entorno.estado.marcador_recinto_abierto is not None
+    assert transiciones(entorno) == [("INICIO", "Cierre imposible")]
 
 
 async def test_sin_cierre_inyectado_el_temporizador_conserva_su_conducta(
