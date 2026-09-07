@@ -62,7 +62,10 @@ async def ciclo_vida(aplicacion: FastAPI) -> AsyncGenerator[None]:
     # lifespan y la que construye cada request comparten exactamente el mismo
     # estado operativo y el mismo ejecutor. Se crea acá únicamente para que el
     # temporizador pueda cerrar con un ``FIN`` durable el aviso de Recinto que
-    # vence solo (WP-078), sin que el temporizador conozca el plano técnico.
+    # vence solo (WP-078), sin que el temporizador conozca el plano técnico. La
+    # consulta de efecto pendiente viaja por la misma costura (WP-081): permite
+    # que el cruce se decida por la frontera realmente alcanzada y no por el
+    # orden en que asyncio despachó las tareas de espera.
     servicio_apoyo_tecnico = ServicioApoyoTecnico(
         recursos.estado_operativo,
         recursos.ejecutor_mutaciones,
@@ -73,6 +76,7 @@ async def ciclo_vida(aplicacion: FastAPI) -> AsyncGenerator[None]:
         recursos.ejecutor_mutaciones,
         recursos.coordinador_publicacion,
         cerrar_marcadores_vencidos=servicio_apoyo_tecnico.cerrar_marcadores_recinto_vencidos,
+        hay_efecto_pendiente=servicio_apoyo_tecnico.hay_marcador_recinto_vencido,
     )
     tarea_fronteras = asyncio.create_task(fronteras.ejecutar())
     try:
