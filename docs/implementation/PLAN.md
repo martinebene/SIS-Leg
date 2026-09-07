@@ -225,6 +225,11 @@ WP-033 quedó integrado antes de continuar WP-026 y deja disponible el harness m
 | WP-071 | Replicar en Apoyo Técnico todos los eventos sonoros del Recinto | INTEGRADO | WP-056, WP-066 | claude |
 | WP-072 | Incorporar gobernanza de actualización del manual de ayuda | INTEGRADO | WP-067 | claude |
 | WP-073 | Separar configuración operativa local de plantillas versionadas | INTEGRADO | WP-069 | claude |
+| WP-074 | Consolidar Apoyo Técnico en una única proyección SSE | INTEGRADO | WP-056, WP-071 | - |
+| WP-075 | Captura exclusiva de los numpads de banca en Device Bridge | INTEGRADO | WP-019, WP-020 | - |
+| WP-076 | Alinear destino y acciones de mensajes precargados | INTEGRADO | WP-070 | - |
+| WP-078 | Registrar mensajes al Recinto como eventos principales INICIO/FIN | INTEGRADO | WP-055, WP-056 | - |
+| WP-077 | Renombrar Botonera2 a SIS-Leg en repositorios y código vigente | INTEGRADO | WP-074, WP-075, WP-076, WP-078 | - |
 | WP-079 | Restablecer el gate de identidad histórica sin borrar evidencia legítima | EN_CURSO | WP-077 | claude |
 | WP-080 | Garantizar continuidad de sincronización REST/SSE tras reinicio del backend | PENDIENTE | WP-079, WP-074 | claude |
 | WP-081 | Garantizar cierre FIN de avisos ante carreras entre timers y mutaciones | PENDIENTE | WP-079, WP-078 | claude |
@@ -234,7 +239,7 @@ WP-033 quedó integrado antes de continuar WP-026 y deja disponible el harness m
 | WP-085 | Generar informe formal de acta y copia externa opcional de registros al cierre | PENDIENTE | WP-081, WP-073, WP-078 | claude |
 | WP-086 | Rechazar NaN e infinitos en todos los temporizadores configurables | PENDIENTE | WP-079, WP-003 | claude |
 | WP-087 | Endurecer migración, systemd y smoke de release antes del despliegue | BLOQUEADO | WP-029, WP-077 | claude |
-| WP-029 | Validar bridge/hardware real, regresión funcional y candidato de producción | BLOQUEADO | WP-019, WP-020, WP-027, WP-028, WP-034, WP-035, WP-036, WP-037, WP-038, WP-039, WP-040, WP-041, WP-043, WP-044, WP-045, WP-046, WP-047, WP-048, WP-049, WP-050, WP-051, WP-052, WP-053, WP-054, WP-055, WP-056, WP-057, WP-058, WP-059, WP-060, WP-061, WP-062, WP-063, WP-064, WP-065, WP-066, WP-067, WP-069, WP-070, WP-071, WP-072, WP-073, WP-079, WP-080, WP-081, WP-082, WP-083, WP-084, WP-085, WP-086 | - |
+| WP-029 | Validar bridge/hardware real, regresión funcional y candidato de producción | BLOQUEADO | WP-019, WP-020, WP-027, WP-028, WP-034, WP-035, WP-036, WP-037, WP-038, WP-039, WP-040, WP-041, WP-043, WP-044, WP-045, WP-046, WP-047, WP-048, WP-049, WP-050, WP-051, WP-052, WP-053, WP-054, WP-055, WP-056, WP-057, WP-058, WP-059, WP-060, WP-061, WP-062, WP-063, WP-064, WP-065, WP-066, WP-067, WP-069, WP-070, WP-071, WP-072, WP-073, WP-077, WP-078, WP-076, WP-075, WP-074, WP-079, WP-080, WP-081, WP-082, WP-083, WP-084, WP-085, WP-086 | - |
 
 HUMAN_GATE seleccionó Codex como implementador y Antigravity/AGY como revisor independiente de WP-047. WP-047 queda `EN_CURSO`; WP-048 y WP-049 permanecen bloqueados por esta dependencia y todavía no tienen agente asignado.
 
