@@ -77,13 +77,13 @@ def cargar_configuracion_sistema(ruta: Path) -> ConfiguracionSistema:
         filas_bancas=_exigir_filas_bancas(room),
         tipos_votacion=_exigir_tipos_votacion(voting),
         device_test_seconds=_exigir_numero_finito_no_negativo(timers, "timers.device_test_seconds"),
-        moderacion_revelado_votos_segundos=_exigir_numero_no_negativo(
+        moderacion_revelado_votos_segundos=_exigir_numero_finito_no_negativo(
             timers, "timers.moderation_vote_reveal_seconds"
         ),
-        recinto_cuenta_regresiva_inicial_segundos=_exigir_numero_no_negativo(
+        recinto_cuenta_regresiva_inicial_segundos=_exigir_numero_finito_no_negativo(
             timers, "timers.public_initial_countdown_seconds"
         ),
-        recinto_resultado_publico_segundos=_exigir_numero_no_negativo(
+        recinto_resultado_publico_segundos=_exigir_numero_finito_no_negativo(
             timers, "timers.public_result_display_seconds"
         ),
         directorio_registros=_exigir_texto_no_vacio(paths, "paths.logs_dir"),
@@ -165,35 +165,43 @@ def _exigir_tipos_votacion(voting: dict[str, Any]) -> tuple[str, ...]:
     return tuple(tipos)
 
 
-def _exigir_numero_no_negativo(seccion: dict[str, Any], clave: str) -> int | float:
-    """Valida una clave numérica mayor o igual que cero (temporizadores).
-
-    El WP-003 define los temporizadores como "números no negativos", sin
-    restringirlos a enteros: se aceptan tanto ``int`` como ``float`` y se
-    conserva el tipo recibido sin conversión silenciosa. Al igual que en
-    ``_exigir_entero_positivo``, ``clave`` es el nombre canónico completo
-    ("timers.moderation_vote_reveal_seconds") para los mensajes de error, y
-    el campo real dentro de la sección es la parte posterior al punto.
-
-    Se rechazan los booleanos (``True`` es subclase de ``int`` en Python y no
-    debe aceptarse como número), los negativos y cualquier valor no numérico.
-    """
-    campo = clave.rsplit(".", 1)[1]
-    valor = seccion.get(campo)
-    if isinstance(valor, bool) or not isinstance(valor, (int, float)) or valor < 0:
-        raise ErrorValidacionConfiguracion(f"{clave} debe ser un número no negativo")
-    return valor
-
-
 def _exigir_numero_finito_no_negativo(seccion: dict[str, Any], clave: str) -> int | float:
-    """Valida ``device_test_seconds`` sin aceptar ``nan`` ni infinitos.
+    """Valida un temporizador configurable: número finito y no negativo.
 
-    Este validador es deliberadamente separado de ``_exigir_numero_no_negativo``.
-    Los temporizadores que ya existían en WP-003 conservan su semántica previa;
-    la restricción adicional de finitud se aplica únicamente al temporizador de
-    test incorporado por WP-006. Los enteros no necesitan pasar por
-    ``math.isfinite`` porque todo entero de Python representa un valor finito y
-    así también se evita una conversión innecesaria de enteros muy grandes.
+    Es el único validador de la sección ``[timers]``: WP-086 unificó aquí las
+    cuatro claves configurables (``device_test_seconds``,
+    ``moderation_vote_reveal_seconds``, ``public_initial_countdown_seconds`` y
+    ``public_result_display_seconds``) para que ninguna acepte una duración que
+    no pueda convertirse en una expiración real.
+
+    Entradas:
+        seccion: el dict de ``[timers]`` ya extraído del TOML.
+        clave: nombre canónico completo ("timers.device_test_seconds"). Se usa
+            en el mensaje de error para identificar exactamente qué clave falló;
+            dentro del dict el campo es solo la parte posterior al punto.
+
+    Resultado:
+        El mismo valor recibido, conservando su tipo: un ``4`` sigue siendo
+        ``int`` y un ``0.5`` sigue siendo ``float``. No hay conversión
+        silenciosa a float ni a entero.
+
+    Reglas y por qué:
+
+    - se rechazan los booleanos porque en Python ``True`` es subclase de ``int``
+      y ``device_test_seconds = true`` no es una duración;
+    - se rechaza cualquier valor no numérico (texto, lista, tabla);
+    - se rechazan los negativos: una duración no puede ir hacia atrás;
+    - se rechazan ``nan``, ``inf`` y ``-inf``, que TOML admite como literales
+      pero producen temporizadores que nunca vencen o comparaciones siempre
+      falsas.
+
+    Los enteros no pasan por ``math.isfinite`` porque todo ``int`` de Python es
+    finito por construcción; además, convertirlo a float para comprobarlo sería
+    innecesario y podría perder precisión en enteros muy grandes. Por eso la
+    comprobación de finitud se aplica solo a los ``float``.
+
+    Errores:
+        ``ErrorValidacionConfiguracion`` con la clave canónica en el mensaje.
     """
 
     campo = clave.rsplit(".", 1)[1]

@@ -25,6 +25,61 @@ from conftest import (
 from sis_leg_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
 from sis_leg_backend.configuracion.errores import ErrorTomlInvalido, ErrorValidacionConfiguracion
 
+# Los cuatro temporizadores configurables de la sección [timers] (WP-086).
+# Cada entrada describe, en este orden:
+#
+#   1. la línea exacta que el TOML canónico de ``conftest`` trae para esa clave
+#      y que las pruebas reemplazan para inyectar el valor a ensayar;
+#   2. el nombre de la clave dentro de la sección (lo que se escribe en el TOML);
+#   3. el nombre canónico completo que debe aparecer en el mensaje de error, de
+#      modo que el operador sepa exactamente qué clave corregir;
+#   4. el atributo del snapshot ``ConfiguracionSistema`` donde queda el valor.
+#
+# Tener la lista en un solo lugar permite parametrizar cada regla contra los
+# cuatro temporizadores sin repetir casos a mano, y hace que agregar un
+# temporizador nuevo obligue a cubrirlo con todas estas pruebas.
+TEMPORIZADORES_CONFIGURABLES = (
+    (
+        LINEA_TIMER_TEST_DISPOSITIVO,
+        "device_test_seconds",
+        "timers.device_test_seconds",
+        "device_test_seconds",
+    ),
+    (
+        LINEA_TIMER_REVELADO,
+        "moderation_vote_reveal_seconds",
+        "timers.moderation_vote_reveal_seconds",
+        "moderacion_revelado_votos_segundos",
+    ),
+    (
+        LINEA_TIMER_CUENTA_REGRESIVA,
+        "public_initial_countdown_seconds",
+        "timers.public_initial_countdown_seconds",
+        "recinto_cuenta_regresiva_inicial_segundos",
+    ),
+    (
+        LINEA_TIMER_RESULTADO,
+        "public_result_display_seconds",
+        "timers.public_result_display_seconds",
+        "recinto_resultado_publico_segundos",
+    ),
+)
+
+# Literales TOML que producen un ``float`` no finito. TOML los admite como
+# sintaxis válida, pero ninguno puede convertirse en una duración real: ``nan``
+# hace falsa cualquier comparación y los infinitos describen un temporizador
+# que nunca vence.
+LITERALES_NO_FINITOS = ("nan", "inf", "+inf", "-inf")
+
+# Valores finitos que deben seguir aceptándose sin conversión silenciosa: el
+# cero (temporizador desactivado), un entero y dos decimales.
+VALORES_FINITOS_VALIDOS: tuple[tuple[str, int | float, type[int] | type[float]], ...] = (
+    ("0", 0, int),
+    ("4", 4, int),
+    ("0.5", 0.5, float),
+    ("1.25", 1.25, float),
+)
+
 
 def test_carga_el_toml_canonico_con_sus_valores_y_tipos(ruta_system_toml_valido: Path) -> None:
     """El TOML canónico carga con todos sus valores y en tipos inmutables."""
@@ -73,9 +128,9 @@ def test_carga_el_toml_canonico_con_sus_valores_y_tipos(ruta_system_toml_valido:
         # voting.types: lista no vacía de textos no vacíos.
         (LINEA_TYPES, "types = []", "voting.types"),
         (LINEA_TYPES, 'types = [""]', "voting.types"),
-        # Temporizadores: números no negativos; los negativos (enteros o
-        # decimales), los booleanos y los no numéricos se rechazan para las
-        # tres claves.
+        # Temporizadores: los negativos (enteros o decimales) y los valores no
+        # numéricos se rechazan. Los booleanos y los literales no finitos se
+        # prueban aparte, clave por clave, en las pruebas de WP-086.
         (
             LINEA_TIMER_REVELADO,
             "moderation_vote_reveal_seconds = -1",
@@ -88,44 +143,12 @@ def test_carga_el_toml_canonico_con_sus_valores_y_tipos(ruta_system_toml_valido:
         ),
         (
             LINEA_TIMER_TEST_DISPOSITIVO,
-            "device_test_seconds = true",
-            "timers.device_test_seconds",
-        ),
-        (
-            LINEA_TIMER_TEST_DISPOSITIVO,
             'device_test_seconds = "0.6"',
-            "timers.device_test_seconds",
-        ),
-        # Los literales especiales de TOML producen floats no finitos y no
-        # pueden convertirse en expiraciones válidas del test visual.
-        (
-            LINEA_TIMER_TEST_DISPOSITIVO,
-            "device_test_seconds = nan",
-            "timers.device_test_seconds",
-        ),
-        (
-            LINEA_TIMER_TEST_DISPOSITIVO,
-            "device_test_seconds = inf",
-            "timers.device_test_seconds",
-        ),
-        (
-            LINEA_TIMER_TEST_DISPOSITIVO,
-            "device_test_seconds = +inf",
-            "timers.device_test_seconds",
-        ),
-        (
-            LINEA_TIMER_TEST_DISPOSITIVO,
-            "device_test_seconds = -inf",
             "timers.device_test_seconds",
         ),
         (
             LINEA_TIMER_REVELADO,
             "moderation_vote_reveal_seconds = -0.5",
-            "timers.moderation_vote_reveal_seconds",
-        ),
-        (
-            LINEA_TIMER_REVELADO,
-            "moderation_vote_reveal_seconds = true",
             "timers.moderation_vote_reveal_seconds",
         ),
         (
@@ -173,69 +196,103 @@ def test_rechaza_archivo_inexistente(tmp_path: Path) -> None:
         cargar_configuracion_sistema(tmp_path / "no-existe.toml")
 
 
-def test_acepta_temporizador_en_cero(tmp_path: Path) -> None:
-    """Cero es un valor permitido para los temporizadores (no negativo)."""
-    ruta = escribir_system_toml(
-        tmp_path / "system.toml",
-        TOML_CANONICO.replace(LINEA_TIMER_CUENTA_REGRESIVA, "public_initial_countdown_seconds = 0"),
-    )
+def _toml_con_temporizador(linea_original: str, campo: str, literal: str) -> str:
+    """Devuelve el TOML canónico con un temporizador reemplazado por ``literal``.
 
-    configuracion = cargar_configuracion_sistema(ruta)
+    Aísla el reemplazo textual que comparten todas las pruebas parametrizadas de
+    temporizadores: cambia la línea completa de esa clave (``campo = literal``) y
+    deja intacto el resto del archivo, de modo que cada caso ejercite una única
+    clave inválida o válida por vez.
+    """
 
-    assert configuracion.recinto_cuenta_regresiva_inicial_segundos == 0
+    return TOML_CANONICO.replace(linea_original, f"{campo} = {literal}")
 
 
 @pytest.mark.parametrize(
-    ("texto_timer", "valor_esperado", "tipo_esperado"),
-    [("device_test_seconds = 0", 0, int), ("device_test_seconds = 1.25", 1.25, float)],
-    ids=["cero", "decimal-positivo"],
+    ("linea_original", "campo", "clave_canonica"),
+    [(linea, campo, clave) for linea, campo, clave, _atributo in TEMPORIZADORES_CONFIGURABLES],
+    ids=[clave for _linea, _campo, clave, _atributo in TEMPORIZADORES_CONFIGURABLES],
 )
-def test_acepta_device_test_seconds_no_negativo(
-    tmp_path: Path,
-    texto_timer: str,
-    valor_esperado: int | float,
-    tipo_esperado: type[int] | type[float],
+@pytest.mark.parametrize("literal", LITERALES_NO_FINITOS)
+def test_rechaza_no_finitos_en_todos_los_temporizadores(
+    tmp_path: Path, linea_original: str, campo: str, clave_canonica: str, literal: str
 ) -> None:
-    """El temporizador de test admite cero y decimales sin convertir el tipo."""
+    """WP-086: ningún temporizador acepta ``nan``, ``inf``, ``+inf`` ni ``-inf``.
+
+    TOML admite esos literales y ``tomllib`` los entrega como ``float`` no
+    finitos. Antes de WP-086 sólo ``device_test_seconds`` los rechazaba, y los
+    tres temporizadores de pantalla podían quedar con una duración que nunca
+    vence. La prueba recorre las cuatro claves contra los cuatro literales y
+    exige además que el mensaje identifique exactamente la clave inválida
+    (criterio de aceptación 4).
+    """
 
     ruta = escribir_system_toml(
-        tmp_path / "system.toml", TOML_CANONICO.replace(LINEA_TIMER_TEST_DISPOSITIVO, texto_timer)
+        tmp_path / "system.toml", _toml_con_temporizador(linea_original, campo, literal)
     )
 
-    configuracion = cargar_configuracion_sistema(ruta)
-
-    assert configuracion.device_test_seconds == valor_esperado
-    assert type(configuracion.device_test_seconds) is tipo_esperado
+    with pytest.raises(ErrorValidacionConfiguracion, match=clave_canonica):
+        cargar_configuracion_sistema(ruta)
 
 
 @pytest.mark.parametrize(
-    ("texto_timer", "valor_esperado", "tipo_esperado"),
-    [
-        ("moderation_vote_reveal_seconds = 0", 0, int),
-        ("moderation_vote_reveal_seconds = 4", 4, int),
-        ("moderation_vote_reveal_seconds = 0.5", 0.5, float),
-        ("moderation_vote_reveal_seconds = 1.5", 1.5, float),
-    ],
+    ("linea_original", "campo", "clave_canonica"),
+    [(linea, campo, clave) for linea, campo, clave, _atributo in TEMPORIZADORES_CONFIGURABLES],
+    ids=[clave for _linea, _campo, clave, _atributo in TEMPORIZADORES_CONFIGURABLES],
+)
+@pytest.mark.parametrize("literal", ["true", "false"])
+def test_rechaza_booleanos_en_todos_los_temporizadores(
+    tmp_path: Path, linea_original: str, campo: str, clave_canonica: str, literal: str
+) -> None:
+    """Los booleanos siguen rechazados en los cuatro temporizadores.
+
+    En Python ``bool`` es subclase de ``int``, así que ``true`` pasaría un
+    ``isinstance(valor, int)`` ingenuo. Endurecer la finitud no debía relajar
+    esta regla previa, por eso se fija explícitamente para cada clave.
+    """
+
+    ruta = escribir_system_toml(
+        tmp_path / "system.toml", _toml_con_temporizador(linea_original, campo, literal)
+    )
+
+    with pytest.raises(ErrorValidacionConfiguracion, match=clave_canonica):
+        cargar_configuracion_sistema(ruta)
+
+
+@pytest.mark.parametrize(
+    ("linea_original", "campo", "atributo"),
+    [(linea, campo, atributo) for linea, campo, _clave, atributo in TEMPORIZADORES_CONFIGURABLES],
+    ids=[clave for _linea, _campo, clave, _atributo in TEMPORIZADORES_CONFIGURABLES],
+)
+@pytest.mark.parametrize(
+    ("literal", "valor_esperado", "tipo_esperado"),
+    VALORES_FINITOS_VALIDOS,
     ids=["cero", "entero-positivo", "decimal-medio", "decimal-positivo"],
 )
-def test_acepta_temporizadores_no_negativos(
+def test_acepta_cero_y_finitos_en_todos_los_temporizadores(
     tmp_path: Path,
-    texto_timer: str,
+    linea_original: str,
+    campo: str,
+    atributo: str,
+    literal: str,
     valor_esperado: int | float,
     tipo_esperado: type[int] | type[float],
 ) -> None:
-    """Los temporizadores aceptan enteros y decimales no negativos.
+    """El endurecimiento no cambia la semántica de los valores válidos.
 
-    El tipo recibido se conserva sin conversión silenciosa: un ``4`` sigue
-    siendo ``int`` y un ``0.5`` sigue siendo ``float`` en el snapshot.
+    Cero (temporizador desactivado), enteros y decimales finitos siguen
+    aceptándose en las cuatro claves, y el snapshot conserva el tipo recibido:
+    un ``4`` sigue siendo ``int`` y un ``0.5`` sigue siendo ``float``, sin
+    conversión silenciosa (criterio de aceptación 2).
     """
+
     ruta = escribir_system_toml(
-        tmp_path / "system.toml", TOML_CANONICO.replace(LINEA_TIMER_REVELADO, texto_timer)
+        tmp_path / "system.toml", _toml_con_temporizador(linea_original, campo, literal)
     )
 
     configuracion = cargar_configuracion_sistema(ruta)
 
-    obtenido = configuracion.moderacion_revelado_votos_segundos
+    obtenido = getattr(configuracion, atributo)
     assert obtenido == valor_esperado
     assert type(obtenido) is tipo_esperado
 
