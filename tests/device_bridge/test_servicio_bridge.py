@@ -19,6 +19,9 @@ Verifica:
     en el log ni el nombre de la tecla ni una línea por pulsación.
 13. Exclusividad por descriptor (WP-082): la autorización pertenece a la ruta que obtuvo el
     `EVIOCGRAB`, así que dos descriptores con el mismo fingerprint no la comparten.
+14. No reconstructibilidad del sentido del voto (WP-088): una botonera mapeada y capturada
+    identifica una banca, así que su tecla funcional tampoco se registra; se conserva en
+    cambio el diagnóstico de una tecla física desconocida, que nunca llega al backend.
 """
 
 from __future__ import annotations
@@ -32,7 +35,11 @@ import pytest
 from sis_leg_device_bridge.adaptador_linux import AdaptadorFalso
 from sis_leg_device_bridge.cliente_http import ClienteHttpBackend
 from sis_leg_device_bridge.configuracion import ConfiguracionBridge
-from sis_leg_device_bridge.modelos import EventoTeclaFisica
+from sis_leg_device_bridge.modelos import (
+    EventoTeclaFisica,
+    RespuestaEnvioBackend,
+    SolicitudEntradaLogica,
+)
 from sis_leg_device_bridge.remapeo import PersistenciaRemapeo
 from sis_leg_device_bridge.servicio import ServicioDeviceBridge
 
@@ -849,3 +856,140 @@ def test_evento_sin_descriptor_de_origen_no_se_despacha(
     assert huerfano.ruta_dispositivo == ""
     assert servicio.procesar_evento_tecla(huerfano) is None
     assert cliente_http.peticiones_enviadas == []
+
+
+# ---------------------------------------------------------------------------
+# No reconstructibilidad del sentido del voto (WP-088)
+#
+# WP-082 cerró la fuga de los dispositivos ajenos: lo que el operador escribe en
+# su teclado no llega al journal. Estas pruebas cubren la fuga simétrica y más
+# grave, la de los dispositivos propios: una botonera mapeada y capturada es
+# exactamente una banca identificable, así que registrar su tecla equivale a
+# registrar su voto.
+#
+# La comprobación central es de indistinguibilidad: pulsar 1, 2 o 3 en la misma
+# banca debe producir un registro idéntico. Si lo es, no hay nada que deducir.
+# ---------------------------------------------------------------------------
+
+
+def _registrar_pulsacion(
+    servicio: ServicioDeviceBridge,
+    adaptador: AdaptadorFalso,
+    caplog: pytest.LogCaptureFixture,
+    nombre_tecla: str,
+) -> list[tuple[int, str]]:
+    """Despacha una pulsación de `dev01` capturando el registro del servicio desde DEBUG."""
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="sis_leg_device_bridge.servicio"):
+        adaptador.simular_evento("/dev/input/event0", _pulsacion(FINGERPRINT_DEV01, nombre_tecla))
+        servicio.ejecutar_paso()
+    return [(registro.levelno, registro.getMessage()) for registro in caplog.records]
+
+
+def test_wp088_el_despacho_no_registra_la_tecla_de_una_banca_identificable(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """El DEBUG de despacho combinaba banca lógica, tecla normalizada y fingerprint.
+
+    Una sola línea bastaba para reconstruir el voto de una persona concreta antes de que el
+    backend levantara la frontera autoritativa de revelado.
+    """
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    servicio.ejecutar_ciclo_descubrimiento()
+
+    registros_por_tecla = {
+        nombre: _registrar_pulsacion(servicio, adaptador, caplog, nombre)
+        for nombre in ("KEY_KP1", "KEY_KP2", "KEY_KP3")
+    }
+
+    referencia = registros_por_tecla["KEY_KP1"]
+    for nombre, registro in registros_por_tecla.items():
+        assert registro == referencia, (
+            f"El registro de {nombre} difiere del de KEY_KP1: el sentido del voto de "
+            f"dev01 sería reconstruible desde el journal."
+        )
+
+    texto = "\n".join(mensaje for _nivel, mensaje in referencia)
+    for prohibido in ("KEY_KP1", "KEY_KP2", "KEY_KP3", "-> 1", "-> 2", "-> 3"):
+        assert prohibido not in texto, f"El registro contiene {prohibido!r}: {texto!r}"
+
+    # El hecho auditable se conserva: se sabe que esa banca despachó una pulsación y con
+    # qué identidad física, que es lo que permite diagnosticar mapping y remapeo.
+    depuracion = [mensaje for nivel, mensaje in referencia if nivel == logging.DEBUG]
+    assert len(depuracion) == 1
+    assert "dev01" in depuracion[0]
+    assert FINGERPRINT_DEV01 in depuracion[0]
+
+    # Y el despacho funcional no se degradó: las tres pulsaciones sí llegaron al backend.
+    assert cliente_http.peticiones_enviadas == [
+        {"dispositivo": "dev01", "tecla": "1"},
+        {"dispositivo": "dev01", "tecla": "2"},
+        {"dispositivo": "dev01", "tecla": "3"},
+    ]
+
+
+def test_wp088_la_tecla_fisica_desconocida_conserva_su_diagnostico(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """DEC-015 permite nombrar una tecla que el normalizador rechaza, y WP-088 lo mantiene.
+
+    Es seguro por construcción: una tecla que no normaliza nunca se envía al backend, así
+    que no puede ser `1`, `2` ni `3` y no tiene semántica de voto. Es además el dato que
+    permite reconocer que una banca tiene un modelo de botonera distinto al previsto.
+    """
+    servicio, adaptador, cliente_http = entorno_bridge
+
+    adaptador.agregar_dispositivo("/dev/input/event0", FINGERPRINT_DEV01)
+    servicio.ejecutar_ciclo_descubrimiento()
+
+    registro = _registrar_pulsacion(servicio, adaptador, caplog, "KEY_F13")
+
+    informativos = [mensaje for nivel, mensaje in registro if nivel == logging.INFO]
+    assert len(informativos) == 1
+    assert "KEY_F13" in informativos[0]
+    assert "dev01" in informativos[0]
+    assert cliente_http.peticiones_enviadas == []
+
+
+def test_wp088_las_estructuras_del_bridge_no_imprimen_la_tecla(
+    entorno_bridge: tuple[ServicioDeviceBridge, AdaptadorFalso, FakeClienteHttp],
+) -> None:
+    """La representación textual de las estructuras tampoco puede volcar el voto.
+
+    Es la última puerta: `logger.debug("%s", evento)` es una línea que cualquiera podría
+    agregar de buena fe mientras depura, y con el `repr` automático de una `dataclass`
+    habría bastado para dejar banca y tecla juntas en el journal.
+    """
+    evento = EventoTeclaFisica(
+        fingerprint=FINGERPRINT_DEV01,
+        codigo_tecla=79,
+        nombre_tecla="KEY_KP1",
+        es_bajada=True,
+        ruta_dispositivo="/dev/input/event0",
+    )
+    solicitud = SolicitudEntradaLogica(dispositivo="dev01", tecla="1")
+    respuesta = RespuestaEnvioBackend(
+        aceptada=True,
+        codigo_http=200,
+        motivo="VOTO_REGISTRADO",
+        cuerpo={"dispositivo": "dev01", "tecla": "1", "valor": "POSITIVO"},
+    )
+
+    for texto in (repr(evento), f"{evento}", repr(solicitud), f"{solicitud}"):
+        assert "KEY_KP1" not in texto
+        assert "79" not in texto
+
+    for texto in (repr(respuesta), f"{respuesta}"):
+        assert "POSITIVO" not in texto
+        assert "tecla" not in texto
+
+    # Lo que sí sirve para depurar sigue visible.
+    assert FINGERPRINT_DEV01 in repr(evento)
+    assert "/dev/input/event0" in repr(evento)
+    assert "dev01" in repr(solicitud)
+    assert "VOTO_REGISTRADO" in repr(respuesta)
+    assert "codigo_http=200" in repr(respuesta)

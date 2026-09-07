@@ -12,6 +12,9 @@ Este módulo implementa `ServicioDeviceBridge`, el componente central que coordi
    al escritorio ni al navegador de Moderación.
 7. La política de privacidad del registro (WP-082): las pulsaciones de un dispositivo que
    no está mapeado y autorizado jamás se escriben en el log, ni siquiera a DEBUG.
+8. La política de no reconstructibilidad del voto (WP-088): las pulsaciones de un
+   dispositivo que sí está mapeado y capturado tampoco dejan en el log el contenido de su
+   tecla junto a la identidad de la banca, porque `1`, `2` y `3` son el sentido del voto.
 
 Invariantes críticas:
 - Cero asignación automática: Un fingerprint no presente en `devices.json` NUNCA
@@ -27,6 +30,11 @@ Invariantes críticas:
   no registra el contenido de ninguna tecla que no provenga de un descriptor mapeado y
   capturado en exclusiva, y en ese caso registra una sola vez por dispositivo que lo está
   ignorando, sin dejar en el journal ni el texto ni la cadencia de lo tecleado.
+- No reconstructibilidad del sentido del voto: de una botonera mapeada tampoco se registra
+  la tecla funcional que se despacha. La combinación «banca identificable + tecla 1/2/3»
+  equivale al voto individual, y el journal del proceso no es la auditoría institucional:
+  no tiene control de acceso propio, no forma parte de la evidencia aprobada y no respeta
+  la frontera autoritativa de revelado que sí respeta el backend.
 
 Por qué la autorización se representa por descriptor y no por fingerprint (WP-082)
 ----------------------------------------------------------------------------------
@@ -67,6 +75,7 @@ from sis_leg_device_bridge.modelos import (
     SolicitudEntradaLogica,
 )
 from sis_leg_device_bridge.normalizador import normalizar_tecla
+from sis_leg_device_bridge.redaccion import describir_tecla_no_funcional
 from sis_leg_device_bridge.remapeo import CoordinadorRemapeoBridge
 
 if TYPE_CHECKING:
@@ -142,14 +151,18 @@ class ServicioDeviceBridge:
         5. Transmitir {dispositivo, tecla} al backend mediante un único intento HTTP.
         6. Registrar el resultado funcional o error de red.
 
-        Dos reglas de este método existen por el endurecimiento de WP-082 y conviene no
-        deshacerlas por comodidad de diagnóstico:
+        Tres reglas de este método existen por el endurecimiento de WP-082 y WP-088 y
+        conviene no deshacerlas por comodidad de diagnóstico:
 
         - hasta el paso 3 inclusive **no se registra el contenido de la tecla**, porque
           hasta ahí el evento puede venir del teclado normal del operador;
         - el paso 3 compara `evento.ruta_dispositivo` contra las rutas capturadas, no el
           fingerprint: un segundo descriptor con el mismo fingerprint no hereda la
-          autorización del primero.
+          autorización del primero;
+        - a partir del paso 4 tampoco se registra la tecla **normalizada**, porque a esa
+          altura ya se resolvió el `devXX` de una banca concreta y `1/2/3` es el sentido
+          del voto. Sólo se conserva el nombre de una tecla física que el normalizador
+          rechaza, que por definición nunca se envía al backend (WP-088).
 
         Args:
             evento: Evento de tecla física capturado, con su descriptor de origen sellado
@@ -219,16 +232,23 @@ class ServicioDeviceBridge:
             return None
 
         # 4. Normalización de tecla.
-        # Recién en este punto se puede nombrar la tecla en el log: el evento proviene de un
-        # descriptor mapeado y capturado en exclusiva, es decir de una botonera dedicada a
-        # SIS-Leg y no del teclado de trabajo de una persona. Saber qué tecla no se reconoce
-        # es justamente lo que necesita soporte para diagnosticar una botonera distinta.
+        # Acá el evento ya proviene de un descriptor mapeado y capturado en exclusiva, es
+        # decir de una botonera dedicada a SIS-Leg y no del teclado de trabajo de una
+        # persona. Eso resuelve la preocupación de WP-082 (no grabar lo que el operador
+        # escribe) pero abre la de WP-088: justamente porque el dispositivo es una banca
+        # identificable, nombrar su tecla funcional revelaría el sentido de su voto.
+        # Por eso sólo se nombra la tecla **no reconocida**, que nunca llega al backend y
+        # es lo que soporte necesita para diagnosticar un modelo distinto de botonera.
         tecla_normalizada = normalizar_tecla(evento.nombre_tecla)
         if tecla_normalizada is None:
+            # `describir_tecla_no_funcional` vuelve a comprobar que el normalizador rechaza
+            # esta tecla antes de nombrarla. Hoy es equivalente al `if` de arriba, pero deja
+            # la garantía dentro del helper: si mañana el catálogo de normalización se
+            # amplía, este mensaje no puede convertirse en silencio en una filtración.
             logger.info(
                 "Tecla física desconocida ignorada para %s: '%s'",
                 dispositivo_logico,
-                evento.nombre_tecla,
+                describir_tecla_no_funcional(evento.nombre_tecla),
             )
             return None
 
@@ -238,10 +258,13 @@ class ServicioDeviceBridge:
             tecla=tecla_normalizada,
         )
 
+        # WP-088: este renglón era el peor caso del servicio. Combinaba banca lógica,
+        # tecla normalizada y fingerprint, así que una sola línea de DEBUG bastaba para
+        # reconstruir el voto de una persona identificable. Se conserva el hecho auditable
+        # —«esta banca despachó una pulsación»— y se quita el sentido.
         logger.debug(
-            "Despachando pulsación a FastAPI: %s -> %s (fp=%s)",
+            "Despachando pulsación a FastAPI: %s (fp=%s)",
             dispositivo_logico,
-            tecla_normalizada,
             evento.fingerprint,
         )
 

@@ -37,7 +37,9 @@ POST /api/v1/entradas/tecla (FastAPI)
 - Valida la integridad de `devices.json` (incluyendo detección de claves JSON duplicadas y unicidad inversa).
 - Despacha a lo sumo **un intento HTTP** por pulsación.
 - Loguea diagnósticos locales (stdout/stderr y journald), sin registrar nunca el
-  contenido de las teclas de dispositivos no mapeados ni no capturados.
+  contenido de las teclas de dispositivos no mapeados ni no capturados, y sin registrar
+  tampoco la tecla funcional de los dispositivos que sí lo están, porque una botonera
+  mapeada identifica una banca y `1/2/3` es el sentido de su voto.
 - Se recupera automáticamente de desconexiones y reconexiones de hardware en caliente.
 - **Toma en exclusiva los numpads mapeados** (`EVIOCGRAB`) para que sus pulsaciones no
   lleguen al escritorio ni al navegador de Moderación.
@@ -59,6 +61,8 @@ El paquete `sis_leg_device_bridge` está estructurado en módulos enfocados y te
 - `fingerprint.py`: construcción y validación del formato canónico Linux.
 - `configuracion.py`: parámetros operacionales y lector estricto de `devices.json`.
 - `normalizador.py`: normalización amplia de teclas físicas.
+- `redaccion.py`: descripciones seguras para el registro operativo, de modo que ningún
+  mensaje pueda combinar identidad de banca con sentido del voto.
 - `cliente_http.py`: pulsaciones y callback de candidato mediante `urllib.request`.
 - `adaptador_linux.py`: hardware `evdev` real y adaptador falso para CI.
 - `servicio.py`: descubrimiento y flujo no bloqueante de eventos.
@@ -299,6 +303,50 @@ Consecuencias prácticas:
 
 Esta regla es de minimización de datos, no de conveniencia: quien amplíe el diagnóstico del
 bridge debe conservarla.
+
+### No reconstructibilidad del sentido del voto
+
+La regla anterior protege a la persona que opera el equipo. Esta protege a quien vota, y es
+su simétrica: un dispositivo **sí** mapeado y capturado es exactamente una banca
+identificable, así que registrar su tecla equivale a registrar su voto.
+
+> Ningún mensaje del registro operativo emitido por una pulsación funcional contiene a la
+> vez la identidad de una banca y el contenido de su tecla. En ningún nivel, `DEBUG`
+> incluido.
+
+La combinación prohibida es la que reconstruye el voto: `devXX`, el fingerprint y la ruta
+`/dev/input/eventN` identifican una banca; las teclas `1`, `2` y `3` son POSITIVO,
+ABSTENCIÓN y NEGATIVO. Cualquiera de las dos mitades por separado se puede registrar.
+
+Qué sigue estando en el registro, porque es lo que soporte necesita:
+
+| Diagnóstico | Ejemplo de lo que se conserva |
+| --- | --- |
+| Despacho de una pulsación | endpoint y `devXX`, sin la tecla |
+| Aceptación y rechazo funcional | `ACEPTADA` / `RECHAZADA`, `devXX` y el motivo estable |
+| Error HTTP | código, `devXX`, motivo estable y si hubo cuerpo |
+| Transporte | `TIMEOUT` o `ERROR_CONEXION` con el detalle de red completo |
+| Excepción inesperada | el tipo de la excepción |
+| Mapping, remapeo y exclusividad | identidad física y lógica, sin cambios |
+| Tecla física desconocida | su nombre, porque el normalizador la rechaza y nunca se envía |
+
+Qué no aparece nunca:
+
+- la tecla normalizada de una pulsación funcional;
+- el payload serializado que viaja al backend;
+- el cuerpo crudo de una respuesta HTTP **ni su longitud**: un cuerpo que ecoa la pulsación
+  mide distinto según el sentido que ecoa, así que el largo exacto también es un canal
+  lateral;
+- el texto libre que el backend devuelva donde se espera un código estable.
+
+La protección es **por construcción y no por filtrado de texto**: los mensajes se arman sin
+los valores sensibles, `redaccion.py` concentra las descripciones seguras y las estructuras
+de `modelos.py` redactan su propia representación textual, de modo que un `logger.debug`
+agregado de buena fe sobre un evento o una solicitud tampoco pueda volcar el voto.
+
+Esto endurece la observabilidad del proceso y no toca el contrato HTTP con el backend ni la
+auditoría institucional durable: el backend sigue siendo la única autoridad sobre el
+significado de una tecla y sobre cuándo un voto individual puede revelarse.
 
 ### Verificación humana sobre Linux real
 

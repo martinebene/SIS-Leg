@@ -8,12 +8,33 @@ Este módulo define las estructuras de datos que representan:
 Siguiendo DEC-001 y DEC-015, todas las estructuras bajo control del proyecto
 utilizan nombres en español y se encuentran desacopladas de librerías externas
 como evdev para facilitar pruebas unitarias deterministas sin hardware real.
+
+Representación textual redactada (WP-088)
+-----------------------------------------
+
+Las tres estructuras transportan, en algún campo, el contenido de una tecla. Como el
+`repr` automático de una `dataclass` es lo que imprime `logger.debug("%s", objeto)`, una
+sola línea de diagnóstico escrita sin pensar bastaría para volcar al journal la banca y su
+tecla `1/2/3`, es decir el sentido del voto de una persona identificable.
+
+Por eso cada una define su propio `__repr__`: conserva todos los campos que sirven para
+depurar (dispositivo, fingerprint, ruta, código HTTP, motivo estable, clase de resultado) y
+sustituye únicamente el contenido sensible por un marcador. La protección deja de depender
+de que cada autor recuerde no imprimir el objeto y pasa a estar en el objeto mismo.
+
+Esto no cambia ningún contrato: el cuerpo HTTP se sigue construyendo con
+`SolicitudEntradaLogica.a_diccionario()` y los campos siguen siendo legibles por código.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+# Marcador único con el que las tres estructuras reemplazan contenido sensible en su
+# representación textual. Es deliberadamente reconocible para que, si aparece en un log,
+# quede claro que hubo una redacción y no un dato faltante.
+VALOR_REDACTADO = "<redactado por WP-088>"
 
 
 @dataclass(frozen=True)
@@ -46,6 +67,21 @@ class EventoTeclaFisica:
     descripcion_dispositivo: str = ""
     ruta_dispositivo: str = ""
 
+    def __repr__(self) -> str:
+        """Representación sin el contenido de la tecla (WP-088).
+
+        Se conserva la identidad del hardware, que es lo que se necesita para diagnosticar
+        mapping, exclusividad y remapeo, y se ocultan el nombre y el código de la tecla:
+        para un fingerprint mapeado, ese par es el voto de una banca concreta.
+        """
+        return (
+            f"EventoTeclaFisica(fingerprint={self.fingerprint!r}, "
+            f"codigo_tecla={VALOR_REDACTADO!r}, nombre_tecla={VALOR_REDACTADO!r}, "
+            f"es_bajada={self.es_bajada!r}, "
+            f"descripcion_dispositivo={self.descripcion_dispositivo!r}, "
+            f"ruta_dispositivo={self.ruta_dispositivo!r})"
+        )
+
 
 @dataclass(frozen=True)
 class SolicitudEntradaLogica:
@@ -58,6 +94,17 @@ class SolicitudEntradaLogica:
 
     dispositivo: str
     tecla: str
+
+    def __repr__(self) -> str:
+        """Representación sin la tecla (WP-088).
+
+        `dispositivo` y `tecla` juntos son literalmente el sentido del voto de una banca.
+        El dispositivo se conserva porque identifica el flujo que se está depurando; la
+        tecla nunca se imprime.
+        """
+        return (
+            f"SolicitudEntradaLogica(dispositivo={self.dispositivo!r}, tecla={VALOR_REDACTADO!r})"
+        )
 
     def a_diccionario(self) -> dict[str, str]:
         """Serializa la solicitud al diccionario JSON exacto esperado por el backend."""
@@ -87,3 +134,23 @@ class RespuestaEnvioBackend:
     motivo: str
     cuerpo: dict[str, Any] | None = field(default=None)
     error_transporte: str | None = field(default=None)
+
+    def __repr__(self) -> str:
+        """Representación sin el cuerpo de la respuesta (WP-088).
+
+        El cuerpo es contenido de origen externo: un 422 de FastAPI, por ejemplo, devuelve
+        en `detail` la propia entrada rechazada, es decir el `{dispositivo, tecla}` recién
+        enviado. Se informa cuántas claves trajo, que es el diagnóstico útil, y no qué
+        contenían. La clasificación del resultado (`aceptada`, `codigo_http`, `motivo`,
+        `error_transporte`) se conserva íntegra porque `motivo` ya llega saneado desde
+        `cliente_http`.
+        """
+        if self.cuerpo is None:
+            cuerpo_descrito = "None"
+        else:
+            cuerpo_descrito = f"<{len(self.cuerpo)} clave(s) redactadas por WP-088>"
+        return (
+            f"RespuestaEnvioBackend(aceptada={self.aceptada!r}, "
+            f"codigo_http={self.codigo_http!r}, motivo={self.motivo!r}, "
+            f"cuerpo={cuerpo_descrito}, error_transporte={self.error_transporte!r})"
+        )
