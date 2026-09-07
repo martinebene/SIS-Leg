@@ -27,9 +27,9 @@ from scripts.auditar_identidad_legada import (
     ALLOWLIST,
     PALABRAS_DE_CONTEXTO_HISTORICO,
     PATRON_LEGADO,
+    PREPOSICIONES_DE_PERTENENCIA,
     RAIZ_REPOSITORIO,
     REGISTROS_HISTORICOS_VIVOS,
-    SUSTANTIVOS_DE_IDENTIDAD,
     ReferenciaPermitida,
     RegistroHistoricoVivo,
     auditar,
@@ -37,6 +37,7 @@ from scripts.auditar_identidad_legada import (
     leer_lineas,
     linea_tiene_contexto_historico,
     listar_archivos_versionados,
+    menciones_sin_marco_historico,
 )
 
 
@@ -191,8 +192,8 @@ def test_ninguna_ruta_usa_las_dos_politicas_a_la_vez() -> None:
         "La migración de `/opt/botonera2` a `/opt/sis-leg` sigue fuera de este cierre.",
         "| WP-077 | Renombrar Botonera2 a SIS-Leg en el código vigente | INTEGRADO |",
         "Persiste un registro metadata legado vacío de `/workspace/Botonera2`.",
-        "El nombre anterior del proyecto era Botonera2.",
-        "Referencia histórica a Botonera2 conservada como evidencia.",
+        "El nombre anterior de Botonera2 quedó documentado.",
+        "Referencia histórica de Botonera2 conservada como evidencia.",
     ],
 )
 def test_reconoce_una_mencion_enmarcada_en_el_pasado(linea: str) -> None:
@@ -253,7 +254,7 @@ def test_un_registro_vivo_rechaza_una_referencia_activa_nueva() -> None:
     )
 
     assert len(problemas) == 1
-    assert "sin marco histórico" in problemas[0]
+    assert "no viene enmarcada como historia" in problemas[0]
 
 
 def test_el_problema_de_un_registro_vivo_ubica_la_linea_exacta() -> None:
@@ -270,8 +271,8 @@ def test_el_problema_de_un_registro_vivo_ubica_la_linea_exacta() -> None:
     )
 
     assert len(problemas) == 1
-    assert problemas[0].startswith("docs/implementation/PLAN.md:3:")
-    assert "/opt/botonera2" in problemas[0]
+    assert problemas[0].startswith("docs/implementation/PLAN.md:3:1:")
+    assert "«/opt/botonera2»" in problemas[0]
 
 
 def test_rechaza_un_registro_vivo_sin_motivo_declarado() -> None:
@@ -309,8 +310,8 @@ def test_el_vocabulario_historico_se_mantiene_acotado_y_en_palabras_completas() 
     """Cada término agregado debilita el gate; el crecimiento debe ser una decisión visible."""
 
     assert len(PALABRAS_DE_CONTEXTO_HISTORICO) <= 32
-    assert len(SUSTANTIVOS_DE_IDENTIDAD) <= 24
-    for palabra in PALABRAS_DE_CONTEXTO_HISTORICO + SUSTANTIVOS_DE_IDENTIDAD:
+    assert len(PREPOSICIONES_DE_PERTENENCIA) <= 4
+    for palabra in PALABRAS_DE_CONTEXTO_HISTORICO + PREPOSICIONES_DE_PERTENENCIA:
         assert palabra == palabra.lower(), f"{palabra} debería estar en minúsculas."
         assert " " not in palabra, f"{palabra} no es una palabra suelta."
 
@@ -322,15 +323,24 @@ def test_leer_lineas_tolera_binarios_y_rutas_inexistentes() -> None:
     assert leer_lineas("archivo/que/no/existe.txt") == []
 
 
-# Los tres contraejemplos que el gate dejaba pasar en la primera versión de la política.
-# Están escritos literalmente, no parafraseados, porque son la regresión que este WP corrige:
-# una raíz suelta que colisiona con lenguaje general (`delegado` contra `legado`), un
-# `anterior` que califica cualquier cosa menos la identidad, y la sola presencia del nombre
-# vigente en una instrucción activa.
+# Los seis contraejemplos que el gate llegó a dejar pasar. Están escritos literalmente, no
+# parafraseados, porque son la regresión exacta que este WP corrige.
+#
+# Los tres primeros venían de la versión que comparaba subcadenas: una raíz suelta que
+# colisiona con lenguaje general (`delegado` contra `legado`), un `anterior` que califica
+# cualquier cosa menos la identidad, y la sola presencia del nombre vigente en una
+# instrucción activa.
+#
+# Los tres siguientes venían de la versión que ya usaba palabras completas pero preguntaba
+# por la línea entera: la palabra histórica está, pero califica otra cosa y la ruta legada es
+# el objeto de un verbo en presente.
 CONTRAEJEMPLOS_QUE_DEBEN_FALLAR = [
     "El concejal delegado solicitó acceso a /opt/botonera2",
     "Como se indicó en la sección anterior, el servicio arranca con /opt/botonera2/bin/start",
     "Para desplegar sis-leg, ejecutar /opt/botonera2/bin/start",
+    "Para migrar la base de datos, ejecutar /opt/botonera2/bin/start",
+    "El sistema legado de expedientes usa /opt/botonera2/bin/start",
+    "Durante la migración de usuarios, ejecutar /opt/botonera2/bin/start",
 ]
 
 
@@ -355,19 +365,19 @@ def test_un_registro_vivo_rechaza_los_falsos_negativos_conocidos(linea: str) -> 
     )
 
     assert len(problemas) == 1
-    assert "sin marco histórico" in problemas[0]
+    assert "no viene enmarcada como historia" in problemas[0]
 
 
 @pytest.mark.parametrize(
     "linea",
     [
-        "El nombre anterior del proyecto quedó documentado.",
-        "Las rutas anteriores siguen apareciendo en el runbook.",
-        "La identidad técnica anterior se retiró en WP-077.",
+        "Se conserva el nombre anterior de Botonera2 por trazabilidad.",
+        "Quedan las rutas anteriores de Botonera2 documentadas en el runbook.",
+        "La identidad técnica anterior de Botonera2 se retiró en WP-077.",
     ],
 )
-def test_acepta_anterior_solo_cuando_califica_a_la_identidad(linea: str) -> None:
-    """`anterior` vale como marco cuando dice de qué habla, no cuando flota solo."""
+def test_acepta_anterior_cuando_queda_ligado_a_la_mencion(linea: str) -> None:
+    """`anterior` vale cuando la mención cuelga de él, no cuando sólo comparte la línea."""
 
     assert linea_tiene_contexto_historico(linea)
 
@@ -375,15 +385,53 @@ def test_acepta_anterior_solo_cuando_califica_a_la_identidad(linea: str) -> None
 @pytest.mark.parametrize(
     "linea",
     [
-        "Como se indicó en la sección anterior, revisar el runbook.",
-        "El punto anterior ya fue tratado por el orquestador.",
-        "La votación anterior quedó INCONCLUSA.",
+        "Como se indicó en la sección anterior revisar /opt/botonera2/bin/start",
+        "El punto anterior ya fue tratado y el servicio usa /opt/botonera2",
+        "La votación anterior quedó INCONCLUSA y el runbook apunta a /opt/botonera2",
     ],
 )
-def test_rechaza_anterior_cuando_no_califica_a_la_identidad(linea: str) -> None:
-    """Una sección, un punto o una votación previos no dicen nada sobre la identidad."""
+def test_rechaza_anterior_cuando_no_llega_hasta_la_mencion(linea: str) -> None:
+    """Una sección, un punto o una votación previos no dicen nada sobre esta ruta."""
 
     assert not linea_tiene_contexto_historico(linea)
+
+
+@pytest.mark.parametrize(
+    "linea",
+    [
+        "El sistema legado usa /opt/botonera2",
+        "El sistema legado arranca con /opt/botonera2",
+        "La migración quedó pendiente y el servicio escribe en /opt/botonera2/logs",
+    ],
+)
+def test_rechaza_un_verbo_activo_pegado_a_la_mencion(linea: str) -> None:
+    """Aunque la palabra histórica esté cerca, un verbo en presente delata un uso actual."""
+
+    assert not linea_tiene_contexto_historico(linea)
+
+
+def test_el_marco_no_cruza_la_puntuacion_de_la_clausula() -> None:
+    """Misma frase con y sin coma: la coma separa el marco de la mención y cambia el veredicto."""
+
+    assert linea_tiene_contexto_historico("La migración de Botonera2 quedó pendiente")
+    assert not linea_tiene_contexto_historico("La migración terminó, revisar /opt/botonera2")
+
+
+def test_una_linea_sin_menciones_no_tiene_nada_que_justificar() -> None:
+    """La fachada responde sobre las menciones que hay; si no hay ninguna, no hay problema."""
+
+    assert linea_tiene_contexto_historico("SIS-Leg no nombra ninguna identidad retirada acá.")
+    assert menciones_sin_marco_historico("Una línea cualquiera del PLAN.") == []
+
+
+def test_cada_mencion_de_una_linea_se_juzga_por_separado() -> None:
+    """Una transición correcta no puede tapar a otra mención activa de la misma línea."""
+
+    linea = "Migrar `/opt/botonera2` a `/opt/sis-leg` mientras el runbook usa /opt/botonera2/bin"
+    sin_marco = menciones_sin_marco_historico(linea)
+
+    assert len(sin_marco) == 1
+    assert sin_marco[0][1] == "/opt/botonera2/bin"
 
 
 def test_las_lineas_historicas_reales_del_plan_siguen_aceptadas() -> None:

@@ -24,13 +24,15 @@ es el caso claro: cada cierre de Work Package puede necesitar contar qué pasó 
 o las rutas anteriores. Exigirles un conteo exacto convierte el gate en un obstáculo que se
 rompe solo, y fue exactamente lo que ocurrió (hallazgo ASTRA-010, WP-079). Para esas rutas
 --declaradas una por una, nunca por directorio-- la regla no es cuántas veces aparece el
-nombre legado sino **cómo** aparece: cada línea que lo mencione debe describir la transición
-hacia la identidad vigente, usar una palabra completa del vocabulario histórico o decir
-«anterior» junto a un sustantivo de identidad. Nombrar SIS-Leg no alcanza por sí solo, y las
-raíces sueltas quedaron descartadas para que `delegado` no se lea como `legado`; el bloque de
-comentarios que precede a los patrones detalla las tres formas y los falsos negativos que
-motivaron endurecerlas. Una línea que copie una referencia activa, como una ruta de
-instalación o un módulo, no cumple ninguna de las tres y sigue fallando.
+nombre legado sino **cómo** aparece, y la pregunta se hace por cada mención y no por la línea
+entera: una mención se admite si describe la transición hacia la identidad vigente o si viene
+precedida, en su misma cláusula y sin verbos en el medio, por una palabra completa del
+vocabulario histórico. Nombrar SIS-Leg no alcanza por sí solo, una palabra histórica que
+califique otra cosa tampoco, y las raíces sueltas quedaron descartadas para que `delegado` no
+se lea como `legado`. El bloque de comentarios que precede a los patrones detalla las dos
+formas admitidas y los seis falsos negativos que obligaron a endurecerlas. Una referencia
+activa, como una ruta de instalación o un módulo, no cumple ninguna de las dos y sigue
+fallando.
 
 Ninguna de las dos políticas autoriza borrar o reescribir un hecho histórico para conseguir
 verde: la historia es evidencia y el gate existe para protegerla, no para empujarla afuera.
@@ -185,7 +187,7 @@ PRUEBAS_DE_AUSENCIA = (
 HERRAMIENTAS_DE_AUDITORIA = (
     ReferenciaPermitida(
         "scripts/auditar_identidad_legada.py",
-        13,
+        9,
         "Patrón de búsqueda, allowlist y mensajes de esta misma auditoría.",
     ),
     ReferenciaPermitida(
@@ -195,7 +197,7 @@ HERRAMIENTAS_DE_AUDITORIA = (
     ),
     ReferenciaPermitida(
         "tests/test_auditoria_identidad_legada.py",
-        22,
+        39,
         "Prueba que la auditoría detecte una reintroducción del nombre legado.",
     ),
 )
@@ -225,50 +227,76 @@ class RegistroHistoricoVivo:
 
 # Cómo se reconoce un enunciado sobre el pasado.
 #
-# La primera versión de esta regla buscaba subcadenas sueltas y producía falsos negativos
-# graves, es decir dejaba pasar referencias activas: `delegado` contiene `legad`, `sección
-# anterior` contiene `anterior`, y una instrucción de despliegue que nombrara la identidad
-# vigente pasaba por el solo hecho de nombrarla. Las tres formas siguientes tienen que
-# fallar, y hay pruebas exactas para cada una:
+# Esta regla se endureció dos veces porque las dos primeras versiones dejaban pasar
+# referencias activas, que es el error que de verdad importa aquí: un falso positivo molesta,
+# un falso negativo desarma el gate.
+#
+# La primera versión comparaba subcadenas contra un vocabulario de raíces, y `delegado`
+# activaba `legad`. La segunda pasó a palabras completas pero seguía preguntando por la
+# *línea*: bastaba que la palabra apareciera en cualquier parte, aunque no dijera nada sobre
+# la mención. Estas seis formas tienen que fallar, y hay una prueba exacta para cada una:
 #
 #     El concejal delegado solicitó acceso a /opt/<legado>
 #     Como se indicó en la sección anterior, el servicio arranca con /opt/<legado>/bin/start
 #     Para desplegar sis-leg, ejecutar /opt/<legado>/bin/start
+#     Para migrar la base de datos, ejecutar /opt/<legado>/bin/start
+#     El sistema legado de expedientes usa /opt/<legado>/bin/start
+#     Durante la migración de usuarios, ejecutar /opt/<legado>/bin/start
 #
-# Por eso ahora se exige una expresión explícita, no una subcadena. Hay tres formas
-# aceptadas, y ninguna se activa por casualidad:
+# Las tres últimas comparten la misma raíz del problema: la palabra histórica califica otra
+# cosa (una base de datos, un sistema de expedientes, unos usuarios) y la ruta legada es el
+# objeto de un verbo activo.
 #
-# 1. una **transición de identidad**: el nombre legado seguido, dentro de la misma frase, de
-#    un conector de movimiento (`a`, `hacia`, `por`, `->`, `→`) y de la identidad vigente.
-#    Es la forma de «Renombrar <legado> a SIS-Leg» y de «`/opt/<legado>` -> `/opt/sis-leg`».
-#    El orden importa: nombrar la identidad vigente *antes* del literal no alcanza, porque
-#    eso es lo que hace una instrucción activa que además menciona el proyecto;
-# 2. una **palabra completa** del vocabulario histórico cerrado, con sus variantes de género,
-#    número y acentuación escritas una por una. Al exigir `\b` en los dos extremos, `legado`
-#    ya no se activa dentro de `delegado`;
-# 3. `anterior`/`anteriores` **vinculado** a un sustantivo de identidad, como «el nombre
-#    anterior» o «las rutas anteriores». Aislado no alcanza: «la sección anterior» no dice
-#    nada sobre la identidad del proyecto.
+# Por eso ahora la pregunta no es «¿esta línea habla del pasado?» sino «¿**esta mención**
+# viene enmarcada?». La evaluación es por ocurrencia y ocurre dentro de dos límites:
 #
-# Cada forma agregada debilita el gate, así que ampliar cualquiera de las tres exige la misma
+# - el **segmento**: la porción de la línea entre los signos de puntuación fuerte que rodean
+#   a la mención. Una coma o un punto y coma cortan el segmento, de modo que un marco que
+#   vive en otra cláusula ya no alcanza. Eso solo descarta tres de los seis contraejemplos;
+# - el **token**: la mención se expande hasta abarcar la ruta completa que la contiene, para
+#   que `/workspace/<legado>` cuente como una sola palabra y no como tres.
+#
+# Dentro de esos límites se aceptan dos formas, y basta con una:
+#
+# 1. **transición de identidad**: justo después de la mención aparece un conector de
+#    movimiento (`a`, `hacia`, `por`, `->`, `→`) y la identidad vigente. Es la forma de
+#    «Renombrar <legado> a SIS-Leg» y de «`/opt/<legado>` -> `/opt/sis-leg`». El orden es
+#    parte de la regla: nombrar la identidad vigente *antes* del literal no alcanza, porque
+#    eso es justamente lo que hace una instrucción de despliegue que menciona el proyecto;
+# 2. **calificador ligado**: la mención viene precedida por una palabra completa del
+#    vocabulario histórico, separada de ella a lo sumo por una palabra libre y una
+#    preposición de pertenencia (`de`, `del`, `en`). Lo decisivo es qué hay pegado a la
+#    mención: o el calificador mismo («Renombrar <legado>»), o esa preposición
+#    («un registro metadata legado vacío de `/workspace/<legado>`»). Un verbo pegado a la
+#    mención («usa /opt/<legado>», «arranca con /opt/<legado>») nunca encaja, que es lo que
+#    descarta los otros tres contraejemplos.
+#
+# Ampliar cualquiera de las dos formas, el vocabulario o las preposiciones exige la misma
 # justificación explícita que agregar una entrada a la allowlist.
 
 # La identidad vigente, escrita como aparece realmente: `SIS-Leg`, `sis-leg`, `sis_leg`,
 # `sisleg`. Se usa sólo dentro de la transición, nunca como marcador por sí misma.
 _IDENTIDAD_VIGENTE = r"sis[-_ ]?leg"
 
-# Forma 1. Entre el literal legado y la identidad vigente se toleran unos pocos caracteres
-# (comillas, barras, un prefijo de ruta), no una oración entera, para que la transición sea
-# de verdad una sola frase y no dos ideas separadas que casualmente conviven en la línea.
-PATRON_TRANSICION_DE_IDENTIDAD = re.compile(
-    rf"botonera2[^\n]{{0,40}}?(?:\s(?:a|hacia|por)\s|\s*(?:->|-->|=>|→)\s*)"
+# Puntuación que corta el segmento. La barra vertical está incluida porque el PLAN registra
+# los WPs en tablas Markdown y cada celda es una afirmación independiente.
+PATRON_PUNTUACION_DE_CORTE = re.compile(r"[.;,:!?|()\[\]]")
+
+# Caracteres que delimitan el token de la mención. Todo lo demás (barras, guiones, puntos de
+# una ruta) forma parte de ella: `/workspace/<legado>` es una palabra sola, no tres.
+SEPARADORES_DE_TOKEN = frozenset(" \t`\"'()[]{}<>,;")
+
+# Forma 1, aplicada al texto que sigue a la mención dentro de su segmento. Las cotas son
+# perezosas y cortas para que la transición sea una frase y no dos ideas que conviven.
+PATRON_TRANSICION_DESDE_LA_MENCION = re.compile(
+    rf"^[^\n]{{0,40}}?(?:\s(?:a|hacia|por)\s|\s*(?:->|-->|=>|→)\s*)"
     rf"[^\n]{{0,25}}?{_IDENTIDAD_VIGENTE}",
     re.IGNORECASE,
 )
 
-# Forma 2. Vocabulario cerrado, palabras completas. Las variantes con y sin tilde se listan
-# por separado porque `\b` trata la vocal acentuada como otra letra: `\bhistorico\b` no
-# encuentra `histórico`.
+# Vocabulario histórico cerrado, en palabras completas. Las variantes con y sin tilde se
+# listan por separado porque `\b` trata la vocal acentuada como otra letra: `\bhistorico\b`
+# no encuentra `histórico`.
 PALABRAS_DE_CONTEXTO_HISTORICO: tuple[str, ...] = (
     "legado",
     "legada",
@@ -297,41 +325,32 @@ PALABRAS_DE_CONTEXTO_HISTORICO: tuple[str, ...] = (
     "renombradas",
     "renombro",
     "renombró",
+    "anterior",
+    "anteriores",
 )
 
-PATRON_PALABRA_HISTORICA = re.compile(
-    r"\b(?:" + "|".join(PALABRAS_DE_CONTEXTO_HISTORICO) + r")\b",
-    re.IGNORECASE,
-)
+# Preposiciones de pertenencia o ubicación admitidas entre el calificador y la mención. La
+# lista es mínima a propósito: `con`, `para` o `a` introducen complementos de verbos activos
+# («arranca con /opt/<legado>»), así que admitirlas volvería a abrir el agujero.
+PREPOSICIONES_DE_PERTENENCIA: tuple[str, ...] = ("de", "del", "en")
 
-# Forma 3. Sustantivos que convierten a `anterior` en una afirmación sobre la identidad del
-# proyecto y no sobre cualquier otra cosa que haya venido antes.
-SUSTANTIVOS_DE_IDENTIDAD: tuple[str, ...] = (
-    "nombre",
-    "nombres",
-    "identidad",
-    "identidades",
-    "ruta",
-    "rutas",
-    "proyecto",
-    "marca",
-    "repositorio",
-    "repositorios",
-    "instalacion",
-    "instalación",
-    "directorio",
-    "directorios",
-    "unidad",
-    "unidades",
-    "checkout",
-    "checkouts",
-)
+# Forma 2, aplicada al texto que precede a la mención dentro de su segmento y que termina
+# justo donde empieza su token. Lo decisivo es qué palabra queda pegada a la mención, y sólo
+# hay dos posibilidades admitidas:
+#
+# - el calificador mismo, sin nada en medio: «Renombrar <legado>»;
+# - una preposición de pertenencia, con a lo sumo una palabra libre entre ella y el
+#   calificador: «un registro metadata legado vacío de `/workspace/<legado>`».
+#
+# Cualquier otra cosa pegada a la mención la descalifica, y eso incluye justamente el caso
+# que hay que atrapar: un verbo activo, como en «el sistema legado usa /opt/<legado>» o «el
+# sistema legado arranca con /opt/<legado>». Ahí la palabra histórica califica al sistema,
+# no a la ruta, y la ruta es el objeto de una acción presente.
+_CALIFICADOR = r"\b(?:" + "|".join(PALABRAS_DE_CONTEXTO_HISTORICO) + r")\b"
+_PREPOSICION = r"(?:" + "|".join(PREPOSICIONES_DE_PERTENENCIA) + r")"
 
-# Sólo se acepta el orden «sustantivo ... anterior», con a lo sumo una palabra intermedia
-# («identidad técnica anterior»). El orden inverso se descarta a propósito: en «la sección
-# anterior, el servicio arranca...» el sustantivo aparece después y no califica nada.
-PATRON_ANTERIOR_VINCULADO = re.compile(
-    r"\b(?:" + "|".join(SUSTANTIVOS_DE_IDENTIDAD) + r")\b(?:\s+\w+)?\s+anterior(?:es)?\b",
+PATRON_CALIFICADOR_LIGADO = re.compile(
+    rf"(?:{_CALIFICADOR}(?:\s+\w+)?\s+{_PREPOSICION}|{_CALIFICADOR})\W*$",
     re.IGNORECASE,
 )
 
@@ -392,60 +411,123 @@ def leer_lineas(ruta_relativa: str) -> list[str]:
         return []
 
 
-def linea_tiene_contexto_historico(linea: str) -> bool:
-    """Decide si una línea menciona el nombre legado *hablando del pasado*.
+def _segmento_de_la_mencion(linea: str, comienzo: int, fin: int) -> tuple[str, int]:
+    """Recorta la cláusula en la que vive una mención y dice dónde empieza dentro de ella.
 
-    Devuelve `True` si la línea contiene alguna de las tres expresiones descritas arriba:
-    una transición de identidad, una palabra completa del vocabulario histórico o
-    `anterior` vinculado a un sustantivo de identidad. Cualquiera alcanza; ninguna se
-    activa por casualidad.
+    El segmento va desde la puntuación fuerte anterior más cercana hasta la siguiente. Sirve
+    para que un marco histórico que está en otra cláusula deje de contar: en «Durante la
+    migración de usuarios, ejecutar /opt/<legado>/bin/start» la coma separa el marco de la
+    mención, y la instrucción de la derecha queda sola, que es lo correcto.
 
-    Así, «la migración de `/opt/botonera2` a `/opt/sis-leg` sigue pendiente» pasa dos veces,
-    por la palabra «migración» y por la transición; en cambio `WorkingDirectory=/opt/botonera2`
-    no pasa, porque es indistinguible de una configuración activa copiada por error, y
-    «Para desplegar sis-leg, ejecutar /opt/botonera2/bin/start» tampoco, porque nombrar el
-    proyecto vigente no convierte una instrucción de despliegue en un enunciado histórico.
-
-    No pretende entender el idioma: obliga a que la mención venga acompañada de su marco.
-    Es una condición necesaria para que la línea sea aceptable, no una prueba de que el
-    texto sea correcto.
+    Devuelve el texto del segmento y la posición de la mención relativa a él.
     """
 
-    return (
-        PATRON_TRANSICION_DE_IDENTIDAD.search(linea) is not None
-        or PATRON_PALABRA_HISTORICA.search(linea) is not None
-        or PATRON_ANTERIOR_VINCULADO.search(linea) is not None
-    )
+    inicio_segmento = 0
+    for corte in PATRON_PUNTUACION_DE_CORTE.finditer(linea, 0, comienzo):
+        inicio_segmento = corte.end()
+
+    corte_posterior = PATRON_PUNTUACION_DE_CORTE.search(linea, fin)
+    fin_segmento = corte_posterior.start() if corte_posterior else len(linea)
+
+    return linea[inicio_segmento:fin_segmento], comienzo - inicio_segmento
+
+
+def _inicio_del_token(texto: str, posicion: int) -> int:
+    """Retrocede desde una mención hasta el comienzo de la palabra que la contiene.
+
+    `/workspace/<legado>` es una sola palabra para esta auditoría, no tres. Sin esta
+    expansión las barras de una ruta contarían como separadores y el calificador quedaría
+    artificialmente lejos de la mención.
+    """
+
+    while posicion > 0 and texto[posicion - 1] not in SEPARADORES_DE_TOKEN:
+        posicion -= 1
+    return posicion
+
+
+def _fin_del_token(texto: str, posicion: int) -> int:
+    """Avanza hasta el final de la palabra que contiene la mención. Espejo del anterior."""
+
+    while posicion < len(texto) and texto[posicion] not in SEPARADORES_DE_TOKEN:
+        posicion += 1
+    return posicion
+
+
+def mencion_tiene_marco_historico(linea: str, comienzo: int, fin: int) -> bool:
+    """Decide si *una* mención concreta viene enmarcada como enunciado sobre el pasado.
+
+    `comienzo` y `fin` son las posiciones del literal legado dentro de `linea`. La mención se
+    juzga dentro de su segmento y por su vecindad inmediata, nunca por lo que diga el resto
+    de la línea. Devuelve `True` si se cumple la transición de identidad o el calificador
+    ligado descritos arriba; basta con una de las dos.
+    """
+
+    segmento, posicion = _segmento_de_la_mencion(linea, comienzo, fin)
+    if not segmento:
+        return False
+
+    posterior = segmento[posicion + (fin - comienzo) :]
+    if PATRON_TRANSICION_DESDE_LA_MENCION.search(posterior) is not None:
+        return True
+
+    anterior = segmento[: _inicio_del_token(segmento, posicion)]
+    return PATRON_CALIFICADOR_LIGADO.search(anterior) is not None
+
+
+def menciones_sin_marco_historico(linea: str) -> list[tuple[int, str]]:
+    """Devuelve las menciones de la línea que no logran justificarse.
+
+    Cada elemento es la columna donde empieza la mención, contada desde 1 como la muestran
+    los editores, y el token completo que la contiene. Se informa el token y no sólo el
+    literal para que el mensaje de la CI muestre la ruta o el identificador real que hay que
+    revisar.
+    """
+
+    sin_marco: list[tuple[int, str]] = []
+    for aparicion in PATRON_LEGADO.finditer(linea):
+        comienzo, fin = aparicion.start(), aparicion.end()
+        if mencion_tiene_marco_historico(linea, comienzo, fin):
+            continue
+        inicio_token = _inicio_del_token(linea, comienzo)
+        sin_marco.append((inicio_token + 1, linea[inicio_token : _fin_del_token(linea, fin)]))
+    return sin_marco
+
+
+def linea_tiene_contexto_historico(linea: str) -> bool:
+    """Fachada de conveniencia: `True` si todas las menciones de la línea están enmarcadas.
+
+    Una línea sin ninguna mención devuelve `True` de forma vacua, porque no hay nada que
+    justificar. Existe sobre todo para que las pruebas puedan expresar un caso completo en
+    una sola frase legible, mientras la auditoría real usa `menciones_sin_marco_historico`,
+    que además dice dónde está el problema.
+    """
+
+    return not menciones_sin_marco_historico(linea)
 
 
 def _revisar_registro_vivo(
     registro: RegistroHistoricoVivo,
     leer: Callable[[str], list[str]],
 ) -> list[str]:
-    """Revisa un registro histórico vivo línea por línea y describe lo que no encaja.
+    """Revisa un registro histórico vivo mención por mención y describe lo que no encaja.
 
-    Devuelve un problema por cada línea que nombre la identidad legada sin ningún marcador
-    de contexto histórico. El mensaje incluye el número de línea y un recorte del texto para
-    que quien lea la CI pueda ir directo al lugar sin tener que buscar el literal a mano.
+    Devuelve un problema por cada mención del nombre legado que no logre justificarse. El
+    mensaje incluye línea, columna y el token exacto, para que quien lea la CI vaya directo
+    al lugar en vez de buscar el literal a mano dentro de un párrafo largo.
     """
 
     problemas: list[str] = []
     for numero, linea in enumerate(leer(registro.ruta), start=1):
-        if not PATRON_LEGADO.search(linea):
-            continue
-        if linea_tiene_contexto_historico(linea):
-            continue
-        recorte = linea.strip()
-        if len(recorte) > 120:
-            recorte = recorte[:117] + "..."
-        problemas.append(
-            f"{registro.ruta}:{numero}: nombra la identidad legada sin marco histórico. "
-            "Una mención permitida en este registro debe describir la transición hacia la "
-            "identidad vigente (por ejemplo «/opt/... -> /opt/sis-leg»), usar una palabra "
-            "completa del vocabulario histórico (legado, histórico, migración, renombrar y "
-            "sus variantes) o decir «anterior» junto a un sustantivo de identidad como "
-            f"nombre o ruta. Nombrar SIS-Leg no alcanza por sí solo. Línea: {recorte}"
-        )
+        for columna, token in menciones_sin_marco_historico(linea):
+            problemas.append(
+                f"{registro.ruta}:{numero}:{columna}: la mención «{token}» no viene "
+                "enmarcada como historia. Para ser admitida en este registro debe describir "
+                "la transición hacia la identidad vigente (por ejemplo «/opt/... -> "
+                "/opt/sis-leg») o venir precedida, en la misma cláusula, por una palabra "
+                "completa del vocabulario histórico (legado, histórico, migración, "
+                "renombrar, anterior y sus variantes). Una palabra histórica suelta en otra "
+                "parte de la línea no alcanza, y nombrar SIS-Leg tampoco."
+            )
     return problemas
 
 
@@ -551,7 +633,7 @@ def main() -> int:
         "Auditoría de identidad legada OK: ninguna referencia activa al nombre anterior. "
         f"{permitidas} ocurrencia(s) históricas permitidas en {len(ALLOWLIST)} archivo(s) "
         f"con conteo exacto y {len(REGISTROS_HISTORICOS_VIVOS)} registro(s) histórico(s) "
-        "vivo(s) revisado(s) línea por línea."
+        "vivo(s) revisado(s) mención por mención."
     )
     return 0
 

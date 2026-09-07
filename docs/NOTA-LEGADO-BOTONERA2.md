@@ -82,20 +82,23 @@ nueva a un archivo ya permitido también falle.
 menciones legítimas cada vez que se cierra un Work Package, así que exigirle un conteo fijo rompía
 el gate por su propio uso normal. Eso fue el hallazgo ASTRA-010 que corrigió WP-079. Para esas
 rutas, declaradas una por una y nunca por directorio, la regla no es cuántas veces aparece el
-nombre anterior sino **cómo** aparece. Se acepta una línea que cumpla alguna de estas tres
-condiciones:
+nombre anterior sino **cómo** aparece. La pregunta se hace por cada mención, no por la línea
+entera, y siempre dentro de la cláusula donde esa mención vive: una coma o un punto y coma cortan
+el alcance del marco. Se acepta la mención que cumpla alguna de estas dos condiciones:
 
-1. describe la transición hacia la identidad vigente, por ejemplo `/opt/<ruta anterior>` seguido
-   de una flecha o de la preposición «a» y de la ruta actual;
-2. contiene una palabra completa del vocabulario histórico cerrado: legado, histórico, migración,
-   renombrar y sus variantes de género, número y acentuación;
-3. dice «anterior» o «anteriores» junto a un sustantivo de identidad, como «el nombre anterior» o
-   «las rutas anteriores».
+1. describe la transición hacia la identidad vigente, es decir la mención seguida de una flecha o
+   de una preposición de movimiento y de la ruta o el nombre actual;
+2. viene precedida por una palabra completa del vocabulario histórico cerrado (legado, histórico,
+   migración, renombrar, anterior y sus variantes de género, número y acentuación), con la palabra
+   pegada a la mención siendo o bien ese calificador o bien una preposición de pertenencia como
+   «de», «del» o «en».
 
-Nombrar SIS-Leg no alcanza por sí solo: una instrucción de despliegue que mencione el proyecto
-vigente y a la vez una ruta antigua sigue siendo una referencia activa. Las condiciones se evalúan
-sobre palabras completas y no sobre raíces sueltas, para que «delegado» no se lea como «legado» ni
-«la sección anterior» como una afirmación sobre la identidad del proyecto.
+Lo que queda deliberadamente afuera es el caso que motivó endurecer la regla dos veces: una
+palabra histórica que aparece en la línea pero califica otra cosa, con la ruta antigua como objeto
+de un verbo en presente. «El sistema legado de expedientes usa /opt/<ruta anterior>» y «Durante la
+migración de usuarios, ejecutar /opt/<ruta anterior>» son referencias activas y siguen fallando,
+igual que nombrar SIS-Leg en una instrucción de despliegue que además usa una ruta antigua. Todo
+se evalúa sobre palabras completas, para que «delegado» no se lea como «legado».
 
 ```bash
 uv run python scripts/auditar_identidad_legada.py
