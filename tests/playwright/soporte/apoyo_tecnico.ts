@@ -104,6 +104,7 @@ export function concejalesPublicos(cantidad: number) {
 
 export function estadoRecinto(parcialTecnico: Record<string, unknown> = {}) {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-09-02T10:00:00Z',
     estado_global: 'SESION_ABIERTA',
@@ -184,6 +185,7 @@ export function sonorizacionTecnica(parcial: Record<string, unknown> = {}) {
 
 export function estadoTecnico(parcial: Record<string, unknown> = {}) {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-09-02T10:00:00Z',
     estado_global: 'SESION_ABIERTA',
@@ -217,6 +219,7 @@ export function estadoTecnico(parcial: Record<string, unknown> = {}) {
 
 export function estadoModeracion(parcialTecnico: Record<string, unknown> = {}) {
   return {
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: '2026-09-02T10:00:00Z',
     estado_global: 'SESION_ABIERTA',

@@ -189,6 +189,42 @@ describe('Baseline y reconexión', () => {
     banco.detener()
   })
 
+  it('trata como baseline el estado de un backend reiniciado aunque el stream no se haya caído', () => {
+    // Escenario de WP-080: el reinicio ocurre entre el snapshot REST y la apertura del
+    // stream, así que la conexión nunca se rompe y el indicador sigue en CONECTADO. Sin
+    // mirar la instancia, comparar el estado del proceso nuevo contra el del anterior
+    // haría sonar hechos que jamás ocurrieron en el salón.
+    const banco = montar()
+    adoptarBaseline(
+      banco,
+      sesionAbierta({
+        instancia: 'instancia-proceso-a',
+        revision: 142,
+        votacion: crearVotacionPublicaPrueba({ id: 'votacion-1' }),
+      }),
+    )
+
+    banco.estado.value = crearEstadoRecintoPrueba({
+      instancia: 'instancia-proceso-b',
+      revision: 0,
+      estado_global: 'SIN_PREPARAR',
+    })
+
+    expect(banco.espia.reproducidos).toEqual([])
+
+    // Ya rebaselinado, el proceso nuevo vuelve a sonorizar con normalidad: la apertura de
+    // sesión que ocurre después del reinicio sí es un hecho del salón y suena.
+    banco.estado.value = crearEstadoRecintoPrueba({
+      instancia: 'instancia-proceso-b',
+      revision: 1,
+      estado_global: 'SESION_ABIERTA',
+      concejales: crearConcejalesPublicos(12),
+    })
+
+    expect(banco.espia.reproducidos).toEqual(['sesion_abierta'])
+    banco.detener()
+  })
+
   it('vuelve a tratar como baseline el estado que llega después de perder el estado', () => {
     const banco = montar()
     adoptarBaseline(banco, sesionAbierta())

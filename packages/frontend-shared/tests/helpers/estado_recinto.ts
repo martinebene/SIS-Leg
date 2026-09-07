@@ -86,6 +86,7 @@ export function crearSonidosRecintoPrueba(
 
 export function crearEstadoRecintoPrueba(parcial: Partial<EstadoRecinto> = {}): EstadoRecinto {
   return {
+    instancia: parcial.instancia ?? 'instancia-prueba',
     revision: parcial.revision ?? 1,
     generado_en: parcial.generado_en ?? '2026-08-27T10:00:00Z',
     estado_global: parcial.estado_global ?? 'SIN_PREPARAR',
@@ -146,6 +147,10 @@ export function crearVotacionPublicaPrueba(
  */
 export function proyectarSonorizacionTecnica(estado: EstadoRecinto): SonorizacionRecintoProyectada {
   return {
+    // La instancia se copia del estado público de origen: el backend la construye con el
+    // mismo coordinador para las dos proyecciones, así que la paridad exige que acá
+    // también coincidan.
+    instancia: estado.instancia,
     revision: estado.revision,
     estado_global: estado.estado_global,
     tecnico: estado.tecnico,

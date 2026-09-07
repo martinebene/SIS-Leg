@@ -178,10 +178,17 @@ GET /api/v1/estado/recinto
 ```
 
 Ambos responden `200 OK` en `SIN_PREPARAR`, `PREPARANDO` y
-`SESION_ABIERTA`. Cada DTO incluye `revision` volátil monotónica,
+`SESION_ABIERTA`. Cada DTO incluye `instancia`, `revision` volátil monotónica,
 `generado_en`, `estado_global` y submodelos completos del consumidor. Son
 copias construidas bajo la misma exclusión del `EjecutorMutaciones`; no se
 serializan directamente objetos mutables de dominio.
+
+`instancia` es un identificador **técnico y opaco** del proceso backend que
+emite el estado (WP-080). Se genera una sola vez al arrancar, es estable
+durante toda la vida del proceso, no se persiste, no se deriva del reloj civil
+y no identifica ninguna entidad institucional. Su única función es delimitar el
+alcance de `revision`: la monotonía sólo vale **dentro** de una misma instancia.
+Las tres proyecciones de un mismo proceso declaran el mismo valor.
 
 ### ModerationState
 
@@ -354,6 +361,23 @@ termina con excepción después de una mutación parcial durable, y en fronteras
 temporales que cambian el payload. Son volátiles, independientes de `seq` y se
 reinician junto con el proceso.
 
+Por eso la unidad de comparación del cliente es el par `(instancia, revision)` y
+no la revisión sola (WP-080). Dentro de una misma instancia se descarta toda
+revisión menor que la vigente y se toleran los saltos. Ante una instancia
+distinta se adopta el estado recibido como baseline nueva de inmediato, aunque
+su revisión sea numéricamente menor, porque pertenece a otra numeración.
+
+La regla cubre el reinicio que **no** rompe el stream: si el backend reinicia
+entre el snapshot REST y la apertura del `EventSource`, la conexión que abre es
+sana y no hay `onerror` que dispare la recuperación. Sin `instancia`, las
+revisiones bajas del proceso nuevo se descartarían y la pantalla quedaría
+mostrando un estado inexistente con el indicador de conexión en verde. El
+mecanismo no agrega polling, no persiste estado entre reinicios y no recupera
+el estado operativo previo: sólo permite reconocer que la baseline cambió.
+
+`id:` sigue transportando únicamente la revisión: `instancia` viaja dentro del
+payload y no altera el cursor del protocolo SSE.
+
 ## 13. Cliente compartido
 
 `packages/api-client/` (`@sis-leg/api-client`) concentra:
@@ -363,9 +387,9 @@ reinician junto con el proceso.
 - SSE con EventSource nativo inyectable;
 - separación estricta entre `ClienteModeracion` y `ClienteRecinto` (solo lectura);
 - reconexión mediante cierre inmediato de EventSource, backoff cancelable y recuperación por snapshot;
-- adopción de nueva baseline que permite aceptar revisión 0 tras reinicio del backend;
+- adopción de nueva baseline que permite aceptar revisión 0 tras reinicio del backend, tanto por snapshot de recuperación como por un evento SSE de una instancia distinta (WP-080);
 - modelo uniforme de errores discriminados (`ErrorHttp`, `ErrorTransporte`, `ErrorProtocolo`, `ErrorCancelacion`);
-- control de revisión monotónica sin exigir continuidad numérica;
+- control de revisión monotónica dentro de una misma instancia, sin exigir continuidad numérica;
 - soporte de `multipart/form-data` para Orden del Día y `204 No Content`.
 
 Los componentes y frontends futuros no duplican estas responsabilidades.

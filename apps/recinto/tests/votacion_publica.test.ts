@@ -21,6 +21,7 @@ function crearSesionConVotacion(
   parcial: Parameters<typeof crearEstadoRecintoPrueba>[0] = {},
 ) {
   return crearEstadoRecintoPrueba({
+    instancia: 'instancia-prueba',
     revision: 1,
     generado_en: HORA_BASE,
     estado_global: 'SESION_ABIERTA',

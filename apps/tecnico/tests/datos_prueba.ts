@@ -135,6 +135,7 @@ export function crearSonorizacionPrueba(
 
 export function crearEstadoTecnicoPrueba(parcial: Partial<EstadoTecnico> = {}): EstadoTecnico {
   return {
+    instancia: parcial.instancia ?? 'instancia-prueba',
     revision: parcial.revision ?? 1,
     generado_en: parcial.generado_en ?? '2026-09-02T10:00:00Z',
     estado_global: parcial.estado_global ?? 'SIN_PREPARAR',

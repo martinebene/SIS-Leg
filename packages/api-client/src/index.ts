@@ -12,7 +12,11 @@ export { ClienteRecinto, crearClienteRecinto } from './recinto'
 export { ClienteApoyoTecnico, crearClienteApoyoTecnico } from './apoyo_tecnico'
 export { ClienteRemapeoDispositivos, crearClienteRemapeo } from './remapeo'
 export { ClienteSimulador, crearClienteSimulador } from './simulador'
-export { SincronizadorEstado, iniciarSincronizacionEstado } from './sincronizador'
+export {
+  SincronizadorEstado,
+  iniciarSincronizacionEstado,
+  type EstadoSincronizable,
+} from './sincronizador'
 export { EstrategiaBackoff, temporizadorPredeterminado } from './backoff'
 export { crearFabricaEventSourcePredeterminada } from './event_source'
 

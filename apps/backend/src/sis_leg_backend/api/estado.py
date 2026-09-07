@@ -19,17 +19,23 @@ enrutador_estado = APIRouter(prefix="/estado", tags=["estado"])
 
 DESCRIPCION_SSE_MODERACION = (
     "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoModeracion "
-    "completo; `id` coincide con su revision. No transporta deltas ni ofrece replay durable."
+    "completo; `id` coincide con su revision. No transporta deltas ni ofrece replay durable. "
+    "El campo `instancia` identifica al proceso backend que emite: la revision sólo es "
+    "monotónica dentro de una misma instancia."
 )
 DESCRIPCION_SSE_RECINTO = (
     "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoRecinto completo "
-    "con el secreto público aplicado en servidor; `id` coincide con su revision."
+    "con el secreto público aplicado en servidor; `id` coincide con su revision. El campo "
+    "`instancia` identifica al proceso backend que emite: la revision sólo es monotónica "
+    "dentro de una misma instancia."
 )
 DESCRIPCION_SSE_TECNICO = (
     "Stream Server-Sent Events. Cada evento `estado` contiene un EstadoTecnico completo "
     "con transmisión, avisos de ambos destinos, biblioteca, eventos seguros, la allowlist "
-    "de remapeo y la subproyección de sonorización; `id` coincide con su revision. Es el "
-    "único stream persistente que necesita el puesto de Apoyo Técnico."
+    "de remapeo y la subproyección de sonorización; `id` coincide con su revision. El campo "
+    "`instancia` identifica al proceso backend que emite: la revision sólo es monotónica "
+    "dentro de una misma instancia. Es el único stream persistente que necesita el puesto "
+    "de Apoyo Técnico."
 )
 
 
@@ -191,6 +197,13 @@ async def generar_stream_estado(
 
 
 def codificar_evento_sse(estado: EstadoModeracion | EstadoRecinto | EstadoTecnico) -> str:
-    """Serializa un DTO Pydantic completo como un evento SSE estable."""
+    """Serializa un DTO Pydantic completo como un evento SSE estable.
+
+    El ``id`` del evento sigue siendo la revisión, que es lo que el protocolo SSE
+    espera como cursor. La identidad de instancia de WP-080 viaja **dentro** del
+    payload y no en el ``id``: así el contrato del cursor no cambia y el cliente
+    lee las dos mitades del par ``(instancia, revision)`` del mismo objeto ya
+    validado.
+    """
 
     return f"id: {estado.revision}\nevent: estado\ndata: {estado.model_dump_json()}\n\n"
