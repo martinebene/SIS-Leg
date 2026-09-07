@@ -90,30 +90,31 @@ class ConfiguracionSistema:
     """Duración congelada del test visual de un dispositivo.
 
     Es un temporizador independiente de los temporizadores de las pantallas.
-    Puede ser entero o decimal, siempre que no sea negativo. Al formar parte del
-    snapshot inmutable, una pulsación nunca vuelve a leer el TOML para conocer
-    su duración.
+    Puede ser entero o decimal, siempre que sea finito y no negativo (WP-086
+    rechaza ``nan``, ``inf`` y ``-inf`` para todos los temporizadores). Al formar
+    parte del snapshot inmutable, una pulsación nunca vuelve a leer el TOML para
+    conocer su duración.
     """
 
     moderacion_revelado_votos_segundos: int | float
     """Retardo antes de revelar votos individuales en Moderación.
 
-    Es un número no negativo (puede ser entero o decimal, p. ej. ``0.5``);
-    se conserva el tipo que vino en el archivo: un ``4`` sigue siendo ``int``
-    y un ``4.5`` queda como ``float``, sin conversión silenciosa.
+    Es un número finito no negativo (puede ser entero o decimal, p. ej.
+    ``0.5``); se conserva el tipo que vino en el archivo: un ``4`` sigue siendo
+    ``int`` y un ``4.5`` queda como ``float``, sin conversión silenciosa.
     """
 
     recinto_cuenta_regresiva_inicial_segundos: int | float
     """Cuenta regresiva/efecto visual inicial de votación en el Recinto.
 
-    Número no negativo con la misma semántica de tipo que el retardo de
+    Número finito no negativo con la misma semántica de tipo que el retardo de
     Moderación: entero o decimal, sin conversión silenciosa.
     """
 
     recinto_resultado_publico_segundos: int | float
     """Tiempo de permanencia del resultado en la pantalla pública.
 
-    Número no negativo (entero o decimal), sin conversión silenciosa.
+    Número finito no negativo (entero o decimal), sin conversión silenciosa.
     """
 
     directorio_registros: str
