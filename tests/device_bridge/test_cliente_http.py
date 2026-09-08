@@ -15,6 +15,9 @@ Verifica:
 11. NO RECONSTRUCTIBILIDAD DEL SENTIDO DEL VOTO (WP-088): pruebas adversariales que
     demuestran que ningún camino de este cliente deja en el registro la tecla enviada ni
     el cuerpo crudo de la respuesta, en ningún nivel.
+12. MOTIVOS CANÓNICOS PERO SENSIBLES (WP-088 I002): regresión de la corrección que
+    reemplazó la comprobación de forma por un catálogo explícito, más la redacción de
+    `error_transporte` en la estructura y en su representación textual.
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ from typing import Any
 
 import pytest
 from sis_leg_device_bridge.cliente_http import ClienteHttpBackend
-from sis_leg_device_bridge.modelos import SolicitudEntradaLogica
+from sis_leg_device_bridge.modelos import RespuestaEnvioBackend, SolicitudEntradaLogica
 
 # Banca deliberadamente identificable: los tests de WP-088 comprueban que su identidad
 # puede aparecer en el registro pero nunca junto al sentido de lo que votó.
@@ -519,9 +522,11 @@ def test_wp088_error_http_no_vuelca_el_cuerpo_de_error(
     """
     url_base, handler = servidor_local_http
     handler.codigo_respuesta = 422
+    # Forma real de un 422 de validación de FastAPI: sin campo `codigo`, con la entrada
+    # rechazada repetida dentro de `detail`.
     handler.plantilla_eco = (
-        '{{"codigo": "ENTRADA_INVALIDA", "detail": '
-        '{{"dispositivo": "{dispositivo}", "tecla": "{tecla}", "valor": "{valor}"}}}}'
+        '{{"detail": [{{"loc": ["body", "tecla"], '
+        '"input": {{"dispositivo": "{dispositivo}", "tecla": "{tecla}", "valor": "{valor}"}}}}]}}'
     )
 
     cliente = ClienteHttpBackend(url_base=url_base, timeout_segundos=2.0)
@@ -529,13 +534,13 @@ def test_wp088_error_http_no_vuelca_el_cuerpo_de_error(
 
     avisos = [mensaje for nivel, mensaje in registro if nivel == logging.WARNING]
     assert len(avisos) == 1
-    # El diagnóstico conserva código HTTP, banca y motivo estable del backend.
+    # El diagnóstico conserva código HTTP, banca y la clasificación del fallo.
     assert "422" in avisos[0]
     assert DISPOSITIVO_SENSIBLE in avisos[0]
-    assert "ENTRADA_INVALIDA" in avisos[0]
+    assert "HTTP_422" in avisos[0]
 
 
-def test_wp088_motivo_no_canonico_del_backend_se_redacta(
+def test_wp088_motivo_de_texto_libre_del_backend_se_redacta(
     servidor_local_http: tuple[str, type[ServidorPruebaHandler]],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -554,13 +559,13 @@ def test_wp088_motivo_no_canonico_del_backend_se_redacta(
 
     informativos = [mensaje for nivel, mensaje in registro if nivel == logging.INFO]
     assert len(informativos) == 1
-    assert "MOTIVO_NO_CANONICO" in informativos[0]
+    assert "MOTIVO_DESCONOCIDO" in informativos[0]
 
     respuesta = cliente.enviar_pulsacion(
         SolicitudEntradaLogica(dispositivo=DISPOSITIVO_SENSIBLE, tecla="1")
     )
     assert respuesta.aceptada is True
-    assert respuesta.motivo == "MOTIVO_NO_CANONICO"
+    assert respuesta.motivo == "MOTIVO_DESCONOCIDO"
 
 
 def test_wp088_timeout_no_revela_el_sentido_del_voto(
@@ -634,7 +639,7 @@ def test_wp088_ningun_camino_del_cliente_serializa_el_payload(
         (200, '{{"aceptada": true, "motivo": "VOTO_REGISTRADO", "eco": "{tecla}/{valor}"}}'),
         (200, '{{"aceptada": false, "motivo": "CONCEJAL_AUSENTE", "eco": "{tecla}/{valor}"}}'),
         (200, "texto plano {dispositivo} {tecla} {valor}"),
-        (422, '{{"codigo": "ENTRADA_INVALIDA", "eco": "{tecla}/{valor}"}}'),
+        (422, '{{"detail": [{{"input": {{"tecla": "{tecla}", "valor": "{valor}"}}}}]}}'),
         (500, '{{"codigo": "ERROR_INTERNO", "eco": "{tecla}/{valor}"}}'),
         (503, '{{"codigo": "AUDITORIA_NO_DISPONIBLE", "eco": "{tecla}/{valor}"}}'),
     ]
@@ -644,3 +649,187 @@ def test_wp088_ningun_camino_del_cliente_serializa_el_payload(
         handler.codigo_respuesta = codigo
         handler.plantilla_eco = plantilla
         _afirmar_registro_indistinguible(cliente, caplog)
+
+
+# ---------------------------------------------------------------------------
+# Regresión de la corrección I002: motivos canónicos pero sensibles
+#
+# La primera versión de `sanear_motivo` aceptaba cualquier texto con forma de
+# código estable. Las pruebas de I001 sólo la atacaban con texto libre en
+# minúsculas, así que no cubrían la clase de valores que la regex sí aceptaba:
+# `DEV07_VOTO_1` respeta MAYUSCULAS_CON_GUION_BAJO y reconstruye el voto.
+#
+# Estas pruebas fijan la propiedad correcta: el bridge sólo reproduce motivos
+# que figuran en un catálogo explícito, y todo lo demás queda clasificado.
+# ---------------------------------------------------------------------------
+
+
+def test_i002_motivo_canonico_pero_sensible_no_llega_al_registro(
+    servidor_local_http: tuple[str, type[ServidorPruebaHandler]],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Escenario exacto señalado por la auditoría: 2xx con `motivo="DEV07_VOTO_1"`.
+
+    El valor respeta la sintaxis de un código estable, así que la comprobación de forma lo
+    dejaba pasar intacto al registro junto al dispositivo lógico.
+    """
+    url_base, handler = servidor_local_http
+    handler.codigo_respuesta = 200
+    handler.cuerpo_respuesta = json.dumps({"aceptada": True, "motivo": "DEV07_VOTO_1"})
+
+    cliente = ClienteHttpBackend(url_base=url_base, timeout_segundos=2.0)
+    registro = _afirmar_registro_indistinguible(cliente, caplog)
+
+    texto = "\n".join(mensaje for _nivel, mensaje in registro)
+    assert "DEV07_VOTO_1" not in texto
+    assert "MOTIVO_DESCONOCIDO" in texto
+
+    respuesta = cliente.enviar_pulsacion(
+        SolicitudEntradaLogica(dispositivo=DISPOSITIVO_SENSIBLE, tecla="1")
+    )
+    assert respuesta.aceptada is True
+    assert respuesta.motivo == "MOTIVO_DESCONOCIDO"
+
+
+def test_i002_motivos_sensibles_distintos_por_sentido_producen_el_mismo_registro(
+    servidor_local_http: tuple[str, type[ServidorPruebaHandler]],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """El caso más agresivo: el backend nombra el sentido del voto en el propio motivo.
+
+    Cada tecla recibe un motivo distinto y con forma canónica: `VOTO_POSITIVO_DEV07`,
+    `VOTO_ABSTENCION_DEV07` y `VOTO_NEGATIVO_DEV07`. Con la comprobación de forma, las tres
+    líneas de INFO eran distintas entre sí y decían literalmente cómo votó `dev07`.
+    """
+    url_base, handler = servidor_local_http
+    handler.codigo_respuesta = 200
+    handler.plantilla_eco = '{{"aceptada": true, "motivo": "VOTO_{valor}_DEV07"}}'
+
+    cliente = ClienteHttpBackend(url_base=url_base, timeout_segundos=2.0)
+    registro = _afirmar_registro_indistinguible(cliente, caplog)
+
+    texto = "\n".join(mensaje for _nivel, mensaje in registro)
+    for prohibido in ("VOTO_POSITIVO_DEV07", "VOTO_ABSTENCION_DEV07", "VOTO_NEGATIVO_DEV07"):
+        assert prohibido not in texto
+    assert "MOTIVO_DESCONOCIDO" in texto
+
+
+def test_i002_codigo_de_error_canonico_pero_sensible_no_llega_al_registro(
+    servidor_local_http: tuple[str, type[ServidorPruebaHandler]],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """La misma clase de valor podía entrar por el campo `codigo` de una respuesta de error.
+
+    Ese camino toma el código del cuerpo como motivo del fallo, así que compartía el
+    defecto con el camino 2xx.
+    """
+    url_base, handler = servidor_local_http
+    handler.codigo_respuesta = 503
+    handler.plantilla_eco = '{{"codigo": "DEV07_TECLA_{tecla}", "mensaje": "rechazo"}}'
+
+    cliente = ClienteHttpBackend(url_base=url_base, timeout_segundos=2.0)
+    registro = _afirmar_registro_indistinguible(cliente, caplog)
+
+    texto = "\n".join(mensaje for _nivel, mensaje in registro)
+    for tecla in TECLAS_DE_VOTO:
+        assert f"DEV07_TECLA_{tecla}" not in texto
+    # El diagnóstico técnico sobrevive: se sabe que hubo un 503 en esa banca.
+    assert "503" in texto
+    assert DISPOSITIVO_SENSIBLE in texto
+    assert "MOTIVO_DESCONOCIDO" in texto
+
+
+def test_i002_el_campo_motivo_de_un_error_tambien_se_clasifica(
+    servidor_local_http: tuple[str, type[ServidorPruebaHandler]],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Variante por el campo `motivo` de la respuesta de error, no por `codigo`."""
+    url_base, handler = servidor_local_http
+    handler.codigo_respuesta = 500
+    handler.plantilla_eco = '{{"motivo": "ABSTENCION_BANCA_7_TECLA_{tecla}"}}'
+
+    cliente = ClienteHttpBackend(url_base=url_base, timeout_segundos=2.0)
+    registro = _afirmar_registro_indistinguible(cliente, caplog)
+
+    texto = "\n".join(mensaje for _nivel, mensaje in registro)
+    assert "ABSTENCION_BANCA_7" not in texto
+    assert "500" in texto
+    assert "MOTIVO_DESCONOCIDO" in texto
+
+
+def test_i002_un_motivo_conocido_sigue_llegando_intacto(
+    servidor_local_http: tuple[str, type[ServidorPruebaHandler]],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """La corrección no puede convertirse en silencio de diagnóstico.
+
+    Un motivo real del backend tiene que seguir apareciendo tal cual: si todo terminara
+    clasificado, soporte perdería la única etiqueta que distingue por qué se rechazó una
+    pulsación.
+    """
+    url_base, handler = servidor_local_http
+    handler.codigo_respuesta = 200
+    handler.cuerpo_respuesta = json.dumps({"aceptada": False, "motivo": "CONCEJAL_AUSENTE"})
+
+    cliente = ClienteHttpBackend(url_base=url_base, timeout_segundos=2.0)
+    registro = _afirmar_registro_indistinguible(cliente, caplog)
+
+    informativos = [mensaje for nivel, mensaje in registro if nivel == logging.INFO]
+    assert len(informativos) == 1
+    assert "RECHAZADA" in informativos[0]
+    assert "CONCEJAL_AUSENTE" in informativos[0]
+    assert "MOTIVO_DESCONOCIDO" not in informativos[0]
+
+
+def test_i002_el_repr_de_la_respuesta_no_reproduce_error_transporte(
+    servidor_local_http: tuple[str, type[ServidorPruebaHandler]],
+) -> None:
+    """El `repr` se presentó en I001 como defensa ante logging accidental, así que debe serlo.
+
+    `error_transporte` era el único campo que seguía imprimiéndose crudo. Hoy `cliente_http`
+    sólo le asigna texto propio o detalle del sistema operativo, pero una red que depende de
+    la disciplina de quien llena el campo no protege de un cambio futuro.
+    """
+    respuesta = RespuestaEnvioBackend(
+        aceptada=None,
+        codigo_http=None,
+        motivo="ERROR_INESPERADO",
+        cuerpo=None,
+        error_transporte="dev07 tecla 1 POSITIVO",
+    )
+
+    for texto in (repr(respuesta), f"{respuesta}", str(respuesta)):
+        assert "dev07" not in texto
+        assert "POSITIVO" not in texto
+        assert "tecla 1" not in texto
+
+    # Sigue siendo posible distinguir un fallo de transporte de un resultado limpio.
+    assert "ERROR_INESPERADO" in repr(respuesta)
+    assert "error_transporte=None" not in repr(respuesta)
+    assert "error_transporte=None" in repr(
+        RespuestaEnvioBackend(aceptada=True, codigo_http=200, motivo="VOTO_REGISTRADO")
+    )
+
+
+def test_i002_la_excepcion_inesperada_no_guarda_su_texto_en_la_estructura(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """La otra mitad de la corrección: el campo tampoco debe recibir el texto.
+
+    Redactar sólo en el `repr` dejaría el dato guardado dentro del objeto, a un `print` de
+    distancia del journal. Se guarda el tipo, que es la misma información que se registra.
+    """
+
+    def urlopen_que_falla(*_args: Any, **_kwargs: Any) -> Any:
+        raise ValueError("la banca dev07 envio la tecla 1 (POSITIVO)")
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen_que_falla)
+
+    cliente = ClienteHttpBackend(url_base="http://127.0.0.1:59999", timeout_segundos=0.5)
+    respuesta = cliente.enviar_pulsacion(
+        SolicitudEntradaLogica(dispositivo=DISPOSITIVO_SENSIBLE, tecla="1")
+    )
+
+    assert respuesta.motivo == "ERROR_INESPERADO"
+    assert respuesta.error_transporte == "Excepción inesperada de tipo ValueError"
+    assert "la banca" not in str(respuesta.error_transporte)

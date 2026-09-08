@@ -61,8 +61,9 @@ El paquete `sis_leg_device_bridge` está estructurado en módulos enfocados y te
 - `fingerprint.py`: construcción y validación del formato canónico Linux.
 - `configuracion.py`: parámetros operacionales y lector estricto de `devices.json`.
 - `normalizador.py`: normalización amplia de teclas físicas.
-- `redaccion.py`: descripciones seguras para el registro operativo, de modo que ningún
-  mensaje pueda combinar identidad de banca con sentido del voto.
+- `redaccion.py`: descripciones seguras para el registro operativo y catálogo explícito de
+  motivos publicables, de modo que ningún mensaje pueda combinar identidad de banca con
+  sentido del voto.
 - `cliente_http.py`: pulsaciones y callback de candidato mediante `urllib.request`.
 - `adaptador_linux.py`: hardware `evdev` real y adaptador falso para CI.
 - `servicio.py`: descubrimiento y flujo no bloqueante de eventos.
@@ -337,12 +338,22 @@ Qué no aparece nunca:
 - el cuerpo crudo de una respuesta HTTP **ni su longitud**: un cuerpo que ecoa la pulsación
   mide distinto según el sentido que ecoa, así que el largo exacto también es un canal
   lateral;
-- el texto libre que el backend devuelva donde se espera un código estable.
+- ningún motivo que el backend devuelva fuera de su catálogo conocido, tenga o no forma de
+  código estable, ni el detalle crudo de una excepción inesperada.
 
 La protección es **por construcción y no por filtrado de texto**: los mensajes se arman sin
 los valores sensibles, `redaccion.py` concentra las descripciones seguras y las estructuras
 de `modelos.py` redactan su propia representación textual, de modo que un `logger.debug`
 agregado de buena fe sobre un evento o una solicitud tampoco pueda volcar el voto.
+
+El caso del `motivo` merece una nota, porque es el que más fácil se implementa mal. Ese
+campo llega dentro del cuerpo que contesta el backend, así que es texto de origen externo.
+No alcanza con exigirle una sintaxis: `DEV07_VOTO_1` es MAYUSCULAS_CON_GUION_BAJO igual que
+`VOTO_REGISTRADO`, y reconstruye el voto. Por eso `redaccion.py` enumera explícitamente los
+motivos y códigos que el backend puede emitir, verificados uno por uno, y clasifica todo lo
+demás como `MOTIVO_DESCONOCIDO`. Un motivo nuevo del backend que todavía no figure en ese
+catálogo aparecerá clasificado hasta que se lo agregue: es una degradación deliberada de la
+etiqueta, no del diagnóstico, porque el código HTTP y la clase de resultado siguen visibles.
 
 Esto endurece la observabilidad del proceso y no toca el contrato HTTP con el backend ni la
 auditoría institucional durable: el backend sigue siendo la única autoridad sobre el

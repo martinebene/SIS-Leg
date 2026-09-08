@@ -309,10 +309,17 @@ class ClienteHttpBackend:
                 solicitud.dispositivo,
                 type(error_inesperado).__name__,
             )
+            # El campo tampoco guarda `str(error_inesperado)`. Si lo guardara, el texto de
+            # la excepción quedaría dentro de la estructura y volvería a estar a un
+            # `print` de distancia del journal. Se conserva el tipo, que es la misma
+            # información que se registra, y así el campo sólo contiene texto que el
+            # bridge construye o que proviene del sistema operativo.
             return RespuestaEnvioBackend(
                 aceptada=None,
                 codigo_http=None,
                 motivo="ERROR_INESPERADO",
                 cuerpo=None,
-                error_transporte=str(error_inesperado),
+                error_transporte=(
+                    f"Excepción inesperada de tipo {type(error_inesperado).__name__}"
+                ),
             )

@@ -136,21 +136,31 @@ class RespuestaEnvioBackend:
     error_transporte: str | None = field(default=None)
 
     def __repr__(self) -> str:
-        """Representación sin el cuerpo de la respuesta (WP-088).
+        """Representación sin el cuerpo de la respuesta ni el detalle de transporte (WP-088).
 
         El cuerpo es contenido de origen externo: un 422 de FastAPI, por ejemplo, devuelve
         en `detail` la propia entrada rechazada, es decir el `{dispositivo, tecla}` recién
         enviado. Se informa cuántas claves trajo, que es el diagnóstico útil, y no qué
-        contenían. La clasificación del resultado (`aceptada`, `codigo_http`, `motivo`,
-        `error_transporte`) se conserva íntegra porque `motivo` ya llega saneado desde
-        `cliente_http`.
+        contenían.
+
+        `error_transporte` recibe el mismo tratamiento. Hoy `cliente_http` sólo le asigna
+        texto propio o detalle del sistema operativo, así que en la práctica es seguro; pero
+        este `repr` existe justamente como red contra un `logger.debug` futuro escrito sin
+        pensar, y una red que confía en la disciplina de quien llena el campo no es una red.
+        Se publica si hubo detalle o no, que alcanza para distinguir un fallo de transporte
+        de un resultado limpio, y el detalle completo sigue estando en el mensaje de log
+        que `cliente_http` emite de forma explícita y controlada.
+
+        `aceptada`, `codigo_http` y `motivo` se conservan íntegros: los dos primeros los
+        determina el bridge y el tercero ya llega restringido al catálogo conocido.
         """
         if self.cuerpo is None:
             cuerpo_descrito = "None"
         else:
             cuerpo_descrito = f"<{len(self.cuerpo)} clave(s) redactadas por WP-088>"
+        transporte_descrito = "None" if self.error_transporte is None else f"<{VALOR_REDACTADO}>"
         return (
             f"RespuestaEnvioBackend(aceptada={self.aceptada!r}, "
             f"codigo_http={self.codigo_http!r}, motivo={self.motivo!r}, "
-            f"cuerpo={cuerpo_descrito}, error_transporte={self.error_transporte!r})"
+            f"cuerpo={cuerpo_descrito}, error_transporte={transporte_descrito})"
         )

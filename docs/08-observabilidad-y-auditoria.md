@@ -328,7 +328,12 @@ Qué no puede registrarse nunca:
 - el payload serializado que viaja al backend;
 - el cuerpo crudo de una respuesta HTTP, ni su longitud, porque un cuerpo que ecoa la
   pulsación mide distinto según el sentido que ecoa y esa medida basta para distinguirlo;
-- el texto libre que el backend devuelva en lugar de un código estable.
+- cualquier motivo devuelto por el backend que no pertenezca a su catálogo conocido, tenga
+  o no forma de código estable: un valor como `DEV07_VOTO_1` respeta la sintaxis de un
+  código y aun así reconstruye el voto, de modo que la decisión se toma por enumeración
+  explícita y nunca por la forma del texto;
+- el detalle crudo de una excepción inesperada, que puede citar el fragmento que no pudo
+  procesarse.
 
 La protección se implementa **por construcción** y no filtrando texto ya formateado: los
 mensajes se construyen sin los valores sensibles y las estructuras internas del bridge

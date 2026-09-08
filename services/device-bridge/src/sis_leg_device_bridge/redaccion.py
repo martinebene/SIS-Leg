@@ -30,8 +30,10 @@ rompe con el primer formato nuevo), las funciones de acá construyen descripcion
 - de un cuerpo de respuesta HTTP sólo se describe su **forma** (si llegó, y de qué tipo
   estructural es), nunca sus claves, sus valores ni su longitud, que es una medida directa
   de esos valores;
-- de un motivo devuelto por el backend sólo se acepta la **forma** de un código estable
-  (una allowlist de caracteres), y cualquier texto libre se reemplaza por un marcador;
+- de un motivo devuelto por el backend sólo se acepta un valor que figure en un catálogo
+  explícito de códigos verificados uno por uno, y cualquier otro texto se reemplaza por un
+  marcador único; respetar una sintaxis no alcanza, porque `DEV07_VOTO_1` también la
+  respeta;
 - de una tecla física sólo se acepta el nombre cuando el normalizador demuestra que no
   corresponde a ninguna tecla funcional enviable al backend.
 
@@ -46,35 +48,113 @@ institucional y que cualquier persona con acceso al equipo puede leer sin trazab
 
 from __future__ import annotations
 
-import re
 from typing import Any, cast
 
 from sis_leg_device_bridge.normalizador import normalizar_tecla
 
-# Marcador que reemplaza a un `motivo` que no tiene forma de código estable. Se registra
-# tal cual para que soporte distinga «el backend no contestó un código canónico» de «el
-# backend contestó un código que no conozco».
-MOTIVO_NO_CANONICO = "MOTIVO_NO_CANONICO"
+# Marcador único con el que se reemplaza cualquier motivo que no pertenezca al catálogo
+# conocido. Es deliberadamente **uno solo**: publicar dos marcadores distintos —por ejemplo
+# «no canónico» frente a «desconocido»— comunicaría un bit de información derivado del
+# contenido externo, y un bit por pulsación alcanza para distinguir dos sentidos de voto.
+MOTIVO_DESCONOCIDO = "MOTIVO_DESCONOCIDO"
 
 # Marcador que reemplaza al nombre de una tecla cuando no se puede demostrar que sea
 # no funcional. Es la salida conservadora exigida por WP-088 ante cualquier ambigüedad.
 TECLA_REDACTADA = "REDACTADA"
 
-# Un código estable del backend es MAYUSCULAS_CON_GUION_BAJO y dígitos (por ejemplo
-# `VOTO_REGISTRADO`, `AUDITORIA_NO_DISPONIBLE`, `HTTP_422`). La expresión es una allowlist
-# de forma, no un filtro de contenido: cualquier cosa que no encaje se descarta entera en
-# lugar de intentar limpiarla. El límite de longitud evita que un cuerpo malicioso escriba
-# un párrafo en el journal aunque respete el alfabeto.
-_PATRON_MOTIVO_ESTABLE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+# Catálogo cerrado de motivos funcionales que `POST /api/v1/entradas/tecla` puede devolver
+# en una respuesta 2xx. Son las doce clasificaciones que el backend define en
+# `servicios/entrada.py`. Ninguna contiene identidad de banca ni sentido de voto: las tres
+# teclas de votación producen el mismo `VOTO_REGISTRADO`, que dice **que** hubo voto y no
+# **cuál** fue.
+_MOTIVOS_FUNCIONALES_BACKEND = frozenset(
+    {
+        "VOTO_REGISTRADO",
+        "PRESENCIA_ACTUALIZADA",
+        "TEST_ACTIVADO",
+        "SIN_PREPARAR",
+        "DISPOSITIVO_NO_ASIGNADO",
+        "TECLA_NO_HABILITADA",
+        "VOTACION_NO_EN_CURSO",
+        "CONCEJAL_AUSENTE",
+        "VOTO_YA_EMITIDO",
+        "PEDIDO_PALABRA_REGISTRADO",
+        "PEDIDO_PALABRA_RETIRADO",
+        "USO_PALABRA_FINALIZADO",
+    }
+)
+
+# Catálogo cerrado de códigos de error estables que el backend publica en el campo
+# `codigo` de su envoltura de error (`api/errores.py` y el manejador genérico de
+# `aplicacion.py`). Todos nombran una categoría técnica o institucional del fallo; ninguno
+# transporta datos de la pulsación que lo provocó.
+_CODIGOS_ERROR_BACKEND = frozenset(
+    {
+        "ERROR_INTERNO",
+        "CONFIGURACION_INVALIDA",
+        "PADRON_INVALIDO",
+        "AUDITORIA_NO_DISPONIBLE",
+        "BRIDGE_NO_DISPONIBLE",
+        "APLICACION_BRIDGE_RECHAZADA",
+        "BIBLIOTECA_MENSAJES_INVALIDA",
+        "PERSISTENCIA_MENSAJES_FALLIDA",
+        "MENSAJE_TECNICO_NO_EXISTENTE",
+        "ESTADO_INCOMPATIBLE",
+        "QUORUM_INSUFICIENTE",
+        "NUMERO_SESION_REQUERIDO",
+        "PRESIDENCIA_REQUERIDA",
+        "SECRETARIA_LEGISLATIVA_REQUERIDA",
+        "VOTACION_PENDIENTE",
+        "VOTACION_NO_COINCIDE",
+        "VOTACION_NO_EMPATADA",
+        "VOTACION_NO_EN_CURSO",
+        "DESEMPATE_YA_EMITIDO",
+        "DISPOSITIVO_REMAPEO_NO_EXISTENTE",
+        "REMAPEO_YA_ACTIVO",
+        "REMAPEO_NO_COINCIDE",
+        "REMAPEO_SIN_CANDIDATO",
+        "CANDIDATO_YA_REGISTRADO",
+        "PARAMETROS_REMAPEO_INCOMPATIBLES",
+        "TIPO_VOTACION_NO_PERMITIDO",
+        "ORDEN_DEL_DIA_INVALIDO",
+    }
+)
+
+# Unión de ambos: el único conjunto de textos de origen externo que el bridge acepta
+# reproducir en su registro.
+MOTIVOS_CONOCIDOS = _MOTIVOS_FUNCIONALES_BACKEND | _CODIGOS_ERROR_BACKEND
 
 
 def sanear_motivo(motivo: object) -> str:
-    """Devuelve el motivo sólo si tiene forma de código estable; si no, un marcador.
+    """Devuelve el motivo sólo si pertenece al catálogo conocido; si no, un marcador.
 
-    El `motivo` llega dentro del cuerpo JSON que contesta el backend, así que es texto de
-    origen externo: el bridge no puede asumir que sea un código corto y neutro. Un cuerpo
-    mal construido —o manipulado— podría traer algo como `"dev07 votó 1"`, y registrarlo
-    reconstruiría el sentido del voto igual que si el bridge lo hubiese escrito.
+    Por qué una allowlist explícita y no una regla de forma
+    -------------------------------------------------------
+
+    La primera versión de esta función aceptaba cualquier texto que *pareciera* un código
+    estable, comprobando con una expresión regular que fuese MAYUSCULAS_CON_GUION_BAJO. Esa
+    comprobación valida **forma** y no **contenido**, así que dejaba pasar intactos valores
+    como `DEV07_VOTO_1`, `VOTO_POSITIVO_DEV07` o `ABSTENCION_BANCA_7`, que después se
+    registraban junto al dispositivo lógico. Un backend o intermediario mal configurado que
+    colocara datos ecoados en ese campo reabría exactamente la fuga que WP-088 cierra.
+
+    La lección es general y conviene no perderla: que un dato de origen externo respete una
+    sintaxis no demuestra que sea inofensivo. Sólo una enumeración explícita de valores
+    verificados uno por uno lo demuestra, y por eso el catálogo de arriba se construyó
+    leyendo el contrato real del backend en lugar de describir un patrón.
+
+    Comportamiento fail-closed
+    --------------------------
+
+    Un motivo legítimo que el backend agregue en el futuro y que todavía no figure acá
+    quedará clasificado como `MOTIVO_DESCONOCIDO`. Es la degradación deliberada y correcta:
+    se pierde una etiqueta de diagnóstico, no la capacidad de diagnosticar, porque el código
+    HTTP, la clase de resultado y el detalle de transporte siguen registrándose. Ampliar el
+    catálogo es entonces un acto consciente y revisable, que es justamente lo que la regla
+    de forma no exigía.
+
+    Dónde se aplica
+    ---------------
 
     Se sanea en el **ingreso** al bridge y no en cada punto de logging: así el valor que
     queda guardado en `RespuestaEnvioBackend.motivo` ya es seguro y ningún consumidor
@@ -82,16 +162,20 @@ def sanear_motivo(motivo: object) -> str:
     necesita acordarse de sanearlo otra vez. Es la diferencia entre un dato seguro por
     construcción y un filtro que hay que recordar aplicar.
 
+    Los motivos que fabrica el propio bridge (`TIMEOUT`, `ERROR_CONEXION`, `HTTP_422`,
+    `RESPUESTA_NO_JSON`…) no pasan por acá: no son de origen externo, así que no hay nada
+    que autorizar.
+
     Args:
         motivo: Valor recibido en el cuerpo de la respuesta. Se acepta `object` porque el
             JSON externo puede traer cualquier tipo, no necesariamente `str`.
 
     Returns:
-        El mismo texto si respeta la forma de código estable, o `MOTIVO_NO_CANONICO`.
+        El mismo texto si pertenece al catálogo conocido, o `MOTIVO_DESCONOCIDO`.
     """
-    if isinstance(motivo, str) and _PATRON_MOTIVO_ESTABLE.match(motivo):
+    if isinstance(motivo, str) and motivo in MOTIVOS_CONOCIDOS:
         return motivo
-    return MOTIVO_NO_CANONICO
+    return MOTIVO_DESCONOCIDO
 
 
 def describir_cuerpo_json(cuerpo: Any) -> str:

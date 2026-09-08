@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import pytest
 from sis_leg_device_bridge.redaccion import (
-    MOTIVO_NO_CANONICO,
+    MOTIVO_DESCONOCIDO,
+    MOTIVOS_CONOCIDOS,
     TECLA_REDACTADA,
     describir_cuerpo_crudo,
     describir_cuerpo_json,
@@ -21,23 +22,44 @@ from sis_leg_device_bridge.redaccion import (
 
 
 @pytest.mark.parametrize(
-    "motivo_canonico",
+    "motivo_conocido",
     [
         "VOTO_REGISTRADO",
         "PRESENCIA_ACTUALIZADA",
         "AUDITORIA_NO_DISPONIBLE",
         "TECLA_NO_HABILITADA",
-        "HTTP_422",
-        "OK",
+        "CONCEJAL_AUSENTE",
+        "ERROR_INTERNO",
     ],
 )
-def test_los_codigos_estables_del_backend_pasan_sin_cambios(motivo_canonico: str) -> None:
-    """Los motivos reales del backend son códigos estables y deben seguir siendo legibles.
+def test_los_motivos_del_catalogo_pasan_sin_cambios(motivo_conocido: str) -> None:
+    """Los motivos reales del backend siguen siendo legibles en el registro.
 
     Sanear no puede degradar el diagnóstico: distinguir un `CONCEJAL_AUSENTE` de un
     `VOTO_YA_EMITIDO` es exactamente lo que WP-088 exige preservar.
     """
-    assert sanear_motivo(motivo_canonico) == motivo_canonico
+    assert sanear_motivo(motivo_conocido) == motivo_conocido
+
+
+@pytest.mark.parametrize(
+    "motivo_sensible",
+    [
+        "DEV07_VOTO_1",
+        "VOTO_POSITIVO_DEV07",
+        "VOTO_NEGATIVO_DEV07",
+        "ABSTENCION_BANCA_7",
+        "DEV07_TECLA_3",
+    ],
+)
+def test_un_motivo_con_forma_canonica_pero_sensible_se_clasifica(motivo_sensible: str) -> None:
+    """Regresión de la corrección I002: la sintaxis no demuestra que un dato sea inofensivo.
+
+    La versión anterior aceptaba cualquier texto que *pareciera* un código estable, es
+    decir MAYUSCULAS_CON_GUION_BAJO. Todos los valores de esta lista respetan esa forma y
+    aun así reconstruyen el sentido del voto de una banca identificable, así que pasaban
+    intactos al registro. Sólo una enumeración explícita de valores verificados los detiene.
+    """
+    assert sanear_motivo(motivo_sensible) == MOTIVO_DESCONOCIDO
 
 
 @pytest.mark.parametrize(
@@ -45,25 +67,59 @@ def test_los_codigos_estables_del_backend_pasan_sin_cambios(motivo_canonico: str
     [
         "la banca dev07 voto POSITIVO",  # texto libre con el sentido del voto
         "dev07=1",  # par banca/tecla compacto
-        "voto_registrado",  # minúsculas: no es un código estable
-        "VOTO REGISTRADO",  # espacios: tampoco lo es
-        "A" * 200,  # texto largo que igual respeta el alfabeto
+        "voto_registrado",  # minúsculas: tampoco está en el catálogo
+        "VOTO REGISTRADO",  # espacios
+        "A" * 200,  # texto largo
         "",  # cadena vacía
     ],
 )
 def test_el_texto_libre_del_backend_se_reemplaza_por_un_marcador(motivo_peligroso: str) -> None:
     """El `motivo` viaja dentro del cuerpo de la respuesta, así que es de origen externo.
 
-    Como no se puede saber qué trae, se acepta sólo la forma de un código estable y
-    cualquier otra cosa se descarta entera en lugar de intentar limpiarla.
+    Como no se puede saber qué trae, se acepta únicamente lo que figura en el catálogo y
+    todo lo demás se descarta entero en lugar de intentar limpiarlo.
     """
-    assert sanear_motivo(motivo_peligroso) == MOTIVO_NO_CANONICO
+    assert sanear_motivo(motivo_peligroso) == MOTIVO_DESCONOCIDO
 
 
 @pytest.mark.parametrize("motivo_no_texto", [None, 123, True, {"tecla": "1"}, ["1"]])
 def test_un_motivo_que_no_es_texto_tambien_se_redacta(motivo_no_texto: object) -> None:
     """El JSON externo puede traer cualquier tipo en ese campo, no necesariamente `str`."""
-    assert sanear_motivo(motivo_no_texto) == MOTIVO_NO_CANONICO
+    assert sanear_motivo(motivo_no_texto) == MOTIVO_DESCONOCIDO
+
+
+def test_existe_un_unico_marcador_para_todo_lo_no_reconocido() -> None:
+    """Dos marcadores distintos serían, por sí solos, un canal de un bit por pulsación.
+
+    Si el registro dijera «no canónico» para un texto libre y «desconocido» para uno con
+    forma de código, un backend hostil podría elegir entre esas dos formas según el sentido
+    del voto y filtrar un bit por pulsación sin escribir jamás un dato sensible. Con un
+    único marcador no queda nada que elegir.
+    """
+    assert sanear_motivo("texto libre en minusculas") == sanear_motivo("FORMA_CANONICA_RARA")
+
+
+def test_el_catalogo_no_contiene_ningun_motivo_con_datos_de_pulsacion() -> None:
+    """Invariante del catálogo: ninguna entrada nombra una banca ni un sentido de voto.
+
+    Es la comprobación que protege a la propia allowlist. Agregar un motivo es un acto
+    consciente, y esta prueba falla si alguna vez se agrega uno que reintroduzca el
+    problema que la corrección elimina.
+    """
+    # Se prohíben las palabras que nombran una banca o un sentido de voto. `TECLA` no está
+    # en la lista a propósito: `TECLA_NO_HABILITADA` clasifica un rechazo sin decir **qué**
+    # tecla era, y esa distinción entre nombrar la categoría y nombrar el valor es
+    # justamente la que el catálogo tiene que preservar.
+    palabras_prohibidas = {"DEV", "BANCA", "POSITIVO", "NEGATIVO", "ABSTENCION"}
+
+    for motivo in MOTIVOS_CONOCIDOS:
+        # La comparación es por palabra y no por subcadena: `DISPOSITIVO_REMAPEO_NO_EXISTENTE`
+        # contiene las letras de «POSITIVO» dentro de «DISPOSITIVO» sin nombrar ningún voto.
+        palabras = set(motivo.split("_"))
+        assert not (palabras & palabras_prohibidas), motivo
+        # Ningún dígito: `1`, `2` y `3` son el sentido del voto, y un motivo del catálogo
+        # nunca necesita numerar nada.
+        assert not any(caracter.isdigit() for caracter in motivo), motivo
 
 
 def test_el_cuerpo_json_se_describe_por_forma_y_nunca_por_contenido() -> None:
