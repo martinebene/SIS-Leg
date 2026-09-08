@@ -16,6 +16,10 @@ from pydantic.json_schema import SkipJsonSchema
 from sis_leg_backend.api.errores import ErrorRespuesta
 from sis_leg_backend.dominio.sesion import ActualizacionDatosInstitucionales
 from sis_leg_backend.recursos import obtener_recursos_aplicacion
+from sis_leg_backend.servicios.acta_institucional import (
+    EstadoCopiaExterna,
+    ResultadoCierreInstitucional,
+)
 from sis_leg_backend.servicios.sesion import ServicioSesion
 
 enrutador_sesion = APIRouter(tags=["sesion"])
@@ -112,6 +116,46 @@ class SolicitudActualizarSesion(BaseModel):
         )
 
 
+class RespuestaCierreSesion(BaseModel):
+    """Qué quedó del cierre además de los CSV: informe de acta y copia externa (WP-085).
+
+    Este cuerpo describe hechos **posteriores** al cierre institucional. Recibirlo
+    significa siempre que la sesión cerró: el backend responde 200 sólo después de
+    haber persistido ``SESION_CERRADA`` y cerrado el conjunto. Por eso ninguno de
+    sus campos puede interpretarse como un cierre fallido.
+
+    Moderación lo usa para decidir qué aviso efímero mostrar:
+
+    - ``acta_generada`` en ``false``, o ``copia_externa`` en ``FALLIDA``: aviso de
+      error que debe aclarar que la sesión sí cerró;
+    - ``copia_externa`` en ``EXITOSA``: confirmación breve de la copia;
+    - ``copia_externa`` en ``OMITIDA`` con acta generada: no corresponde aviso,
+      porque la instalación no pidió copia y todo salió como debía.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    acta_generada: bool
+    """``True`` si el informe ``...-ACTA.txt`` quedó escrito junto a los CSV."""
+
+    copia_externa: EstadoCopiaExterna
+    """Desenlace de la copia al directorio configurado en ``paths.logs_copy_dir``."""
+
+    @classmethod
+    def desde_resultado(cls, resultado: ResultadoCierreInstitucional) -> RespuestaCierreSesion:
+        """Traduce el resultado del servicio al contrato de transporte.
+
+        La ruta local del informe queda deliberadamente fuera del cuerpo: es una
+        ruta del sistema de archivos del servidor y Moderación no la necesita
+        para redactar su aviso.
+        """
+
+        return cls(
+            acta_generada=resultado.acta_generada,
+            copia_externa=resultado.copia_externa,
+        )
+
+
 RESPUESTAS_ERROR_SESION: dict[int | str, dict[str, Any]] = {
     409: {
         "model": ErrorRespuesta,
@@ -178,13 +222,20 @@ async def actualizar_sesion(
 
 @enrutador_sesion.delete(
     "/sesion",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
+    status_code=status.HTTP_200_OK,
     responses=RESPUESTAS_ERROR_SESION,
     summary="Cerrar normalmente la sesión",
 )
-async def cerrar_sesion(solicitud: Request) -> Response:
-    """Cierra sin body y resuelve antes una EN_CURSO o EMPATADA pendiente."""
+async def cerrar_sesion(solicitud: Request) -> RespuestaCierreSesion:
+    """Cierra sin body y resuelve antes una EN_CURSO o EMPATADA pendiente.
 
-    await _crear_servicio(solicitud).cerrar_sesion()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    Devuelve 200 con cuerpo —y no 204 como el resto de los comandos— porque el
+    cierre produce dos hechos que Moderación no puede deducir del snapshot: si el
+    informe de acta se generó y si la copia externa opcional se completó
+    (WP-085). Un fallo en cualquiera de los dos viaja dentro de este cuerpo, no
+    como error HTTP: la sesión ya cerró de forma durable y responder 5xx haría
+    que el operador intentara cerrarla otra vez.
+    """
+
+    resultado = await _crear_servicio(solicitud).cerrar_sesion()
+    return RespuestaCierreSesion.desde_resultado(resultado)

@@ -196,6 +196,14 @@ python3.14 deploy/herramienta_despliegue.py preflight
    referencia del formato; el artefacto no las incluye y `scripts/preparar_config_local.py`
    es exclusivamente un bootstrap de desarrollo, sin ningún papel en el despliegue
    productivo (WP-073).
+
+   `paths.logs_copy_dir` es opcional (WP-085). Si la instalación quiere una copia
+   automática de cada conjunto cerrado en un recurso de red, ese recurso debe estar
+   **montado por el sistema operativo** antes de arrancar el servicio y ser escribible
+   por el usuario del backend: SIS-Leg no monta nada, no implementa SMB/NFS y no guarda
+   credenciales. Un montaje caído no impide operar ni cerrar sesiones; sólo hace fallar la
+   copia, que Moderación informa con un aviso efímero. Si la clave no se declara, el
+   backend no intenta ningún acceso externo.
 4. Repetir el bootstrap después de provisionar para aplicar idempotentemente el
    plan también a los archivos recién creados:
 

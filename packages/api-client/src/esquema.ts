@@ -81,6 +81,13 @@ export interface paths {
         /**
          * Cerrar normalmente la sesión
          * @description Cierra sin body y resuelve antes una EN_CURSO o EMPATADA pendiente.
+         *
+         *     Devuelve 200 con cuerpo —y no 204 como el resto de los comandos— porque el
+         *     cierre produce dos hechos que Moderación no puede deducir del snapshot: si el
+         *     informe de acta se generó y si la copia externa opcional se completó
+         *     (WP-085). Un fallo en cualquiera de los dos viaja dentro de este cuerpo, no
+         *     como error HTTP: la sesión ya cerró de forma durable y responder 5xx haría
+         *     que el operador intentara cerrarla otra vez.
          */
         delete: operations["cerrar_sesion_api_v1_sesion_delete"];
         options?: never;
@@ -914,6 +921,22 @@ export interface components {
             motivo: string | null;
         };
         /**
+         * EstadoCopiaExterna
+         * @description Desenlace del intento de copia externa del conjunto cerrado.
+         *
+         *     Los tres valores son mutuamente excluyentes y describen exactamente lo que
+         *     Moderación debe mostrar:
+         *
+         *     - ``OMITIDA``: ``paths.logs_copy_dir`` no está configurado. No hubo intento,
+         *       no hubo acceso externo y no corresponde ningún aviso;
+         *     - ``EXITOSA``: los cuatro archivos quedaron replicados en el destino;
+         *     - ``FALLIDA``: el destino estaba configurado pero la copia no pudo
+         *       completarse. Los archivos locales siguen intactos y el cierre sigue siendo
+         *       válido.
+         * @enum {string}
+         */
+        EstadoCopiaExterna: "OMITIDA" | "EXITOSA" | "FALLIDA";
+        /**
          * EstadoGlobal
          * @description Representa las únicas etapas globales permitidas por el dominio.
          *
@@ -1396,6 +1419,28 @@ export interface components {
             /** Concejales */
             concejales: components["schemas"]["ConcejalRemapeoProyectado"][];
             capacidades: components["schemas"]["CapacidadesRemapeoProyectadas"];
+        };
+        /**
+         * RespuestaCierreSesion
+         * @description Qué quedó del cierre además de los CSV: informe de acta y copia externa (WP-085).
+         *
+         *     Este cuerpo describe hechos **posteriores** al cierre institucional. Recibirlo
+         *     significa siempre que la sesión cerró: el backend responde 200 sólo después de
+         *     haber persistido ``SESION_CERRADA`` y cerrado el conjunto. Por eso ninguno de
+         *     sus campos puede interpretarse como un cierre fallido.
+         *
+         *     Moderación lo usa para decidir qué aviso efímero mostrar:
+         *
+         *     - ``acta_generada`` en ``false``, o ``copia_externa`` en ``FALLIDA``: aviso de
+         *       error que debe aclarar que la sesión sí cerró;
+         *     - ``copia_externa`` en ``EXITOSA``: confirmación breve de la copia;
+         *     - ``copia_externa`` en ``OMITIDA`` con acta generada: no corresponde aviso,
+         *       porque la instalación no pidió copia y todo salió como debía.
+         */
+        RespuestaCierreSesion: {
+            /** Acta Generada */
+            acta_generada: boolean;
+            copia_externa: components["schemas"]["EstadoCopiaExterna"];
         };
         /**
          * RespuestaSalud
@@ -2226,11 +2271,13 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RespuestaCierreSesion"];
+                };
             };
             /** @description Rechazo funcional con código estable según la precondición. */
             409: {

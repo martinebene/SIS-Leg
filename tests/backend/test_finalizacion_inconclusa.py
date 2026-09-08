@@ -48,6 +48,10 @@ from sis_leg_backend.dominio.votacion import (
     VotoOrdinario,
 )
 from sis_leg_backend.hechos_operativos import ReferenciaHechoOperativo
+from sis_leg_backend.servicios.acta_institucional import (
+    EstadoCopiaExterna,
+    ResultadoCierreInstitucional,
+)
 from sis_leg_backend.servicios.entrada import ServicioEntradaTecla
 from sis_leg_backend.servicios.preparacion import ServicioPreparacion
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
@@ -276,6 +280,22 @@ def instalar_fallo_en_evento(
         return registrar_original(nivel, etiqueta, codigo_evento, mensaje, referencia=referencia)
 
     monkeypatch.setattr(escritor, "registrar_evento", registrar_evento)
+
+
+def afirmar_cierre_completado(resultado: object) -> None:
+    """Comprueba que la operación observada sea el cierre de sesión ya completado.
+
+    Desde WP-085 ``cerrar_sesion`` ya no devuelve ``None``: entrega el resultado
+    del informe de acta y de la copia externa. En estas carreras la configuración
+    de prueba no declara ``paths.logs_copy_dir``, así que el desenlace esperado es
+    siempre acta generada y copia omitida. Comprobarlo acá mantiene las pruebas
+    afirmando lo mismo que antes —"el cierre se completó sin error"— con el
+    contrato nuevo.
+    """
+
+    assert isinstance(resultado, ResultadoCierreInstitucional)
+    assert resultado.acta_generada is True
+    assert resultado.copia_externa is EstadoCopiaExterna.OMITIDA
 
 
 async def encolar_en_orden(
@@ -842,7 +862,7 @@ async def test_carrera_cierre_sesion_vs_ultimo_voto(
 
     if cierre_primero:
         primero, segundo = await encolar_en_orden(entorno.ejecutor, cierre, ultimo_voto)
-        assert primero is None
+        afirmar_cierre_completado(primero)
         assert isinstance(segundo, RespuestaEntrada)
         assert segundo.motivo == "SIN_PREPARAR"
         assert votacion.resultado is ResultadoVotacion.INCONCLUSA
@@ -850,7 +870,7 @@ async def test_carrera_cierre_sesion_vs_ultimo_voto(
     else:
         primero, segundo = await encolar_en_orden(entorno.ejecutor, ultimo_voto, cierre)
         assert isinstance(primero, RespuestaEntrada)
-        assert segundo is None
+        afirmar_cierre_completado(segundo)
         assert votacion.resultado is ResultadoVotacion.APROBADA
         assert set(votacion.votos_ordinarios) == {"30000001", "30000002"}
     assert entorno.estado.estado_global is EstadoGlobal.SIN_PREPARAR
@@ -871,14 +891,14 @@ async def test_carrera_cierre_sesion_vs_presencia(
 
     if cierre_primero:
         primero, segundo = await encolar_en_orden(entorno.ejecutor, cierre, presencia)
-        assert primero is None
+        afirmar_cierre_completado(primero)
         assert isinstance(segundo, RespuestaEntrada)
         assert segundo.motivo == "SIN_PREPARAR"
     else:
         primero, segundo = await encolar_en_orden(entorno.ejecutor, presencia, cierre)
         assert isinstance(primero, RespuestaEntrada)
         assert primero.aceptada is True
-        assert segundo is None
+        afirmar_cierre_completado(segundo)
     assert votacion.resultado is ResultadoVotacion.INCONCLUSA
     assert entorno.estado.estado_global is EstadoGlobal.SIN_PREPARAR
 
@@ -897,12 +917,12 @@ async def test_carrera_cierre_sesion_vs_finalizacion_manual(
 
     if cierre_primero:
         primero, segundo = await encolar_en_orden(entorno.ejecutor, cierre, manual)
-        assert primero is None
+        afirmar_cierre_completado(primero)
         assert isinstance(segundo, ErrorEstadoIncompatible)
     else:
         primero, segundo = await encolar_en_orden(entorno.ejecutor, manual, cierre)
         assert primero is None
-        assert segundo is None
+        afirmar_cierre_completado(segundo)
     assert votacion.resultado is ResultadoVotacion.INCONCLUSA
     assert entorno.estado.estado_global is EstadoGlobal.SIN_PREPARAR
     assert entorno.estado.votacion_activa is None

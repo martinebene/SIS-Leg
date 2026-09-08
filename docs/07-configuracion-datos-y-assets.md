@@ -52,6 +52,7 @@ Debe poder definir, como mínimo:
 - temporizador/efecto visual inicial de votación;
 - tiempo de permanencia del resultado público;
 - directorio de registros CSV;
+- directorio externo opcional donde replicar los registros al cerrar la sesión;
 - assets de bancas/recinto cuando corresponda;
 - sonidos de la Pantalla del Recinto: archivo y volumen `0..100` por evento.
 
@@ -139,6 +140,34 @@ que es la que el Recinto recibe durante esa preparación o sesión.
 
 La proyección pública `EstadoRecinto` incluye por eso el bloque `sonidos` en
 los tres estados globales.
+
+### Sección `[paths]`
+
+```toml
+[paths]
+logs_dir = "logs"
+# logs_copy_dir = "/mnt/registros-institucionales"
+```
+
+- `logs_dir` es obligatoria: es el directorio donde el backend crea los conjuntos de
+  auditoría.
+- `logs_copy_dir` es la **única clave opcional** del esquema (WP-085). Si no aparece, al
+  cerrar una sesión no se intenta ningún acceso externo y Moderación no muestra aviso
+  alguno. Si aparece, debe ser un texto no vacío: declararla vacía es una configuración a
+  medio escribir y se rechaza al arrancar, igual que un `logs_dir` vacío.
+
+`logs_copy_dir` se interpreta como una ruta de sistema de archivos **ya montada** por el
+sistema operativo y con permiso de escritura. SIS-Leg no implementa cliente SMB ni NFS, no
+monta nada y no guarda credenciales de red. Al cerrar la sesión copia allí, dentro de
+`AAAA-MM-DD/`, los tres CSV del conjunto más el informe `-ACTA.txt`; los archivos locales
+quedan intactos y un fallo de copia no invalida el cierre. Ver
+`docs/08-observabilidad-y-auditoria.md`, sección 4 bis.
+
+La plantilla versionada la deja comentada a propósito: una instalación nueva no debe
+empezar a escribir en una ruta externa sin decisión explícita. En un equipo de desarrollo
+conviene apuntarla a un directorio fuera del repositorio, por ejemplo
+`/workspace/SIS-Leg-logs-copy-dev`, y hacerlo en la copia local `config/system.toml`, que
+no se versiona.
 
 ## 4. Valores actuales de referencia
 

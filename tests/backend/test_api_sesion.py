@@ -387,8 +387,10 @@ async def test_cierre_normal_limpia_contexto_y_conserva_csv(
         assert sesion is not None
         ruta_l1 = sesion.contexto_operativo.escritor_auditoria.rutas[NivelAuditoria.L1]
         respuesta = await cliente.delete("/api/v1/sesion")
-        assert respuesta.status_code == 204
-        assert respuesta.content == b""
+        # WP-085 cambia el cierre de 204 a 200 con cuerpo: el informe de acta y
+        # la copia externa son hechos posteriores que el snapshot no transporta.
+        assert respuesta.status_code == 200
+        assert respuesta.json() == {"acta_generada": True, "copia_externa": "OMITIDA"}
         assert estado.estado_global is EstadoGlobal.SIN_PREPARAR
         assert estado.preparacion_activa is None
         assert estado.sesion_activa is None
@@ -461,9 +463,16 @@ async def test_openapi_expone_los_cuatro_contratos_de_wp008() -> None:
     especificacion = crear_aplicacion().openapi()
     preparacion = especificacion["paths"]["/api/v1/preparacion"]["patch"]
     sesion = especificacion["paths"]["/api/v1/sesion"]
-    for operacion in (preparacion, sesion["post"], sesion["patch"], sesion["delete"]):
+    for operacion in (preparacion, sesion["post"], sesion["patch"]):
         for codigo in ("204", "409", "422", "503", "500"):
             assert codigo in operacion["responses"]
+
+    # El cierre es la única operación del recurso con cuerpo de respuesta: desde
+    # WP-085 informa el resultado del acta y de la copia externa.
+    for codigo in ("200", "409", "422", "503", "500"):
+        assert codigo in sesion["delete"]["responses"]
+    esquema_cierre = sesion["delete"]["responses"]["200"]["content"]["application/json"]["schema"]
+    assert esquema_cierre["$ref"].endswith("/RespuestaCierreSesion")
 
     assert "requestBody" not in sesion["post"]
     assert "requestBody" not in sesion["delete"]

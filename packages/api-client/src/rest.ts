@@ -261,6 +261,16 @@ export class ClienteRest {
     return this.solicitarVacio('DELETE', ruta, { signal })
   }
 
+  /**
+   * Variante de DELETE para el único comando que devuelve cuerpo: el cierre de sesión.
+   *
+   * Se agrega junto a `deleteVacio` en lugar de reemplazarlo porque los demás DELETE del
+   * contrato siguen respondiendo 204 y no deben empezar a esperar JSON.
+   */
+  async delete<T>(ruta: string, signal?: AbortSignal): Promise<T> {
+    return this.solicitarJson<T>('DELETE', ruta, { signal })
+  }
+
   async postMultipart<T>(ruta: string, formData: FormData, signal?: AbortSignal): Promise<T> {
     return this.solicitarMultipart<T>('POST', ruta, formData, { signal })
   }

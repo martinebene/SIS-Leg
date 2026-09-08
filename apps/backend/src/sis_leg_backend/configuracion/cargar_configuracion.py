@@ -6,7 +6,9 @@ Flujo principal paso a paso:
 2. ``tomllib`` (biblioteca estándar de Python desde 3.11) lo convierte a un
    diccionario: cada sección ``[nombre]`` se vuelve un dict anidado.
 3. Se extraen las cinco secciones canónicas y se validan sus claves una por
-   una con los validadores privados de este módulo. Las dos secciones
+   una con los validadores privados de este módulo. La única clave opcional del
+   esquema es ``paths.logs_copy_dir`` (WP-085): si no aparece, la copia externa
+   del conjunto cerrado no se intenta. Las dos secciones
    incorporadas después se delegan a su módulo propio: ``[sonidos]``
    (WP-065) a ``configuracion.sonidos_recinto`` e ``[institucion]``
    (WP-084) a ``configuracion.identidad_institucional``.
@@ -92,6 +94,9 @@ def cargar_configuracion_sistema(ruta: Path) -> ConfiguracionSistema:
             timers, "timers.public_result_display_seconds"
         ),
         directorio_registros=_exigir_texto_no_vacio(paths, "paths.logs_dir"),
+        # ``paths.logs_copy_dir`` es opcional (WP-085): ausente significa que
+        # esta instalación no quiere copia externa del conjunto cerrado.
+        directorio_copia_registros=_leer_texto_opcional_no_vacio(paths, "paths.logs_copy_dir"),
         # La sección [sonidos] la valida su propio módulo: son quince entradas
         # con reglas propias de ruta y volumen, y ese detalle no pertenece al
         # esquema mínimo de WP-003.
@@ -228,4 +233,40 @@ def _exigir_texto_no_vacio(seccion: dict[str, Any], clave: str) -> str:
     valor = seccion.get(campo)
     if not isinstance(valor, str) or not valor.strip():
         raise ErrorValidacionConfiguracion(f"{clave} debe ser un texto no vacío")
+    return valor
+
+
+def _leer_texto_opcional_no_vacio(seccion: dict[str, Any], clave: str) -> str | None:
+    """Valida una clave de texto que puede no estar declarada (WP-085).
+
+    Entradas:
+        seccion: el dict de la sección ya extraída del TOML.
+        clave: nombre canónico completo ("paths.logs_copy_dir"), usado en el
+            mensaje de error; dentro del dict el campo es la parte posterior al
+            punto.
+
+    Resultado:
+        ``None`` si la clave **no aparece** en el archivo, o el texto configurado
+        tal cual, sin recortar espacios: una ruta puede ser cualquier cosa que el
+        sistema de archivos acepte y normalizarla sería decidir por el operador.
+
+    Por qué "ausente" y "presente pero vacío" no son lo mismo: ausente es la
+    decisión deliberada de no copiar nada, mientras que ``logs_copy_dir = ""`` es
+    una configuración a medio escribir. Aceptar la segunda como "no copiar"
+    ocultaría el error justo en la clave que el operador creía haber activado, así
+    que se rechaza igual que un ``logs_dir`` vacío.
+
+    Errores:
+        ``ErrorValidacionConfiguracion`` si la clave existe pero no es un texto
+        con contenido.
+    """
+
+    campo = clave.rsplit(".", 1)[1]
+    if campo not in seccion:
+        return None
+    valor = seccion.get(campo)
+    if not isinstance(valor, str) or not valor.strip():
+        raise ErrorValidacionConfiguracion(
+            f"{clave} es opcional, pero si se declara debe ser un texto no vacío"
+        )
     return valor

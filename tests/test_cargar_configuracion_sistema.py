@@ -104,6 +104,9 @@ def test_carga_el_toml_canonico_con_sus_valores_y_tipos(ruta_system_toml_valido:
     assert configuracion.recinto_cuenta_regresiva_inicial_segundos == 4
     assert configuracion.recinto_resultado_publico_segundos == 6
     assert configuracion.directorio_registros == "logs"
+    # ``paths.logs_copy_dir`` no está en el TOML canónico: la copia externa
+    # de WP-085 es opcional y no se activa sola.
+    assert configuracion.directorio_copia_registros is None
     assert configuracion.capacidad_total == 12
 
     # Los snapshots no contienen colecciones mutables: nada externo puede
@@ -163,6 +166,12 @@ def test_carga_el_toml_canonico_con_sus_valores_y_tipos(ruta_system_toml_valido:
         ),
         # paths.logs_dir: texto no vacío (solo espacios es vacío).
         (LINEA_LOGS, 'logs_dir = "   "', "paths.logs_dir"),
+        # paths.logs_copy_dir es opcional (WP-085), pero declararla vacía es una
+        # configuración a medio escribir y debe fallar en vez de leerse como
+        # "no copiar": el operador creía haber activado la copia externa.
+        (LINEA_LOGS, LINEA_LOGS + '\nlogs_copy_dir = ""', "paths.logs_copy_dir"),
+        (LINEA_LOGS, LINEA_LOGS + '\nlogs_copy_dir = "   "', "paths.logs_copy_dir"),
+        (LINEA_LOGS, LINEA_LOGS + "\nlogs_copy_dir = 7", "paths.logs_copy_dir"),
         # Clave ausente dentro de la sección presente.
         (LINEA_QUORUM, "", "session.quorum"),
         (LINEA_TIMER_TEST_DISPOSITIVO, "", "timers.device_test_seconds"),
@@ -337,3 +346,24 @@ def test_cambiar_el_archivo_no_modifica_el_snapshot_ya_cargado(tmp_path: Path) -
     assert recargada.quorum == 11
     assert recargada.device_test_seconds == 2.5
     assert configuracion.quorum == 7
+
+
+def test_logs_copy_dir_declarado_se_conserva_tal_cual(tmp_path: Path) -> None:
+    """La ruta de copia externa opcional viaja sin normalizar (WP-085).
+
+    No se recortan espacios ni se resuelve la ruta: un destino puede ser
+    cualquier cosa que el sistema de archivos acepte, y "corregirlo" sería
+    decidir por el operador dónde deja su segunda copia.
+    """
+
+    contenido = TOML_CANONICO.replace(
+        LINEA_LOGS,
+        LINEA_LOGS + '\nlogs_copy_dir = "/mnt/copia-actas"',
+    )
+    ruta = escribir_system_toml(tmp_path / "system.toml", contenido)
+
+    configuracion = cargar_configuracion_sistema(ruta)
+
+    assert configuracion.directorio_copia_registros == "/mnt/copia-actas"
+    # La clave opcional no altera ninguna otra parte del snapshot.
+    assert configuracion.directorio_registros == "logs"

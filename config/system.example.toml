@@ -43,6 +43,29 @@ public_result_display_seconds = 6
 [paths]
 logs_dir = "logs"
 
+# logs_copy_dir es la única clave opcional de todo el archivo (WP-085).
+#
+# Qué hace: al cerrar una sesión, además de dejar los tres CSV y el informe
+# "...-ACTA.txt" en logs_dir, SIS-Leg replica esos cuatro archivos dentro de
+# "<logs_copy_dir>/AAAA-MM-DD/". Los archivos locales nunca se mueven ni se
+# borran: la copia es redundancia posterior al cierre, no parte del registro.
+#
+# Cómo se interpreta: es una ruta de sistema de archivos que el sistema
+# operativo ya debe tener montada y con permiso de escritura. SIS-Leg no
+# implementa cliente SMB ni NFS, no monta nada y no guarda credenciales. Si la
+# ruta no está disponible, la copia falla, Moderación lo avisa unos segundos y
+# el cierre institucional sigue siendo válido.
+#
+# Viene comentada a propósito: una instalación nueva no debe empezar a escribir
+# en una ruta externa sin que alguien la haya decidido. Descomentala y poné el
+# destino real para activarla.
+#
+# logs_copy_dir = "/mnt/registros-institucionales"
+#
+# En un equipo de desarrollo conviene apuntar a un directorio fuera del
+# repositorio, por ejemplo "/workspace/SIS-Leg-logs-copy-dev", y hacerlo en la
+# copia local de config/ (config/system.toml), que no se versiona.
+
 # -----------------------------------------------------------------------------
 # Sonidos de la Pantalla del Recinto (WP-065)
 # -----------------------------------------------------------------------------

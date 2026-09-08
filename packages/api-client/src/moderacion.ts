@@ -21,6 +21,7 @@ import type {
   OpcionesSuscripcion,
   RespuestaOrdenDelDia,
   EstadoRemapeoRespuesta,
+  RespuestaCierreSesion,
   RespuestaVotacion,
   SolicitudActualizarPreparacion,
   SolicitudActualizarSesion,
@@ -137,9 +138,14 @@ export class ClienteModeracion implements ClienteRemapeo {
    * Si existe una votación EN_CURSO o EMPATADA, el backend la resuelve antes como INCONCLUSA.
    *
    * Endpoint: DELETE /api/v1/sesion
+   *
+   * A diferencia del resto de los comandos, responde 200 con cuerpo: el informe de acta y
+   * la copia externa opcional (WP-085) son hechos posteriores al cierre que el snapshot no
+   * transporta. Que la promesa resuelva significa que la sesión cerró; el cuerpo sólo dice
+   * qué pasó después con esos dos archivos derivados.
    */
-  async cerrarSesion(signal?: AbortSignal): Promise<void> {
-    return this.rest.deleteVacio('/api/v1/sesion', signal)
+  async cerrarSesion(signal?: AbortSignal): Promise<RespuestaCierreSesion> {
+    return this.rest.delete<RespuestaCierreSesion>('/api/v1/sesion', signal)
   }
 
   // ===========================================================================

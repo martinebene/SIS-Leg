@@ -37,6 +37,12 @@
  *    repetirlo. El badge de estado del recinto sí permanece acá: tras WP-047 este cuadrante es
  *    su única sede visible. El cuerpo queda íntegramente disponible para la votación, que
  *    es el trabajo real del operador durante una sesión abierta.
+ * 11. Desenlace del cierre institucional (WP-085): cerrar la sesión produce además un informe
+ *    de acta y, si la instalación lo configuró, una copia externa del conjunto. Ninguno de los
+ *    dos es visible desde acá, así que este cuadrante los informa con un aviso efímero. El
+ *    aviso de fallo usa un canal propio, distinto del error persistente, y su texto empieza
+ *    afirmando que la sesión sí cerró: son hechos posteriores a un cierre ya irreversible y
+ *    presentarlos como un error de cierre llevaría al operador a intentarlo otra vez.
  */
 
 import { ref, computed, watch } from 'vue'
@@ -44,6 +50,7 @@ import type {
   EstadoModeracion,
   ClienteModeracion,
   PuntoOrdenDelDiaProyectado,
+  RespuestaCierreSesion,
 } from '@sis-leg/api-client'
 import { useEstadoModeracion } from '../composables/useEstadoModeracion'
 import { useAvisoEfimero } from '../composables/useAvisoEfimero'
@@ -86,6 +93,12 @@ const mensajeError = ref<string | null>(null)
 // Confirmación humana no crítica: aparece un instante y se apaga sola (WP-051).
 const avisoExito = useAvisoEfimero()
 const mensajeExito = avisoExito.mensaje
+// Advertencia posterior a un cierre ya consumado (WP-085): el informe de acta o la copia
+// externa fallaron, pero la sesión cerró igual. Es efímera y no usa `mensajeError` porque
+// ese canal es persistente y accionable, y acá no hay nada que el operador pueda reintentar
+// desde Moderación: el cierre institucional ya es irreversible.
+const avisoAdvertencia = useAvisoEfimero()
+const mensajeAdvertencia = avisoAdvertencia.mensaje
 
 // Control de apertura del diálogo de advertencia de cierre
 const mostrarDialogoCierre = ref(false)
@@ -334,6 +347,7 @@ const motivosCerrarSesion = computed(() =>
 function limpiarMensajes(): void {
   mensajeError.value = null
   avisoExito.limpiar()
+  avisoAdvertencia.limpiar()
 }
 
 /**
@@ -525,11 +539,56 @@ async function confirmarCerrarSesion(): Promise<void> {
   enviando.value = true
 
   try {
-    await cliente.value.cerrarSesion()
+    const resultado = await cliente.value.cerrarSesion()
+    anunciarCierreInstitucional(resultado)
   } catch (error: unknown) {
     mensajeError.value = extraerMensajeError(error, 'Error al cerrar la sesión')
   } finally {
     enviando.value = false
+  }
+}
+
+/**
+ * Traduce el resultado del cierre en el aviso efímero que corresponda (WP-085).
+ *
+ * Los tres desenlaces posibles y por qué se muestran así:
+ *
+ * - **nada configurado y todo bien** (`OMITIDA` con acta generada): no se muestra nada. La
+ *   instalación no pidió copia externa, así que anunciar «no se copió» sería ruido sobre una
+ *   operación que salió exactamente como debía.
+ * - **copia realizada** (`EXITOSA`): confirmación breve. El operador no puede ver la carpeta
+ *   externa desde Moderación, así que este aviso es su única señal de que la réplica existe.
+ * - **acta o copia fallidas**: advertencia efímera que empieza afirmando que la sesión cerró.
+ *   Es la parte más importante del texto: sin ella, un operador que lee «no se pudo…» justo
+ *   después de apretar «Cerrar sesión» concluye que el cierre falló e intenta cerrarla otra
+ *   vez, cuando en realidad el estado ya volvió a SIN_PREPARAR y los CSV quedaron completos.
+ *
+ * El acta y la copia se informan en un solo aviso porque son consecuencias del mismo comando
+ * y dos toasts encadenados se pisarían entre sí: el composable mantiene un único mensaje.
+ */
+function anunciarCierreInstitucional(resultado: RespuestaCierreSesion | undefined): void {
+  // Guarda defensiva: si por cualquier motivo el cierre llegara sin cuerpo, no hay nada
+  // que anunciar. Dejarlo sin guarda haría que un acceso a un campo inexistente cayera en
+  // el `catch` de arriba y mostrara «Error al cerrar la sesión» sobre un cierre exitoso,
+  // justo el malentendido que este WP viene a evitar.
+  if (!resultado) return
+
+  if (!resultado.acta_generada) {
+    avisoAdvertencia.mostrar(
+      'La sesión cerró y los registros CSV quedaron completos, pero no se pudo generar el informe de acta.',
+    )
+    return
+  }
+
+  if (resultado.copia_externa === 'FALLIDA') {
+    avisoAdvertencia.mostrar(
+      'La sesión cerró y los registros quedaron completos en el equipo, pero no se pudo copiarlos a la carpeta externa.',
+    )
+    return
+  }
+
+  if (resultado.copia_externa === 'EXITOSA') {
+    avisoExito.mostrar('Sesión cerrada. Registros copiados a la carpeta externa.')
   }
 }
 
@@ -627,6 +686,20 @@ const claseBadge = computed(() => {
         >
           ✕
         </button>
+      </div>
+
+      <!--
+        WP-085: aviso efímero de advertencia. Vive entre el error persistente y la
+        confirmación porque no es ninguno de los dos: informa un fallo que ya no se puede
+        revertir ni reintentar, sobre una operación que sí tuvo éxito.
+      -->
+      <div
+        v-if="mensajeAdvertencia"
+        data-testid="alerta-advertencia-comando"
+        class="pointer-events-none fixed top-16 right-4 z-40 flex max-w-md items-center gap-2 rounded-lg border border-amber-600/80 bg-amber-950/95 p-2 text-xs text-amber-100 shadow-xl"
+        role="status"
+      >
+        <span>{{ mensajeAdvertencia }}</span>
       </div>
 
       <div

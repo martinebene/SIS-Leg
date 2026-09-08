@@ -499,7 +499,7 @@ async def test_segunda_apertura_guard_cierre_y_ausencia_de_edicion(
         assert primera.status_code == 201
         assert segunda.status_code == 409
         assert segunda.json()["codigo"] == "VOTACION_PENDIENTE"
-        assert cierre.status_code == 204
+        assert cierre.status_code == 200
         assert votacion.resultado is ResultadoVotacion.INCONCLUSA
         assert edicion_coleccion.status_code == 405
         assert edicion_entidad.status_code == 404

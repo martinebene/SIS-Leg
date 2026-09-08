@@ -223,11 +223,18 @@
           "sesion"
         ],
         "summary": "Cerrar normalmente la sesión",
-        "description": "Cierra sin body y resuelve antes una EN_CURSO o EMPATADA pendiente.",
+        "description": "Cierra sin body y resuelve antes una EN_CURSO o EMPATADA pendiente.\n\nDevuelve 200 con cuerpo —y no 204 como el resto de los comandos— porque el\ncierre produce dos hechos que Moderación no puede deducir del snapshot: si el\ninforme de acta se generó y si la copia externa opcional se completó\n(WP-085). Un fallo en cualquiera de los dos viaja dentro de este cuerpo, no\ncomo error HTTP: la sesión ya cerró de forma durable y responder 5xx haría\nque el operador intentara cerrarla otra vez.",
         "operationId": "cerrar_sesion_api_v1_sesion_delete",
         "responses": {
-          "204": {
-            "description": "Successful Response"
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaCierreSesion"
+                }
+              }
+            }
           },
           "409": {
             "description": "Rechazo funcional con código estable según la precondición.",
@@ -2427,6 +2434,16 @@
         "title": "EstadoAuditoriaProyectado",
         "description": "Condición técnica del escritor, separada del estado reglamentario."
       },
+      "EstadoCopiaExterna": {
+        "type": "string",
+        "enum": [
+          "OMITIDA",
+          "EXITOSA",
+          "FALLIDA"
+        ],
+        "title": "EstadoCopiaExterna",
+        "description": "Desenlace del intento de copia externa del conjunto cerrado.\n\nLos tres valores son mutuamente excluyentes y describen exactamente lo que\nModeración debe mostrar:\n\n- ``OMITIDA``: ``paths.logs_copy_dir`` no está configurado. No hubo intento,\n  no hubo acceso externo y no corresponde ningún aviso;\n- ``EXITOSA``: los cuatro archivos quedaron replicados en el destino;\n- ``FALLIDA``: el destino estaba configurado pero la copia no pudo\n  completarse. Los archivos locales siguen intactos y el cierre sigue siendo\n  válido."
+      },
       "EstadoGlobal": {
         "type": "string",
         "enum": [
@@ -3452,6 +3469,25 @@
         ],
         "title": "RemapeoTecnicoProyectado",
         "description": "Todo lo que Apoyo Técnico necesita para remapear, y nada más (WP-074).\n\nAntes de WP-074 el puesto técnico obtenía estos tres datos abriendo una\nsegunda suscripción SSE al ``EstadoModeracion`` completo. Con cuatro\nsuperficies abiertas bajo el mismo origen HTTP/1.1 eso agotaba el cupo de\nconexiones del navegador y los comandos REST quedaban esperando, con\napariencia de servidor caído.\n\nLa solución no es copiar Moderación acá dentro: es proyectar sólo esta\nallowlist. El puesto técnico sigue sin ver votación, quórum, orden del día,\nautoridades ni las capacidades institucionales que no le corresponden.\n\nLos nombres de los tres campos coinciden a propósito con los de\n``EstadoModeracion`` para que el componente compartido de remapeo consuma\nambas proyecciones sin ninguna traducción intermedia."
+      },
+      "RespuestaCierreSesion": {
+        "properties": {
+          "acta_generada": {
+            "type": "boolean",
+            "title": "Acta Generada"
+          },
+          "copia_externa": {
+            "$ref": "#/components/schemas/EstadoCopiaExterna"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "acta_generada",
+          "copia_externa"
+        ],
+        "title": "RespuestaCierreSesion",
+        "description": "Qué quedó del cierre además de los CSV: informe de acta y copia externa (WP-085).\n\nEste cuerpo describe hechos **posteriores** al cierre institucional. Recibirlo\nsignifica siempre que la sesión cerró: el backend responde 200 sólo después de\nhaber persistido ``SESION_CERRADA`` y cerrado el conjunto. Por eso ninguno de\nsus campos puede interpretarse como un cierre fallido.\n\nModeración lo usa para decidir qué aviso efímero mostrar:\n\n- ``acta_generada`` en ``false``, o ``copia_externa`` en ``FALLIDA``: aviso de\n  error que debe aclarar que la sesión sí cerró;\n- ``copia_externa`` en ``EXITOSA``: confirmación breve de la copia;\n- ``copia_externa`` en ``OMITIDA`` con acta generada: no corresponde aviso,\n  porque la instalación no pidió copia y todo salió como debía."
       },
       "RespuestaSalud": {
         "properties": {
