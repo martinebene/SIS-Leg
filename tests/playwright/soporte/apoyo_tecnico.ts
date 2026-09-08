@@ -86,6 +86,19 @@ export function sonidosRecinto() {
   }
 }
 
+/**
+ * Nombre institucional de las fixtures de navegador (WP-084).
+ *
+ * El backend real lo toma de `[institucion]` en `system.toml`; acá se fija un
+ * nombre de fantasía para que las pruebas puedan afirmar que la cabecera muestra
+ * *exactamente* el valor configurado y no un texto escrito en la plantilla.
+ */
+export const NOMBRE_INSTITUCIONAL_E2E = 'Cuerpo Legislativo de Ciudad Ejemplo'
+
+export function identidadInstitucional(nombre: string = NOMBRE_INSTITUCIONAL_E2E) {
+  return { nombre }
+}
+
 export function concejalesPublicos(cantidad: number) {
   return Array.from({ length: cantidad }, (_, indice) => {
     const banca = indice + 1
@@ -131,6 +144,7 @@ export function estadoRecinto(parcialTecnico: Record<string, unknown> = {}) {
     eventos_publicos: [],
     tecnico: { transmision: transmision(), aviso: null, ...parcialTecnico },
     sonidos: sonidosRecinto(),
+    institucion: identidadInstitucional(),
   }
 }
 

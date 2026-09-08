@@ -179,6 +179,9 @@ export function crearMockEstadoRecinto(
         { evento: 'sesion_cerrada', ruta: 'assets/sonidos/sesion-cerrada.wav', volumen: 85 },
       ],
     },
+    // El nombre institucional (WP-084) es igualmente obligatorio y viaja en los
+    // tres estados globales. El cliente API tampoco lo interpreta: lo transporta.
+    institucion: { nombre: 'Cuerpo Legislativo de Prueba' },
   }
 }
 

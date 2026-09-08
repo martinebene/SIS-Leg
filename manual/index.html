@@ -1617,7 +1617,10 @@
             valores del ejemplo son ilustrativos: cada instalación define los suyos.
           </p>
 
-          <pre><code>[session]
+          <pre><code>[institucion]
+nombre = "Cuerpo Legislativo de Ciudad Ejemplo"
+
+[session]
 quorum = 8
 
 [room]
@@ -1641,6 +1644,14 @@ logs_dir = "logs"</code></pre>
                 <tr><th>Parámetro</th><th>Qué controla</th></tr>
               </thead>
               <tbody>
+                <tr>
+                  <td><code>institucion.nombre</code></td>
+                  <td>
+                    Nombre del cuerpo legislativo que usa esta instalación. Es el texto que aparece
+                    en el centro de la cabecera de la Pantalla del Recinto, escrito exactamente como
+                    se lo cargue acá. Es obligatorio y no puede quedar vacío.
+                  </td>
+                </tr>
                 <tr>
                   <td><code>session.quorum</code></td>
                   <td>Cantidad mínima de bancas presentes para abrir la sesión y para abrir votaciones.</td>
@@ -1717,6 +1728,15 @@ volumen = 90</code></pre>
             archivo están en
             <code class="ruta" data-archivo="assets/sonidos/README.md">assets/sonidos/README.md</code>.
           </p>
+
+          <div class="nota">
+            <strong>El nombre del cuerpo se configura, no se programa</strong>
+            El texto institucional de la cabecera pública sale de <code>institucion.nombre</code>.
+            Cambiarlo es editar esa línea y volver a preparar el recinto: no requiere una versión
+            nueva del sistema. Si el archivo no puede leerse al arrancar el servidor, la pantalla
+            muestra un rótulo genérico en lugar de quedarse sin encabezado, y preparar el recinto
+            seguirá fallando hasta que la sección esté correcta.
+          </div>
 
           <div class="nota">
             <strong>Doble lectura de los sonidos</strong>

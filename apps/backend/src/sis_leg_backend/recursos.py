@@ -6,6 +6,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from sis_leg_backend.configuracion.identidad_institucional import (
+    leer_identidad_institucional,
+)
 from sis_leg_backend.configuracion.sonidos_recinto import leer_sonidos_recinto
 from sis_leg_backend.dominio.estado import EstadoOperativo
 from sis_leg_backend.servicios.apoyo_tecnico import (
@@ -52,15 +55,21 @@ def crear_recursos_aplicacion(
     Las únicas lecturas de disco son de **configuración persistente**, no de
     estado de sesión: RN-GLOBAL-03 prohíbe restaurar presencia, votaciones o
     sesión después de una caída, no impide releer un archivo de configuración.
-    Son dos:
+    Son tres:
 
     - la biblioteca de mensajes precargados de Apoyo Técnico (WP-055);
     - los sonidos de la Pantalla del Recinto (WP-065), que deben estar
       disponibles ya en ``SIN_PREPARAR`` porque transmisión y avisos técnicos
-      operan fuera de una sesión.
+      operan fuera de una sesión;
+    - la identidad institucional (WP-084), porque la cabecera de esa misma
+      pantalla muestra el nombre del cuerpo legislativo también en
+      ``SIN_PREPARAR``.
 
-    Ninguna de las dos puede impedir el arranque: un archivo inválido deja esa
-    porción marcada como no disponible y degrada solamente su funcionalidad.
+    Ninguna de las tres puede impedir el arranque: un archivo inválido deja esa
+    porción marcada como no disponible y degrada solamente su funcionalidad. En
+    el caso de la identidad, «degradar» significa mostrar un rótulo genérico en
+    lugar del nombre real; la carga estricta del momento de preparar sigue
+    exigiendo la sección.
     """
 
     estado_operativo = EstadoOperativo()
@@ -68,6 +77,7 @@ def crear_recursos_aplicacion(
         ruta_mensajes_tecnicos
     )
     estado_operativo.sonidos_recinto = leer_sonidos_recinto(ruta_configuracion)
+    estado_operativo.identidad_institucional = leer_identidad_institucional(ruta_configuracion)
     coordinador = CoordinadorPublicacion()
     # La llamada ocurre todavía dentro del lock del ejecutor. Por eso el número
     # de revisión y la memoria proyectada pertenecen a la misma frontera.

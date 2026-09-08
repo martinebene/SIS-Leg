@@ -26,6 +26,13 @@
  * necesite más ancho del que le tocó: por eso el sector derecho está acotado con
  * `max-width` y sus textos variables se recortan con elipsis en lugar de crecer.
  *
+ * WP-084 cambia una sola cosa del centro: el nombre institucional deja de estar
+ * escrito en esta plantilla y llega dentro de `EstadoRecinto.institucion`, que el
+ * backend arma desde la sección `[institucion]` de `system.toml`. La geometría no
+ * se toca: el `h1` sigue siendo el único texto central con `min-width: 0` y
+ * elipsis, que es justamente lo que permite que un nombre largo se recorte en
+ * lugar de empujar al reloj o a las autoridades.
+ *
  * El reloj y la duración siguen siendo presentación local. La apertura formal y
  * el contexto de sesión continúan llegando exclusivamente en EstadoRecinto.
  */
@@ -42,6 +49,40 @@ const props = defineProps<{
   estadoConexion: EstadoConexionRecinto
   desactualizado: boolean
 }>()
+
+/**
+ * Rótulo genérico mostrado mientras no hay nombre institucional que mostrar.
+ *
+ * Hay exactamente dos momentos en que eso ocurre y ninguno es un error de esta
+ * pantalla:
+ *
+ * 1. antes del primer snapshot (`estado === null`), cuando la cabecera ya está
+ *    dibujada pero el backend todavía no contestó;
+ * 2. cuando el backend no pudo leer `[institucion]` al arrancar y publicó su
+ *    propio rótulo neutro.
+ *
+ * En los dos casos la cabecera muestra un texto institucional legible en vez de
+ * quedarse vacía o cambiar de altura. El literal repite a propósito el valor de
+ * `NOMBRE_INSTITUCIONAL_NEUTRO` del backend, y `tests/test_identidad_institucional.py`
+ * comprueba que las dos copias digan exactamente lo mismo: son dos lenguajes
+ * distintos y no hay forma de compartir la constante sin inventar un contrato
+ * nuevo que este WP no pide.
+ */
+const NOMBRE_INSTITUCIONAL_NEUTRO = 'Cuerpo legislativo'
+
+/**
+ * Nombre del cuerpo legislativo tal como debe verse en la cabecera.
+ *
+ * Se publica **exactamente** el valor configurado: no se recorta, no se pasa a
+ * mayúsculas ni se abrevia. La única sustitución posible es el respaldo neutro,
+ * y sólo cuando no hay texto que mostrar. `trim()` se usa para *decidir*, nunca
+ * para transformar: un nombre con espacios deliberados sigue viajando intacto.
+ */
+const nombreInstitucional = computed(() => {
+  const nombre = props.estado?.institucion?.nombre
+  if (typeof nombre !== 'string' || nombre.trim() === '') return NOMBRE_INSTITUCIONAL_NEUTRO
+  return nombre
+})
 
 const { ahora, tiempoSesion } = useRelojLocal(toRef(props, 'estado'))
 const fechaHoraLocal = computed(() => formatearFechaHoraLocal(ahora.value))
@@ -131,9 +172,20 @@ const textoConexion = computed(() => {
       Desde WP-054 el centro contiene sólo institución, sesión y duración, y los
       tres comparten tamaño tipográfico (`dato-cabecera`). El `h1` conserva su
       rol semántico de encabezado; lo que cambia es su escala visual.
+
+      Desde WP-084 su contenido es configurable. El `title` repite el nombre
+      completo para que un nombre institucional largo, que en pantalla se recorta
+      con elipsis, siga siendo legible al acercarse al monitor: es el mismo
+      recurso que ya usan las autoridades del sector derecho.
     -->
     <div data-testid="cabecera-contexto" class="marca-institucional">
-      <h1 class="titulo-institucional dato-cabecera">Concejo Deliberante de Puerto Madryn</h1>
+      <h1
+        data-testid="cabecera-institucion"
+        class="titulo-institucional dato-cabecera"
+        :title="nombreInstitucional"
+      >
+        {{ nombreInstitucional }}
+      </h1>
       <span data-testid="cabecera-sesion" class="dato-cabecera">{{ contextoCentral }}</span>
       <span
         v-if="tiempoSesion"
@@ -241,7 +293,26 @@ const textoConexion = computed(() => {
   height: clamp(47px, 5.5vh, 60px);
   display: grid;
   flex: 0 0 auto;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /*
+    Reparto de ancho de las tres zonas (WP-050, endurecido por WP-084).
+
+    Hasta WP-084 las columnas eran `minmax(0, 1fr) auto minmax(0, 1fr)`. Con el
+    nombre institucional escrito en la plantilla eso alcanzaba: el texto central
+    era conocido y entraba siempre. Desde que el nombre lo escribe quien opera,
+    la columna `auto` puede pedir más ancho que la cabecera entera, y entonces
+    las dos columnas `1fr` colapsaban a cero y el reloj y el sector derecho se
+    desbordaban por debajo del texto central. Se midió en Chromium: con un nombre
+    de 86 caracteres el `h1` ocupaba de 37 px a 1027 px en 1366×768, es decir
+    tapaba al reloj, que termina en 248 px.
+
+    El mínimo `min-content` de las dos columnas laterales es lo que lo impide:
+    reserva para el reloj y para el sector derecho exactamente el ancho que su
+    contenido necesita, y obliga a la columna central a conformarse con el resto.
+    El centro sigue siendo `auto`, así que mientras haya lugar se comporta igual
+    que antes y queda exactamente centrado; sólo deja de estarlo cuando el nombre
+    es tan largo que centrarlo exigiría taparle el reloj a alguien.
+  */
+  grid-template-columns: minmax(min-content, 1fr) minmax(0, auto) minmax(min-content, 1fr);
   align-items: center;
   gap: 1rem;
   padding: 0.35rem clamp(0.75rem, 1.4vw, 1.4rem);
@@ -298,9 +369,30 @@ const textoConexion = computed(() => {
   reseteo del margen del `h1`, el color institucional y el recorte por elipsis,
   porque es el único texto central que puede quedarse sin ancho.
 */
-.titulo-institucional {
+h1.titulo-institucional {
+  /*
+    `flex: 1 1 0` en lugar de `flex: 0 1 auto` (WP-084).
+
+    El selector lleva el nombre del elemento a propósito. El `h1` tiene las dos
+    clases —`titulo-institucional` y `dato-cabecera`— y la segunda declara
+    `flex: 0 0 auto` para que la sesión y la duración nunca se recorten. Con la
+    misma especificidad ganaba la que aparece después en la hoja, que es
+    justamente la que impide encoger. Agregar el elemento sube la especificidad
+    lo mínimo necesario para que el título —el único dato central que sí puede
+    recortarse— recupere su regla, sin tocar el orden de las demás.
+
+    Con base `auto` el `h1` partía de su ancho de contenido y, aunque tenía
+    permiso para encogerse, en la práctica no lo hacía: se desbordaba de su
+    contenedor flex y la elipsis nunca llegaba a activarse. Con base `0` el
+    título toma el ancho que sobra después de la sesión y la duración —los dos
+    únicos datos del centro que no se recortan— y entonces sí se recorta con
+    elipsis cuando el nombre configurado no entra.
+
+    `min-width: 0` sigue siendo necesario: sin él la caja mínima automática de un
+    ítem flex volvería a ser su contenido y el recorte no ocurriría.
+  */
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 1 1 0;
   margin: 0;
   overflow: hidden;
   color: #e2e8f0;

@@ -2,9 +2,11 @@
 
 ## 1. Producto
 
-SIS-Leg es el sistema que asiste la preparación, desarrollo, votación, uso de la palabra y registro electrónico de una sesión del Concejo Deliberante de Puerto Madryn.
+SIS-Leg es el sistema que asiste la preparación, desarrollo, votación, uso de la palabra y registro electrónico de una sesión de un cuerpo legislativo.
 
-No reemplaza la documentación oficial del Concejo ni interpreta su contenido. Su función es gestionar interacciones operativas y registrar lo ocurrido.
+El sistema no está atado a una institución concreta: el nombre del cuerpo legislativo que opera cada instalación se declara en la sección `[institucion]` de `config/system.toml` y es lo que muestra la cabecera de la Pantalla del Recinto (WP-084).
+
+No reemplaza la documentación oficial del cuerpo ni interpreta su contenido. Su función es gestionar interacciones operativas y registrar lo ocurrido.
 
 ## 2. Actores y superficies
 

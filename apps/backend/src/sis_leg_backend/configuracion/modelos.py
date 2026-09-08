@@ -21,6 +21,47 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+NOMBRE_INSTITUCIONAL_NEUTRO = "Cuerpo legislativo"
+"""Rótulo genérico que se muestra cuando la identidad configurada no está disponible.
+
+No nombra ninguna institución concreta a propósito: es el texto que la Pantalla
+del Recinto muestra mientras el backend todavía no pudo leer ``[institucion]``
+(WP-084). Que sea genérico es parte del contrato —el sistema debe poder
+instalarse en cualquier cuerpo legislativo— y por eso vive acá, junto al modelo
+que lo usa como valor por omisión, y no disperso en cada punto de lectura.
+
+La Pantalla del Recinto repite este mismo literal como último recurso, para el
+instante previo al primer snapshot. ``tests/test_identidad_institucional.py``
+comprueba que las dos copias digan exactamente lo mismo.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class IdentidadInstitucional:
+    """Nombre del cuerpo legislativo que opera esta instalación (WP-084).
+
+    ``nombre`` es el texto que la Pantalla del Recinto muestra en su cabecera,
+    exactamente como fue configurado en ``[institucion]``: no se recorta ni se
+    normaliza, porque una instalación puede necesitar mayúsculas, artículos o
+    puntuación propios.
+
+    ``disponible=False`` significa que la sección no pudo interpretarse al
+    arrancar el backend. En ese caso ``nombre`` vale
+    :data:`NOMBRE_INSTITUCIONAL_NEUTRO` y ``motivo``/``detalle`` explican el
+    problema, igual que hacen los sonidos del Recinto: una identidad mal escrita
+    degrada un rótulo, no impide arrancar, votar ni auditar. La carga estricta
+    del momento de preparar sí exige la sección.
+
+    El valor por defecto —neutro y disponible— existe para que las pruebas que
+    no ejercitan identidad construyan una ``ConfiguracionSistema`` sin
+    declararla. El cargador canónico siempre lo completa con el nombre real.
+    """
+
+    nombre: str = NOMBRE_INSTITUCIONAL_NEUTRO
+    disponible: bool = True
+    motivo: str | None = None
+    detalle: str | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class SonidoRecinto:
@@ -129,6 +170,17 @@ class ConfiguracionSistema:
     permanente que exige WP-065 —incluso en ``SIN_PREPARAR``— se resuelve
     releyendo el archivo al arrancar el proceso, no relajando este
     congelamiento.
+    """
+
+    identidad_institucional: IdentidadInstitucional = IdentidadInstitucional()
+    """Nombre del cuerpo legislativo que opera esta instalación (WP-084).
+
+    Viaja en el mismo archivo y en el mismo snapshot congelado que el resto de
+    la configuración, de modo que una sección ``[institucion]`` ausente o
+    inválida impide preparar el recinto igual que un ``quorum`` inválido. La
+    disponibilidad permanente que exige el WP —el nombre también se ve en
+    ``SIN_PREPARAR``— se resuelve releyendo el archivo al arrancar el proceso,
+    no relajando este congelamiento.
     """
 
     @property

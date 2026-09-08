@@ -1,13 +1,13 @@
 dni,nombre,apellido,bloque,banca,dispositivo_votacion,ruta_imagen
-10000008,Lorena,Moreno,Despierta Madryn,1,dev01,assets/bancas/banca-01.png
-10000011,Samuel,Alarcón,Partido Independiente de Chubut (PICH),2,dev02,assets/bancas/banca-02.png
-10000012,Andrea,Rueda,Unidos y Organizados,3,dev03,assets/bancas/banca-03.png
-10000010,Gastón,Cuis Taccari,Despierta Madryn,4,dev04,assets/bancas/banca-04.png
-10000009,Andrea,Garachico,Despierta Madryn,5,dev05,assets/bancas/banca-05.png
-10000007,Hernán,Pereira,Despierta Madryn,6,dev06,assets/bancas/banca-06.png
-10000003,Federico,Garitano,Arriba Chubut,7,dev07,assets/bancas/banca-07.png
-10000006,Lucila,González,Arriba Chubut,8,dev08,assets/bancas/banca-08.png
-10000001,Dardo,Petroli,Arriba Chubut,9,dev09,assets/bancas/banca-09.png
-10000002,Roxana,Barrera,Arriba Chubut,10,dev10,assets/bancas/banca-10.png
-10000005,Walter,Herrero,Arriba Chubut,11,dev11,assets/bancas/banca-11.png
-10000004,Nadia,Garay,Arriba Chubut,12,dev12,assets/bancas/banca-12.png
+30000001,Amparo,Bermudez,Bloque Ejemplo A,1,dev01,assets/bancas/banca-01.png
+30000002,Bautista,Calvete,Bloque Ejemplo B,2,dev02,assets/bancas/banca-02.png
+30000003,Celeste,Dorrego,Bloque Ejemplo C,3,dev03,assets/bancas/banca-03.png
+30000004,Damian,Escalante,Bloque Ejemplo A,4,dev04,assets/bancas/banca-04.png
+30000005,Emilia,Ferreyra,Bloque Ejemplo A,5,dev05,assets/bancas/banca-05.png
+30000006,Fabricio,Gaitan,Bloque Ejemplo A,6,dev06,assets/bancas/banca-06.png
+30000007,Graciela,Hernandez,Bloque Ejemplo B,7,dev07,assets/bancas/banca-07.png
+30000008,Horacio,Iriarte,Bloque Ejemplo B,8,dev08,assets/bancas/banca-08.png
+30000009,Isabel,Jauregui,Bloque Ejemplo B,9,dev09,assets/bancas/banca-09.png
+30000010,Joaquin,Larrosa,Bloque Ejemplo B,10,dev10,assets/bancas/banca-10.png
+30000011,Leandro,Miranda,Bloque Ejemplo C,11,dev11,assets/bancas/banca-11.png
+30000012,Mariela,Novoa,Bloque Ejemplo C,12,dev12,assets/bancas/banca-12.png

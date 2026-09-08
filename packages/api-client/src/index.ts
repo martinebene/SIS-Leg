@@ -82,6 +82,7 @@ export type {
   BibliotecaMensajesProyectada,
   SonidoRecintoProyectado,
   SonidosRecintoProyectados,
+  IdentidadInstitucionalProyectada,
   EstadoTransmision,
   DestinoAvisoTecnico,
   Capacidad,

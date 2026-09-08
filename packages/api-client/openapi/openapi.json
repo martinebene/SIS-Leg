@@ -2760,6 +2760,9 @@
           },
           "sonidos": {
             "$ref": "#/components/schemas/SonidosRecintoProyectados"
+          },
+          "institucion": {
+            "$ref": "#/components/schemas/IdentidadInstitucionalProyectada"
           }
         },
         "type": "object",
@@ -2777,7 +2780,8 @@
           "palabra",
           "eventos_publicos",
           "tecnico",
-          "sonidos"
+          "sonidos",
+          "institucion"
         ],
         "title": "EstadoRecinto",
         "description": "Snapshot público por allowlist, sin capacidades ni auditoría cruda.\n\n``instancia`` (WP-080) es el mismo identificador técnico y opaco que viaja en\nlas otras dos proyecciones. No agrega información institucional ni nombra a\nnadie: sólo dice qué proceso emitió el snapshot, que es lo que el cliente\nnecesita para no descartar la primera revisión de un backend reiniciado."
@@ -3180,6 +3184,20 @@
         ],
         "title": "IdentidadConcejalRespuesta",
         "description": "Identidad pública mínima de un concejal asociado al dispositivo."
+      },
+      "IdentidadInstitucionalProyectada": {
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "title": "Nombre"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nombre"
+        ],
+        "title": "IdentidadInstitucionalProyectada",
+        "description": "Nombre del cuerpo legislativo que la Pantalla del Recinto debe mostrar (WP-084).\n\nEs deliberadamente el contrato mínimo: un único campo con el texto exacto\nconfigurado en ``[institucion]``. No se publica el diagnóstico interno\n(``disponible``/``motivo``) porque la pantalla pública no tiene que explicar\nun problema de configuración a la sala: si la identidad no pudo leerse, el\nbackend ya sustituyó el valor por un rótulo genérico y quien opera lo\ndiagnostica con el archivo delante.\n\nViaja en los tres estados globales, también en ``SIN_PREPARAR``: la cabecera\ndel Recinto existe desde que la pantalla se enciende, mucho antes de que\nalguien prepare una sesión."
       },
       "MensajeTecnicoProyectado": {
         "properties": {

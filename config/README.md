@@ -99,6 +99,31 @@ atómica exige que el usuario del backend pueda escribir en el directorio que lo
 contiene, mientras `system.toml` y `concejales.csv` siguen siendo de solo
 lectura para el servicio.
 
+## Nombre institucional
+
+La sección `[institucion]` de `system.toml` declara el nombre del cuerpo
+legislativo que opera esta instalación (WP-084):
+
+```toml
+[institucion]
+nombre = "Cuerpo Legislativo de Ciudad Ejemplo"
+```
+
+Es la única clave de la sección y es obligatoria. Debe ser un texto no vacío y se
+usa **tal cual**: es exactamente lo que muestra la cabecera de la Pantalla del
+Recinto, sin recortes ni correcciones.
+
+La plantilla versionada trae un nombre genérico a propósito. El nombre real se
+escribe en `config/system.toml`, que no se versiona, así que cambiar de
+institución no toca ningún archivo del repositorio.
+
+Igual que `[sonidos]`, esta sección se lee dos veces: al arrancar el backend, de
+forma tolerante, para que la cabecera tenga nombre ya en `SIN_PREPARAR`; y al
+preparar el recinto, de forma estricta, quedando congelada con el resto de la
+configuración. Si la lectura de arranque falla, la pantalla muestra un rótulo
+institucional genérico en lugar de quedarse sin texto, y preparar sigue siendo
+imposible hasta corregir el archivo.
+
 ## Sonidos de la Pantalla del Recinto
 
 La sección `[sonidos]` de `system.toml` asigna un archivo y un volumen a cada

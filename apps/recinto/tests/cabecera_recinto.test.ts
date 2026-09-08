@@ -7,6 +7,7 @@
  */
 
 import { mount, type VueWrapper } from '@vue/test-utils'
+import type { EstadoRecinto } from '@sis-leg/api-client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import CabeceraRecinto from '../app/components/CabeceraRecinto.vue'
@@ -15,7 +16,11 @@ import {
   convertirMarcaBackend,
   formatearDuracion,
 } from '../app/utils/tiempo'
-import { crearEstadoRecintoPrueba } from './datos_prueba'
+import {
+  crearEstadoRecintoPrueba,
+  crearIdentidadInstitucionalPrueba,
+  NOMBRE_INSTITUCIONAL_DE_PRUEBA,
+} from './datos_prueba'
 
 const montados: VueWrapper[] = []
 
@@ -33,12 +38,26 @@ function crearSesion(generadoEn: string, fechaHoraApertura: string, numeroSesion
   })
 }
 
-function montarCabecera(estado = crearEstadoRecintoPrueba()): VueWrapper {
+/**
+ * Monta la cabecera con un snapshot público.
+ *
+ * Admite `null` a propósito: es el estado real de la pantalla entre que Vue
+ * monta y llega el primer snapshot del backend, y desde WP-084 esa ventana tiene
+ * comportamiento propio para el nombre institucional.
+ */
+function montarCabecera(estado: EstadoRecinto | null = crearEstadoRecintoPrueba()): VueWrapper {
   const wrapper = mount(CabeceraRecinto, {
     props: { estado, estadoConexion: 'CONECTADO', desactualizado: false },
   })
   montados.push(wrapper)
   return wrapper
+}
+
+/** Etiquetas de los hijos directos del bloque central, para las suites de abajo. */
+function hijosDelContextoCentral(wrapper: VueWrapper): string[] {
+  return Array.from(wrapper.get('[data-testid="cabecera-contexto"]').element.children).map((hijo) =>
+    hijo.tagName.toLowerCase(),
+  )
 }
 
 afterEach(() => {
@@ -161,7 +180,10 @@ describe('Cabecera pública de una sola línea (WP-050, refinada por WP-054)', (
     // modo que ninguna prueba ni lector de pantalla lo lee como contenido.
     expect(wrapper.get('[data-testid="cabecera-sesion"]').text()).toBe('Sesión N.º 39')
     expect(wrapper.get('[data-testid="cabecera-tiempo-sesion"]').text()).toBe('00:30:00')
-    expect(wrapper.text()).toContain('Concejo Deliberante de Puerto Madryn')
+    // Desde WP-084 el nombre institucional llega del snapshot, no de la
+    // plantilla: lo que se comprueba es que el centro publique el valor
+    // configurado por la fixture.
+    expect(wrapper.text()).toContain(NOMBRE_INSTITUCIONAL_DE_PRUEBA)
   })
 
   it('no reserva renglón cuando faltan autoridades o duración', async () => {
@@ -277,5 +299,96 @@ describe('Cabecera pública reorganizada (WP-054)', () => {
     const sector = wrapper.get('.sector-derecho')
     expect(sector.find('[data-testid="cabecera-autoridades"]').exists()).toBe(true)
     expect(sector.find('[data-testid="estado-conexion"]').exists()).toBe(true)
+  })
+})
+
+/**
+ * Identidad institucional configurable (WP-084).
+ *
+ * Hasta este WP el nombre del cuerpo legislativo estaba escrito dentro de la
+ * plantilla, así que instalar SIS-Leg en otra institución obligaba a editar
+ * código. Acá se fija el comportamiento observable de la cabecera: publica
+ * exactamente lo que viene en `EstadoRecinto.institucion`, en cualquier estado
+ * global, y sólo cae a un rótulo genérico cuando no hay nada que mostrar.
+ *
+ * La geometría con nombres de distinta longitud —que ninguno recorte, solape ni
+ * genere scroll— se mide en Playwright, porque jsdom no calcula layout.
+ */
+describe('Identidad institucional configurable (WP-084)', () => {
+  /** Devuelve el texto del `h1` institucional, ya normalizado. */
+  function nombreMostrado(wrapper: VueWrapper): string {
+    return wrapper.get('[data-testid="cabecera-institucion"]').text().replace(/\s+/g, ' ').trim()
+  }
+
+  it('muestra el nombre configurado incluso en SIN_PREPARAR', () => {
+    const wrapper = montarCabecera(
+      crearEstadoRecintoPrueba({
+        estado_global: 'SIN_PREPARAR',
+        institucion: crearIdentidadInstitucionalPrueba({
+          nombre: 'Concejo Municipal de Aguas Claras',
+        }),
+      }),
+    )
+
+    expect(nombreMostrado(wrapper)).toBe('Concejo Municipal de Aguas Claras')
+    // El resto del centro sigue diciendo lo mismo que antes: el WP cambia el
+    // origen del nombre, no la semántica del contexto.
+    expect(wrapper.get('[data-testid="cabecera-sesion"]').text()).toBe('Recinto sin preparar')
+  })
+
+  it('publica dos nombres de longitud muy distinta sin alterar la estructura del centro', async () => {
+    const corto = 'Concejo de Villa Sur'
+    const largo =
+      'Honorable Legislatura Provincial de la Región Continental de Nuevos Territorios del Sur'
+
+    const wrapper = montarCabecera(
+      crearEstadoRecintoPrueba({
+        institucion: crearIdentidadInstitucionalPrueba({ nombre: corto }),
+      }),
+    )
+    expect(nombreMostrado(wrapper)).toBe(corto)
+    expect(hijosDelContextoCentral(wrapper)).toEqual(['h1', 'span'])
+
+    await wrapper.setProps({
+      estado: crearEstadoRecintoPrueba({
+        institucion: crearIdentidadInstitucionalPrueba({ nombre: largo }),
+      }),
+    })
+    // El nombre viaja completo al DOM: el recorte es visual (elipsis), nunca una
+    // truncación del texto, y por eso el emergente conserva la lectura íntegra.
+    expect(nombreMostrado(wrapper)).toBe(largo)
+    expect(wrapper.get('[data-testid="cabecera-institucion"]').element.getAttribute('title')).toBe(
+      largo,
+    )
+    expect(hijosDelContextoCentral(wrapper)).toEqual(['h1', 'span'])
+  })
+
+  it('conserva el valor configurado tal cual, sin recortarlo ni normalizarlo', () => {
+    const conEspacios = '  Concejo Deliberativo del Valle  '
+    const wrapper = montarCabecera(
+      crearEstadoRecintoPrueba({
+        institucion: crearIdentidadInstitucionalPrueba({ nombre: conEspacios }),
+      }),
+    )
+
+    // `textContent` conserva el valor exacto; la normalización de `nombreMostrado`
+    // existe sólo para las demás aserciones, así que acá se lee el crudo.
+    expect(wrapper.get('[data-testid="cabecera-institucion"]').element.textContent).toBe(
+      conEspacios,
+    )
+  })
+
+  it('cae a un rótulo genérico cuando todavía no hay snapshot o el nombre viene vacío', async () => {
+    const wrapper = montarCabecera(null)
+    expect(nombreMostrado(wrapper)).toBe('Cuerpo legislativo')
+
+    // Un nombre vacío sólo puede llegar de un backend que no pudo leer la
+    // configuración; la cabecera no debe quedarse sin texto ni cambiar de alto.
+    await wrapper.setProps({
+      estado: crearEstadoRecintoPrueba({
+        institucion: crearIdentidadInstitucionalPrueba({ nombre: '   ' }),
+      }),
+    })
+    expect(nombreMostrado(wrapper)).toBe('Cuerpo legislativo')
   })
 })

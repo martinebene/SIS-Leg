@@ -12,6 +12,8 @@ export {
   crearApoyoTecnicoPrueba,
   crearConcejalesPublicos,
   crearEstadoRecintoPrueba,
+  crearIdentidadInstitucionalPrueba,
   crearSonidosRecintoPrueba,
   crearVotacionPublicaPrueba,
+  NOMBRE_INSTITUCIONAL_DE_PRUEBA,
 } from '../../../packages/frontend-shared/tests/helpers/estado_recinto'

@@ -194,6 +194,12 @@ class ServicioPreparacion:
         # snapshot congelado y no una copia vieja. No puede fallar ni revertir
         # nada, porque la configuración ya se validó unas líneas más arriba.
         self._estado.sonidos_recinto = configuracion.sonidos_recinto
+        # La identidad institucional (WP-084) se refresca por el mismo motivo y
+        # con la misma garantía: la sección ya quedó validada al cargar, así que
+        # esta asignación no puede fallar ni dejar el estado a medias. Después
+        # de esta línea la cabecera del Recinto muestra el nombre congelado en
+        # esta preparación, aunque el archivo cambie en disco.
+        self._estado.identidad_institucional = configuracion.identidad_institucional
         self._estado.estado_global = EstadoGlobal.PREPARANDO
 
     async def _cancelar_bajo_lock(self) -> None:

@@ -5,6 +5,26 @@
 # presentes son de referencia/fantasía para desarrollo: no representan una
 # instalación real.
 
+# -----------------------------------------------------------------------------
+# Identidad institucional (WP-084)
+# -----------------------------------------------------------------------------
+#
+# Nombre del cuerpo legislativo que opera esta instalación. Es el texto que la
+# Pantalla del Recinto muestra en su cabecera, exactamente como se escriba acá:
+# no se recorta ni se corrige, porque cada institución tiene su denominación
+# oficial.
+#
+# La clave es obligatoria y debe ser un texto no vacío. Igual que [sonidos],
+# esta sección se lee también al arrancar el backend, para que la cabecera tenga
+# nombre ya en SIN_PREPARAR; esa lectura es tolerante y, si falla, muestra un
+# rótulo genérico en lugar de impedir el arranque.
+#
+# El valor de esta plantilla es ficticio a propósito: cada instalación escribe
+# el suyo en su config/system.toml local, que no se versiona.
+
+[institucion]
+nombre = "Cuerpo Legislativo de Ciudad Ejemplo"
+
 [session]
 quorum = 7
 
