@@ -444,7 +444,7 @@ for (const viewport of RESOLUCIONES) {
     expect(textareaCorto.scrollHeight).toBeLessThanOrEqual(textareaCorto.clientHeight + 1)
 
     // Caso abundante: el máximo que admite el contrato, 500 caracteres.
-    const textoLargo = 'Comunicación institucional del Concejo Deliberante. '
+    const textoLargo = 'Comunicación institucional del cuerpo legislativo. '
       .repeat(10)
       .slice(0, 500)
     await page.getByTestId('input-texto-aviso').fill(textoLargo)

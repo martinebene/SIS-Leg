@@ -13,6 +13,7 @@ from sis_leg_backend.configuracion.modelos import (
     Concejal,
     ConfiguracionSistema,
     ConfiguracionSonidosRecinto,
+    IdentidadInstitucional,
     Padron,
     SonidoRecinto,
 )
@@ -29,6 +30,20 @@ from sis_leg_backend.servicios.apoyo_tecnico import ServicioApoyoTecnico
 from sis_leg_backend.servicios.proyecciones import ServicioProyecciones
 from sis_leg_backend.servicios.publicacion import CoordinadorPublicacion
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+
+NOMBRE_INSTITUCIONAL_DE_PRUEBA = "Cuerpo Legislativo de Prueba"
+"""Identidad institucional que usan las pruebas de proyección (WP-084).
+
+Es de fantasía y distinta del rótulo neutro por omisión, de modo que una
+proyección que olvidara copiar el valor configurado —y publicara el rótulo
+genérico— se note en la aserción en lugar de pasar como si nada.
+"""
+
+
+def identidad_de_prueba() -> IdentidadInstitucional:
+    """Devuelve la identidad institucional de fantasía ya disponible."""
+
+    return IdentidadInstitucional(nombre=NOMBRE_INSTITUCIONAL_DE_PRUEBA)
 
 
 def sonidos_de_prueba() -> ConfiguracionSonidosRecinto:
@@ -115,6 +130,7 @@ def crear_entorno_proyecciones(
         recinto_resultado_publico_segundos=resultado_publico,
         directorio_registros=str(tmp_path / "logs"),
         sonidos_recinto=sonidos_de_prueba(),
+        identidad_institucional=identidad_de_prueba(),
     )
     concejales = tuple(
         Concejal(
@@ -145,6 +161,9 @@ def crear_entorno_proyecciones(
     # Los sonidos viven en el estado operativo, no en el contexto: es lo que
     # permite proyectarlos también en SIN_PREPARAR (WP-065).
     estado.sonidos_recinto = configuracion.sonidos_recinto
+    # La identidad institucional sigue la misma regla y por el mismo motivo
+    # (WP-084): la cabecera pública muestra el nombre también en SIN_PREPARAR.
+    estado.identidad_institucional = configuracion.identidad_institucional
     estado.preparacion_activa = contexto
     estado.estado_global = EstadoGlobal.PREPARANDO
     estado.archivos_auditoria_activos = contexto.rutas_auditoria()

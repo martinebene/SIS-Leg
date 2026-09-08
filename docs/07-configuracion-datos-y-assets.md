@@ -43,6 +43,7 @@ Las rutas que el sistema lee en ejecución son las cuatro sin `.example`, en des
 
 Debe poder definir, como mínimo:
 
+- nombre institucional del cuerpo legislativo;
 - fuente/padrón de concejales;
 - quórum;
 - disposición de bancas;
@@ -55,6 +56,43 @@ Debe poder definir, como mínimo:
 - sonidos de la Pantalla del Recinto: archivo y volumen `0..100` por evento.
 
 Cada parámetro debe tener nombre semántico explícito. No reutilizar una única constante para temporizadores que representen comportamientos distintos aunque inicialmente compartan valor.
+
+### Sección `[institucion]`
+
+WP-084 agrega a `system.toml` una sección con una única clave obligatoria:
+
+```toml
+[institucion]
+nombre = "Cuerpo Legislativo de Ciudad Ejemplo"
+```
+
+Reglas del contrato:
+
+- `nombre` es obligatorio y debe ser un texto no vacío; se rechazan el texto en
+  blanco, los números y los booleanos;
+- el valor viaja **exactamente** como se escribió: no se recortan espacios ni se
+  normaliza el texto, porque cada institución tiene su denominación oficial;
+- la plantilla versionada `config/system.example.toml` usa un nombre genérico y
+  ficticio. El nombre real de cada instalación vive únicamente en el
+  `config/system.toml` local, que no se versiona.
+
+Igual que `[sonidos]`, esta sección se lee **dos veces** y por motivos distintos:
+
+1. al **preparar el recinto**, junto con el resto del archivo, quedando congelada
+   en el snapshot de la preparación. Ahí la validación es estricta: una sección
+   ausente o inválida impide preparar, igual que un `quorum` inválido;
+2. al **arrancar el backend**, porque la cabecera de la Pantalla del Recinto
+   muestra el nombre también en `SIN_PREPARAR`. Esa lectura es tolerante: un
+   archivo ausente o inválido no impide el arranque y publica un rótulo
+   institucional genérico en lugar del nombre real.
+
+Preparar el recinto refresca además la copia leída al arrancar, de modo que
+durante una preparación o sesión el Recinto muestre exactamente el nombre
+congelado.
+
+La proyección pública `EstadoRecinto` incluye por eso el bloque `institucion` en
+los tres estados globales. Es el contrato mínimo: transporta sólo el nombre, no
+el diagnóstico interno de la lectura.
 
 ### Sección `[sonidos]`
 
@@ -104,7 +142,7 @@ los tres estados globales.
 
 ## 4. Valores actuales de referencia
 
-La instalación histórica usa:
+La instalación de origen usa:
 
 - quórum: 7;
 - disposición por filas: 3, 4 y 5 bancas;
@@ -132,7 +170,9 @@ Reglas:
 
 La presencia **no forma parte del archivo de padrón**: es un dato operativo dinámico y toda preparación comienza con todos los concejales ausentes.
 
-La plantilla `concejales.example.csv` contiene los datos de instalación tomados del sistema histórico en producción (`martinebene/Botonera`, SHA `537823b4a0045853c74a388058fa3739cf7457a5`). Esa procedencia determina las identidades, bloques, bancas y dispositivos lógicos instalados, pero no modifica el contrato estable de SIS-Leg: las filas se ordenan por banca, `ruta_imagen` permanece explícita y la columna histórica `presente` se omite porque la presencia sigue siendo estado dinámico.
+La plantilla `concejales.example.csv` contiene **datos ficticios**: doce personas y tres bloques inventados, con las mismas bancas y dispositivos lógicos `dev01..dev12` que espera el mapeo del bridge. Hasta WP-084 esa plantilla reproducía el padrón real recuperado del sistema histórico en producción (`martinebene/Botonera`, SHA `537823b4a0045853c74a388058fa3739cf7457a5`), que fue la procedencia que fijó WP-043. Esa recuperación sigue siendo un hecho histórico y el contrato del archivo no cambió; lo que cambió es que la plantilla versionada ya no publica identidades ni bloques políticos reales, porque es el punto de partida de cualquier instalación nueva y no puede atar el producto a una institución concreta.
+
+El padrón real de cada instalación vive únicamente en `config/concejales.csv`, que no se versiona. El contrato estable se conserva igual: las filas se ordenan por banca, `ruta_imagen` permanece explícita y la columna histórica `presente` se omite porque la presencia sigue siendo estado dinámico.
 
 La cantidad de filas del padrón debe coincidir exactamente con la cantidad total de bancas definida por la disposición configurada en `system.toml` (suma de `room.rows`). Las bancas deben ser únicas, estar dentro de esa capacidad y cubrir completamente la disposición configurada.
 

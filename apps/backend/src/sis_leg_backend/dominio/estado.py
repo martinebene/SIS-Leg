@@ -5,15 +5,20 @@ preparación, WP-008 agregó el contexto real de sesión y WP-009 tipa la votaci
 activa. WP-055 suma el plano técnico de Apoyo Técnico, que es deliberadamente
 independiente del ciclo preparación/sesión: la transmisión y los avisos pueden
 operarse también en ``SIN_PREPARAR``. WP-065 agrega por el mismo motivo los
-sonidos configurados de la Pantalla del Recinto. Las transiciones las ejecutan los
-servicios de dominio bajo el serializador único, nunca este módulo.
+sonidos configurados de la Pantalla del Recinto, y WP-084 la identidad
+institucional, que esa pantalla muestra en su cabecera desde el arranque. Las
+transiciones las ejecutan los servicios de dominio bajo el serializador único,
+nunca este módulo.
 """
 
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from sis_leg_backend.configuracion.modelos import ConfiguracionSonidosRecinto
+from sis_leg_backend.configuracion.modelos import (
+    ConfiguracionSonidosRecinto,
+    IdentidadInstitucional,
+)
 from sis_leg_backend.dominio.apoyo_tecnico import (
     AvisoTecnico,
     BibliotecaMensajesTecnicos,
@@ -89,6 +94,13 @@ class EstadoOperativo:
             ``SIN_PREPARAR``, y se refresca desde la configuración congelada
             cada vez que una preparación la vuelve a cargar, de modo que
             durante una sesión coincida exactamente con el snapshot congelado.
+        identidad_institucional: nombre del cuerpo legislativo que opera esta
+            instalación (WP-084). Sigue exactamente la misma política que los
+            sonidos: se lee al arrancar el proceso para que la cabecera pública
+            tenga nombre ya en ``SIN_PREPARAR``, y se refresca desde la
+            configuración congelada en cada preparación. Mientras la lectura de
+            arranque haya fallado conserva el rótulo neutro, que es legible pero
+            no nombra ninguna institución concreta.
     """
 
     estado_global: EstadoGlobal = field(default=EstadoGlobal.SIN_PREPARAR, init=False)
@@ -109,6 +121,9 @@ class EstadoOperativo:
     )
     sonidos_recinto: ConfiguracionSonidosRecinto = field(
         default_factory=ConfiguracionSonidosRecinto, init=False
+    )
+    identidad_institucional: IdentidadInstitucional = field(
+        default_factory=IdentidadInstitucional, init=False
     )
 
     def contexto_operativo_activo(self) -> Preparacion | None:

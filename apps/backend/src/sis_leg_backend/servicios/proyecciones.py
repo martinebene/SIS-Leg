@@ -18,6 +18,7 @@ from sis_leg_backend.configuracion.modelos import (
     Concejal,
     ConfiguracionSistema,
     ConfiguracionSonidosRecinto,
+    IdentidadInstitucional,
 )
 from sis_leg_backend.dominio.apoyo_tecnico import (
     AvisoTecnico,
@@ -543,6 +544,24 @@ class SonidosRecintoProyectados(ModeloProyeccion):
     sonidos: tuple[SonidoRecintoProyectado, ...]
 
 
+class IdentidadInstitucionalProyectada(ModeloProyeccion):
+    """Nombre del cuerpo legislativo que la Pantalla del Recinto debe mostrar (WP-084).
+
+    Es deliberadamente el contrato mínimo: un único campo con el texto exacto
+    configurado en ``[institucion]``. No se publica el diagnóstico interno
+    (``disponible``/``motivo``) porque la pantalla pública no tiene que explicar
+    un problema de configuración a la sala: si la identidad no pudo leerse, el
+    backend ya sustituyó el valor por un rótulo genérico y quien opera lo
+    diagnostica con el archivo delante.
+
+    Viaja en los tres estados globales, también en ``SIN_PREPARAR``: la cabecera
+    del Recinto existe desde que la pantalla se enciende, mucho antes de que
+    alguien prepare una sesión.
+    """
+
+    nombre: str
+
+
 class ConcejalRemapeoProyectado(ModeloProyeccion):
     """Banca mínima que el panel de remapeo necesita para operar (WP-074).
 
@@ -738,6 +757,7 @@ class EstadoRecinto(ModeloProyeccion):
     eventos_publicos: tuple[EventoPublicoProyectado, ...]
     tecnico: ApoyoTecnicoProyectado
     sonidos: SonidosRecintoProyectados
+    institucion: IdentidadInstitucionalProyectada
 
 
 class EstadoTecnico(ModeloProyeccion):
@@ -943,6 +963,11 @@ class ServicioProyecciones:
             # viajan también en SIN_PREPARAR, que es exactamente lo que pide
             # WP-065.
             sonidos=self._sonidos(self._estado.sonidos_recinto),
+            # La identidad institucional sigue exactamente la misma regla que
+            # los sonidos y por el mismo motivo: no depende de ``contexto``, se
+            # lee del estado operativo y por eso viaja también en SIN_PREPARAR,
+            # que es donde WP-084 exige verla.
+            institucion=self._institucion(self._estado.identidad_institucional),
         )
 
     def _construir_tecnico(self) -> EstadoTecnico:
@@ -1107,6 +1132,18 @@ class ServicioProyecciones:
                 for sonido in configuracion.sonidos
             ),
         )
+
+    @staticmethod
+    def _institucion(identidad: IdentidadInstitucional) -> IdentidadInstitucionalProyectada:
+        """Copia el nombre institucional al DTO público (WP-084).
+
+        No recorta espacios ni aplica mayúsculas: el criterio del WP es que el
+        Recinto muestre *exactamente* el valor configurado. Cuando la lectura de
+        arranque falló, ``identidad.nombre`` ya trae el rótulo genérico, así que
+        acá no hay ninguna decisión que tomar.
+        """
+
+        return IdentidadInstitucionalProyectada(nombre=identidad.nombre)
 
     def _apoyo_tecnico(
         self,

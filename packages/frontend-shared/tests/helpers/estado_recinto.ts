@@ -16,6 +16,7 @@ import type {
   ApoyoTecnicoProyectado,
   ConcejalPublico,
   EstadoRecinto,
+  IdentidadInstitucionalProyectada,
   SonidosRecintoProyectados,
   SonorizacionRecintoProyectada,
   VotacionPublica,
@@ -84,6 +85,22 @@ export function crearSonidosRecintoPrueba(
   }
 }
 
+/**
+ * Nombre institucional por defecto de las fixtures (WP-084).
+ *
+ * Es de fantasía y no nombra ninguna institución real. Se exporta para que las
+ * pruebas afirmen contra esta constante en lugar de repetir el literal: si
+ * alguna vez cambia, las suites siguen comprobando «el nombre configurado» y no
+ * un texto suelto que quedó viejo.
+ */
+export const NOMBRE_INSTITUCIONAL_DE_PRUEBA = 'Cuerpo Legislativo de Prueba'
+
+export function crearIdentidadInstitucionalPrueba(
+  parcial: Partial<IdentidadInstitucionalProyectada> = {},
+): IdentidadInstitucionalProyectada {
+  return { nombre: parcial.nombre ?? NOMBRE_INSTITUCIONAL_DE_PRUEBA }
+}
+
 export function crearEstadoRecintoPrueba(parcial: Partial<EstadoRecinto> = {}): EstadoRecinto {
   return {
     instancia: parcial.instancia ?? 'instancia-prueba',
@@ -100,6 +117,7 @@ export function crearEstadoRecintoPrueba(parcial: Partial<EstadoRecinto> = {}): 
     eventos_publicos: parcial.eventos_publicos ?? [],
     tecnico: parcial.tecnico ?? crearApoyoTecnicoPrueba(),
     sonidos: parcial.sonidos ?? crearSonidosRecintoPrueba(),
+    institucion: parcial.institucion ?? crearIdentidadInstitucionalPrueba(),
   }
 }
 

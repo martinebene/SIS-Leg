@@ -22,6 +22,7 @@ from sis_leg_backend.configuracion.cargar_configuracion import cargar_configurac
 from sis_leg_backend.configuracion.modelos import (
     ConfiguracionSistema,
     ConfiguracionSonidosRecinto,
+    IdentidadInstitucional,
     SonidoRecinto,
 )
 from sis_leg_backend.configuracion.sonidos_recinto import EVENTOS_SONIDO_RECINTO
@@ -42,6 +43,10 @@ LINEA_TIMER_REVELADO = "moderation_vote_reveal_seconds = 4"
 LINEA_TIMER_CUENTA_REGRESIVA = "public_initial_countdown_seconds = 4"
 LINEA_TIMER_RESULTADO = "public_result_display_seconds = 6"
 LINEA_LOGS = 'logs_dir = "logs"'
+# Sección [institucion] de WP-084. El nombre es de fantasía y suficientemente
+# largo como para que una prueba que lo confundiera con otro texto se note.
+LINEA_INSTITUCION = 'nombre = "Cuerpo Legislativo de Prueba"'
+NOMBRE_INSTITUCIONAL_DE_PRUEBA = "Cuerpo Legislativo de Prueba"
 
 # Sección [sonidos] de WP-065. Se construye a partir del contrato real
 # ``EVENTOS_SONIDO_RECINTO`` para que agregar o quitar un evento obligatorio
@@ -62,7 +67,10 @@ LINEAS_SONIDOS = "\n".join(
     for sonido in SONIDOS_DE_PRUEBA
 )
 
-TOML_CANONICO = f"""[session]
+TOML_CANONICO = f"""[institucion]
+{LINEA_INSTITUCION}
+
+[session]
 {LINEA_QUORUM}
 
 [room]
@@ -183,6 +191,7 @@ def configuracion_de_prueba(*, filas_bancas: tuple[int, ...] = (3, 4, 5)) -> Con
         recinto_resultado_publico_segundos=6,
         directorio_registros="logs",
         sonidos_recinto=sonidos_de_prueba(),
+        identidad_institucional=IdentidadInstitucional(nombre=NOMBRE_INSTITUCIONAL_DE_PRUEBA),
     )
 
 

@@ -191,6 +191,16 @@ export type SonidoRecintoProyectado = components['schemas']['SonidoRecintoProyec
  */
 export type SonidosRecintoProyectados = components['schemas']['SonidosRecintoProyectados']
 
+/**
+ * Nombre del cuerpo legislativo que la Pantalla del Recinto muestra (WP-084).
+ *
+ * Es el contrato mínimo: sólo el texto configurado en `[institucion]` de
+ * `system.toml`. Viaja en los tres estados globales, también en `SIN_PREPARAR`,
+ * porque la cabecera pública existe desde que la pantalla se enciende.
+ */
+export type IdentidadInstitucionalProyectada =
+  components['schemas']['IdentidadInstitucionalProyectada']
+
 /** Estado del indicador de transmisión: APAGADO | CUENTA_REGRESIVA | EN_VIVO */
 export type EstadoTransmision = components['schemas']['EstadoTransmision']
 

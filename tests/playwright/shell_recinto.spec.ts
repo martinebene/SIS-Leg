@@ -4,6 +4,15 @@ import { expect, test, type Page } from '@playwright/test'
 
 const HORA_RELOJ_E2E = new Date('2026-08-28T10:00:00Z')
 
+/**
+ * Nombre institucional que publica el backend simulado (WP-084).
+ *
+ * Es de fantasía y deliberadamente largo: la cabecera es la zona con menos ancho
+ * libre de la pantalla, así que un nombre corto no demostraría nada sobre el
+ * peor caso.
+ */
+const NOMBRE_INSTITUCIONAL_E2E = 'Cuerpo Legislativo de Ciudad Ejemplo'
+
 // La zona del navegador difiere deliberadamente de la escala sin offset del
 // backend. Así, la prueba falla si alguien vuelve a interpretar esas marcas
 // como hora local del navegador en lugar de comparar el reloj institucional.
@@ -51,6 +60,10 @@ function crearEstado(parcial: Record<string, unknown> = {}) {
       },
       aviso: null,
     },
+    // Identidad institucional del contrato público (WP-084). La cabecera muestra
+    // este texto y no uno escrito en la plantilla, así que la fixture tiene que
+    // traerlo igual que el backend real.
+    institucion: { nombre: NOMBRE_INSTITUCIONAL_E2E },
     ...parcial,
   }
 }
@@ -1016,12 +1029,14 @@ for (const viewport of [
       presidencia: 'Ana Presidencia',
       secretaria_legislativa: 'Luis Secretaría',
     }
-    // Nombres tomados del padrón real: el criterio de aceptación pide que la
-    // cola no genere scroll horizontal "con nombres reales".
+    // Nombres realistas —compuestos, con tildes y de longitud desigual— porque el
+    // criterio de aceptación pide que la cola no genere scroll horizontal con
+    // nombres de gente de verdad. Desde WP-084 son ficticios: la fixture ya no
+    // copia el padrón de una institución concreta.
     const colaReal = [
-      { nombre: 'Gastón', apellido: 'Cuis Taccari', banca: 4 },
-      { nombre: 'Federico', apellido: 'Garitano', banca: 7 },
-      { nombre: 'Lorena', apellido: 'Moreno', banca: 1 },
+      { nombre: 'Gastón', apellido: 'Ibarra Sandoval', banca: 4 },
+      { nombre: 'Federico', apellido: 'Villalobos', banca: 7 },
+      { nombre: 'Lorena', apellido: 'Aguirre', banca: 1 },
     ]
     const sesion = crearEstado({
       instancia: 'instancia-prueba',
@@ -1822,11 +1837,11 @@ for (const viewport of [
     // -----------------------------------------------------------------------
     const colaLarga = [
       { nombre: 'María Eugenia', apellido: 'Fernández Robledo', banca: 7 },
-      { nombre: 'Gastón', apellido: 'Cuis Taccari', banca: 4 },
+      { nombre: 'Gastón', apellido: 'Ibarra Sandoval', banca: 4 },
       { nombre: 'Juan', apellido: 'Pérez', banca: 1 },
-      { nombre: 'Federico', apellido: 'Garitano', banca: 9 },
-      { nombre: 'Lorena', apellido: 'Moreno', banca: 2 },
-      { nombre: 'Andrea', apellido: 'Rueda', banca: 5 },
+      { nombre: 'Federico', apellido: 'Villalobos', banca: 9 },
+      { nombre: 'Lorena', apellido: 'Aguirre', banca: 2 },
+      { nombre: 'Andrea', apellido: 'Cardozo', banca: 5 },
     ]
     await publicar(page, sesionConCola(3, colaLarga))
     await expect(page.getByTestId('cola-palabra').locator('li')).toHaveCount(colaLarga.length)

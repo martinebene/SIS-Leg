@@ -2,7 +2,7 @@
 
 ## Propósito
 
-Este repositorio contiene la especificación canónica y, posteriormente, la implementación de SIS-Leg, nueva versión del sistema de votación del Concejo Deliberante de Puerto Madryn.
+Este repositorio contiene la especificación canónica y, posteriormente, la implementación de SIS-Leg, nueva versión del sistema de votación de un cuerpo legislativo. Desde WP-084 el nombre institucional de cada instalación se configura en `config/system.toml` y no está escrito en el código: `scripts/auditar_identidad_institucional.py` falla si una referencia a la institución de origen reaparece fuera de su allowlist histórica.
 
 Los agentes deben implementar lo documentado aquí; no reconstruir el producto a partir del repositorio histórico.
 

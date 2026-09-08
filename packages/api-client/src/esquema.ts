@@ -1024,6 +1024,7 @@ export interface components {
             eventos_publicos: components["schemas"]["EventoPublicoProyectado"][];
             tecnico: components["schemas"]["ApoyoTecnicoProyectado"];
             sonidos: components["schemas"]["SonidosRecintoProyectados"];
+            institucion: components["schemas"]["IdentidadInstitucionalProyectada"];
         };
         /**
          * EstadoRemapeoModeracion
@@ -1231,6 +1232,25 @@ export interface components {
             apellido: string;
             /** Banca */
             banca: number;
+        };
+        /**
+         * IdentidadInstitucionalProyectada
+         * @description Nombre del cuerpo legislativo que la Pantalla del Recinto debe mostrar (WP-084).
+         *
+         *     Es deliberadamente el contrato mínimo: un único campo con el texto exacto
+         *     configurado en ``[institucion]``. No se publica el diagnóstico interno
+         *     (``disponible``/``motivo``) porque la pantalla pública no tiene que explicar
+         *     un problema de configuración a la sala: si la identidad no pudo leerse, el
+         *     backend ya sustituyó el valor por un rótulo genérico y quien opera lo
+         *     diagnostica con el archivo delante.
+         *
+         *     Viaja en los tres estados globales, también en ``SIN_PREPARAR``: la cabecera
+         *     del Recinto existe desde que la pantalla se enciende, mucho antes de que
+         *     alguien prepare una sesión.
+         */
+        IdentidadInstitucionalProyectada: {
+            /** Nombre */
+            nombre: string;
         };
         /**
          * MensajeTecnicoProyectado

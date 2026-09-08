@@ -65,6 +65,10 @@ async def test_snapshots_sin_preparar_son_completos_y_sin_contexto(tmp_path: Pat
         # WP-065 agrega la configuración de audio, que viaja también en
         # SIN_PREPARAR porque la pantalla suena fuera de una sesión.
         "sonidos",
+        # WP-084 agrega el nombre del cuerpo legislativo, por el mismo motivo:
+        # la cabecera pública lo muestra desde que la pantalla se enciende,
+        # antes de que exista cualquier preparación.
+        "institucion",
     }
 
 

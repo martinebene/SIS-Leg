@@ -14,6 +14,17 @@ import {
 
 const RUTA_ORDEN_DIA = resolve(__dirname, 'fixtures/orden-del-dia.csv')
 
+/**
+ * Nombre completo de quien ocupa la banca 1 en la plantilla del padrón.
+ *
+ * El recorrido corre contra el stack real, que arranca desde
+ * `config/concejales.example.csv`. Desde WP-084 esa plantilla trae datos
+ * ficticios: antes reproducía el padrón real de la institución de origen. Se
+ * declara como constante para que un cambio futuro de la plantilla se corrija en
+ * un solo lugar en vez de en tres aserciones sueltas.
+ */
+const NOMBRE_BANCA_1 = 'Amparo Bermudez'
+
 interface EstadoBasico {
   estado_global: string
   revision: number
@@ -164,7 +175,7 @@ test.describe.serial('WP-027 · recorridos críticos sobre el stack real', () =>
       await test.step('B · palabra y advertencia CA-062 conservan el estado autoritativo', async () => {
         await pulsar('1-7')
         await expect(moderacion.getByTestId('cola-palabra')).toContainText('Banca 1')
-        await expect(recinto.getByTestId('cola-palabra')).toContainText('Lorena Moreno')
+        await expect(recinto.getByTestId('cola-palabra')).toContainText(NOMBRE_BANCA_1)
         await moderacion.getByTestId('btn-otorgar-palabra').click()
         // WP-044: Moderación ya no repite al orador como texto; la señal vive en su banca.
         await expect(moderacion.locator('[data-banca="1"]')).toHaveAttribute(
@@ -175,7 +186,7 @@ test.describe.serial('WP-027 · recorridos críticos sobre el stack real', () =>
           'data-estado-banca',
           'PALABRA',
         )
-        await expect(recinto.getByTestId('panel-palabra')).not.toContainText('Lorena Moreno')
+        await expect(recinto.getByTestId('panel-palabra')).not.toContainText(NOMBRE_BANCA_1)
 
         await moderacion.getByTestId('input-numero-votacion').fill('1')
         await moderacion.getByTestId('select-tipo-votacion').selectOption({ label: 'Otro' })
@@ -201,7 +212,7 @@ test.describe.serial('WP-027 · recorridos críticos sobre el stack real', () =>
           'data-estado-banca',
           'PALABRA',
         )
-        await expect(recinto.getByTestId('panel-palabra')).not.toContainText('Lorena Moreno')
+        await expect(recinto.getByTestId('panel-palabra')).not.toContainText(NOMBRE_BANCA_1)
       })
 
       await test.step('C · mantiene secreto, revela y autocierra una votación real', async () => {

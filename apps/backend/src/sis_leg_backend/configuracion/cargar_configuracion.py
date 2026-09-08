@@ -6,8 +6,10 @@ Flujo principal paso a paso:
 2. ``tomllib`` (biblioteca estándar de Python desde 3.11) lo convierte a un
    diccionario: cada sección ``[nombre]`` se vuelve un dict anidado.
 3. Se extraen las cinco secciones canónicas y se validan sus claves una por
-   una con los validadores privados de este módulo. La sección ``[sonidos]``
-   incorporada por WP-065 se delega a ``configuracion.sonidos_recinto``.
+   una con los validadores privados de este módulo. Las dos secciones
+   incorporadas después se delegan a su módulo propio: ``[sonidos]``
+   (WP-065) a ``configuracion.sonidos_recinto`` e ``[institucion]``
+   (WP-084) a ``configuracion.identidad_institucional``.
 4. Con los valores ya validados se construye ``ConfiguracionSistema``, un
    ``dataclass`` congelado: al ser inmutable y no guardar ninguna referencia
    al archivo ni a su contenido, queda congelado para toda la sesión
@@ -29,6 +31,9 @@ from typing import Any, cast
 from sis_leg_backend.configuracion.errores import (
     ErrorTomlInvalido,
     ErrorValidacionConfiguracion,
+)
+from sis_leg_backend.configuracion.identidad_institucional import (
+    exigir_identidad_institucional,
 )
 from sis_leg_backend.configuracion.modelos import ConfiguracionSistema
 from sis_leg_backend.configuracion.sonidos_recinto import exigir_sonidos_recinto
@@ -91,6 +96,10 @@ def cargar_configuracion_sistema(ruta: Path) -> ConfiguracionSistema:
         # con reglas propias de ruta y volumen, y ese detalle no pertenece al
         # esquema mínimo de WP-003.
         sonidos_recinto=exigir_sonidos_recinto(datos),
+        # La sección [institucion] la valida su propio módulo (WP-084). Acá es
+        # obligatoria: preparar el recinto sin saber qué cuerpo legislativo
+        # sesiona dejaría la pantalla pública sin identidad durante la sesión.
+        identidad_institucional=exigir_identidad_institucional(datos),
     )
 
 

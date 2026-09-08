@@ -1,6 +1,6 @@
 # SIS-Leg
 
-Reimplementación desde cero del sistema de votación del Concejo Deliberante de Puerto Madryn.
+Reimplementación desde cero del sistema de votación de un cuerpo legislativo. El nombre institucional de cada instalación se configura en `config/system.toml` (WP-084) y no está escrito en el código.
 
 **SIS-Leg** es el nombre del producto y también su identidad técnica: es lo que ve una persona en las pantallas, en el título de cada pestaña y en el logo institucional, y es además el nombre del repositorio, de los paquetes `@sis-leg/*`, de los módulos Python y de las unidades de servicio. WP-062 adoptó la marca visible y WP-077 completó el cambio de identidad técnica; `Botonera2` quedó como nombre histórico del proyecto y se explica en `docs/NOTA-LEGADO-BOTONERA2.md`.
 
