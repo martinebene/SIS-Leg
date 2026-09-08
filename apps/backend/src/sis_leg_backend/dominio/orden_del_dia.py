@@ -30,6 +30,7 @@ from __future__ import annotations
 import csv
 import io
 import math
+import unicodedata
 from dataclasses import dataclass
 
 from sis_leg_backend.dominio.errores import ErrorOrdenDelDiaInvalido
@@ -68,6 +69,64 @@ class PuntoOrdenDelDia:
     tipo_mayoria: TipoMayoria
     factor: float
     base: BaseMayoria
+
+
+def normalizar_tipo_para_comparacion(tipo: str) -> str:
+    """Construye la clave tolerante usada para comparar tipos descriptivos.
+
+    La función no decide si un tipo está permitido ni conoce la configuración:
+    solamente transforma ambos textos con las mismas reglas. Primero aplica
+    ``casefold`` para comparar sin distinguir mayúsculas y minúsculas; después
+    descompone cada carácter Unicode y elimina sus marcas diacríticas; por
+    último, ``split`` sin argumentos recorta los extremos y reconoce las
+    distintas clases de whitespace de Unicode, mientras ``join`` colapsa cada
+    secuencia interna a un único espacio común.
+
+    El resultado se usa únicamente como clave de comparación. Nunca reemplaza
+    la grafía configurada que verá la persona operadora.
+
+    Args:
+        tipo: texto descriptivo proveniente del CSV o de ``voting.types``.
+
+    Returns:
+        Clave sin diferencias de case, diacríticos ni cantidad de whitespace.
+    """
+
+    texto_descompuesto = unicodedata.normalize("NFD", tipo.casefold())
+    texto_sin_diacriticos = "".join(
+        caracter
+        for caracter in texto_descompuesto
+        if not unicodedata.category(caracter).startswith("M")
+    )
+    return " ".join(texto_sin_diacriticos.split())
+
+
+def canonicalizar_tipo_configurado(tipo: str, tipos_configurados: tuple[str, ...]) -> str:
+    """Devuelve la grafía configurada sólo ante una coincidencia inequívoca.
+
+    Cada valor configurado conserva su texto exacto. La clave tolerante sirve
+    exclusivamente para encontrar candidatos: si aparece exactamente uno, se
+    devuelve ese valor canónico; si no aparece ninguno o varios valores
+    colisionan, se preserva ``tipo``. Así un CSV desconocido continúa requiriendo
+    selección manual y una configuración ambigua nunca se resuelve al azar.
+
+    Args:
+        tipo: valor ya recortado por el parser puro del Orden del Día.
+        tipos_configurados: snapshot inmutable de ``voting.types``.
+
+    Returns:
+        El único texto configurado compatible o el valor original.
+    """
+
+    clave_buscada = normalizar_tipo_para_comparacion(tipo)
+    coincidencias = tuple(
+        tipo_configurado
+        for tipo_configurado in tipos_configurados
+        if normalizar_tipo_para_comparacion(tipo_configurado) == clave_buscada
+    )
+    if len(coincidencias) == 1:
+        return coincidencias[0]
+    return tipo
 
 
 def _validar_y_parsear_nro_votacion(valor_crudo: str, indice_fila: int) -> int:

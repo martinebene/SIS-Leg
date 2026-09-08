@@ -268,7 +268,11 @@ Reglas del contrato:
 - formato CSV estándar con separador coma `,` y soporte de campos entre comillas cuando el contenido incluya comas;
 - encabezado obligatorio con esas seis columnas y ese significado;
 - `nro_votacion`: número externo usado para precargar el formulario; no se valida secuencia ni unicidad institucional;
-- `tipo`: texto descriptivo que se copia al formulario;
+- `tipo`: texto descriptivo que se resuelve contra `voting.types` al instalar la carga. La
+  comparación ignora mayúsculas/minúsculas, diacríticos y diferencias de whitespace (espacios
+  en extremos o secuencias internas); ante una única coincidencia se usa exactamente la grafía
+  configurada. Un valor desconocido o una colisión entre varios tipos configurados equivalentes
+  queda marcado como no permitido para que Moderación lo resuelva manualmente;
 - `tema`: texto descriptivo;
 - `tipo_mayoria`: `SIMPLE` o `ESPECIAL`;
 - si `tipo_mayoria = SIMPLE`, `factor` puede estar vacío o contener `0`, y `base` puede estar vacía o contener `VOTOS_COMPUTABLES`; el punto normalizado usa factor `0` y esa base;

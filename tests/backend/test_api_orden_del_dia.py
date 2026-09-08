@@ -26,6 +26,7 @@ import sis_leg_backend.servicios.orden_del_dia as modulo_servicio_od
 from conftest import (
     LINEA_LOGS,
     LINEA_QUORUM,
+    LINEA_TYPES,
     TOML_CANONICO,
     escribir_padron,
     escribir_system_toml,
@@ -59,14 +60,23 @@ CSV_HISTORICO_CINCO_COLUMNAS = (
 )
 
 
-def preparar_archivos_canonicos(directorio: Path, *, quorum: int = 1) -> None:
+def preparar_archivos_canonicos(
+    directorio: Path,
+    *,
+    quorum: int = 1,
+    linea_tipos: str = LINEA_TYPES,
+) -> None:
     """Crea configuración y padrón ficticios para una aplicación aislada."""
     carpeta = directorio / "config"
     carpeta.mkdir(parents=True, exist_ok=True)
-    contenido = TOML_CANONICO.replace(
-        LINEA_LOGS,
-        f'logs_dir = "{directorio / "logs"}"',
-    ).replace(LINEA_QUORUM, f"quorum = {quorum}")
+    contenido = (
+        TOML_CANONICO.replace(
+            LINEA_LOGS,
+            f'logs_dir = "{directorio / "logs"}"',
+        )
+        .replace(LINEA_QUORUM, f"quorum = {quorum}")
+        .replace(LINEA_TYPES, linea_tipos)
+    )
     escribir_system_toml(carpeta / "system.toml", contenido)
     escribir_padron(carpeta / "concejales.csv", filas_padron_valido())
 
@@ -77,10 +87,11 @@ async def cliente_de_prueba(
     monkeypatch: pytest.MonkeyPatch,
     *,
     quorum: int = 1,
+    linea_tipos: str = LINEA_TYPES,
     raise_app_exceptions: bool = True,
 ) -> AsyncGenerator[tuple[AsyncClient, FastAPI]]:
     """Entrega cliente y aplicación con lifespan y archivos canónicos reales."""
-    preparar_archivos_canonicos(tmp_path, quorum=quorum)
+    preparar_archivos_canonicos(tmp_path, quorum=quorum, linea_tipos=linea_tipos)
     monkeypatch.chdir(tmp_path)
     aplicacion = crear_aplicacion()
     async with aplicacion.router.lifespan_context(aplicacion):
@@ -188,6 +199,35 @@ async def test_post_orden_del_dia_valido_en_sesion_abierta(
         respuesta = await cliente.post("/api/v1/orden-del-dia", files=archivos)
         assert respuesta.status_code == 200
         assert len(respuesta.json()["puntos"]) == 2
+
+
+async def test_post_canonicaliza_con_voting_types_real_y_q2_proyecta_el_valor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Integra TOML, carga REST y proyección Q2 conservando la grafía configurada."""
+
+    async with cliente_de_prueba(
+        tmp_path,
+        monkeypatch,
+        linea_tipos='types = ["Ratificación", "Otro"]',
+    ) as (cliente, _aplicacion):
+        await preparar_sala_valida(cliente)
+        csv_sin_acento = (
+            b"nro_votacion,tipo,tema,tipo_mayoria,factor,base\n1,ratificacion,Tema,SIMPLE,,\n"
+        )
+
+        respuesta = await cliente.post(
+            "/api/v1/orden-del-dia",
+            files={"archivo": ("orden.csv", csv_sin_acento, "text/csv")},
+        )
+        estado = await cliente.get("/api/v1/estado/moderacion")
+
+        assert respuesta.status_code == 200
+        assert respuesta.json()["puntos"][0]["tipo"] == "Ratificación"
+        assert estado.status_code == 200
+        assert estado.json()["orden_del_dia"][0]["tipo"] == "Ratificación"
+        assert estado.json()["configuracion"]["tipos_votacion"] == ["Ratificación", "Otro"]
 
 
 async def test_post_orden_del_dia_en_sin_preparar_devuelve_409(

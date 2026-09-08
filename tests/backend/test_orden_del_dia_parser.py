@@ -20,8 +20,32 @@ from __future__ import annotations
 
 import pytest
 from sis_leg_backend.dominio.errores import ErrorOrdenDelDiaInvalido
-from sis_leg_backend.dominio.orden_del_dia import PuntoOrdenDelDia, parsear_orden_del_dia
+from sis_leg_backend.dominio.orden_del_dia import (
+    PuntoOrdenDelDia,
+    normalizar_tipo_para_comparacion,
+    parsear_orden_del_dia,
+)
 from sis_leg_backend.dominio.votacion import BaseMayoria, TipoMayoria
+
+
+@pytest.mark.parametrize(
+    ("tipo", "clave_esperada"),
+    [
+        ("Ratificación", "ratificacion"),
+        ("RATIFICACIÓN", "ratificacion"),
+        ("Ratificacio\u0301n", "ratificacion"),
+        ("  Despacho\t\u2003  OP\n", "despacho op"),
+        (" \tRATIFICACIO\u0301N   ESPECIAL ", "ratificacion especial"),
+    ],
+)
+def test_normalizador_tipo_ignora_case_diacriticos_y_whitespace(
+    tipo: str,
+    clave_esperada: str,
+) -> None:
+    """Demuestra cada tolerancia aislada y su combinación sobre texto Unicode."""
+
+    assert normalizar_tipo_para_comparacion(tipo) == clave_esperada
+
 
 # ==============================================================================
 # 1. ENCABEZADO Y FORMATO BASE
