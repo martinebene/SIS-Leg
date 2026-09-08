@@ -235,11 +235,11 @@ WP-033 quedó integrado antes de continuar WP-026 y deja disponible el harness m
 | WP-081 | Garantizar cierre FIN de avisos ante carreras entre timers y mutaciones | INTEGRADO | WP-079, WP-078 | - |
 | WP-082 | Endurecer privacidad y exclusividad efectiva del Device Bridge | INTEGRADO | WP-079, WP-075 | - |
 | WP-083 | Aplicar ajustes UX de quinta ronda en Apoyo Técnico y Q3 | INTEGRADO | WP-079, WP-049, WP-076 | - |
-| WP-084 | Generalizar identidad institucional y hacer configurable el cuerpo legislativo | EN_CURSO | WP-079, WP-077 | claude |
-| WP-085 | Generar informe formal de acta y copia externa opcional de registros al cierre | PENDIENTE | WP-081, WP-073, WP-078 | claude |
+| WP-084 | Generalizar identidad institucional y hacer configurable el cuerpo legislativo | INTEGRADO | WP-079, WP-077 | - |
+| WP-085 | Generar informe formal de acta y copia externa opcional de registros al cierre | EN_CURSO | WP-081, WP-073, WP-078 | claude |
 | WP-086 | Rechazar NaN e infinitos en todos los temporizadores configurables | INTEGRADO | WP-079, WP-003 | - |
 | WP-088 | Evitar reconstrucción del sentido del voto desde logs operativos del Device Bridge | INTEGRADO | WP-082, WP-019 | - |
-| WP-089 | Validar el timeout del canal de control del Device Bridge | PENDIENTE | WP-020 | claude |
+| WP-089 | Validar el timeout del canal de control del Device Bridge | EN_CURSO | WP-020 | claude |
 | WP-087 | Endurecer migración, systemd y smoke de release antes del despliegue | BLOQUEADO | WP-029, WP-077 | claude |
 | WP-029 | Validar bridge/hardware real, regresión funcional y candidato de producción | BLOQUEADO | WP-019, WP-020, WP-027, WP-028, WP-034, WP-035, WP-036, WP-037, WP-038, WP-039, WP-040, WP-041, WP-043, WP-044, WP-045, WP-046, WP-047, WP-048, WP-049, WP-050, WP-051, WP-052, WP-053, WP-054, WP-055, WP-056, WP-057, WP-058, WP-059, WP-060, WP-061, WP-062, WP-063, WP-064, WP-065, WP-066, WP-067, WP-069, WP-070, WP-071, WP-072, WP-073, WP-077, WP-078, WP-076, WP-075, WP-074, WP-079, WP-080, WP-081, WP-082, WP-083, WP-084, WP-085, WP-086, WP-088, WP-089 | - |
 
@@ -539,3 +539,7 @@ WP-088 quedó integrado tras dos iteraciones sobre PR #93. I001 cerró la exposi
 Con WP-086 y WP-088 integrados, HUMAN_GATE mantiene la instrucción de continuar con la quinta ronda. Se activa WP-084 como siguiente trabajo sustantivo. Antes de lanzarlo, el COORDINADOR_LOCAL realizará cleanup verificable de los worktrees/ramas ya integrados WP-086 y WP-088, y luego ejecutará WP-084 IMPLEMENTER→REVIEWER con `max_concurrency=1`. WP-085 permanece `PENDIENTE` para ejecutarse después de integrar WP-084 porque ambos comparten configuración/documentación.
 
 El hallazgo fuera de alcance de WP-086 sobre `SIS_LEG_BRIDGE_CONTROL_TIMEOUT` se clasifica como defecto técnico real y se formaliza en WP-089, sin fake dependency con WP-086. WP-089 queda `PENDIENTE` y se resolverá antes de WP-029/freeze. WP-029 continúa `BLOQUEADO` y pasa a depender también de WP-089.
+
+WP-084 quedó integrado desde PR #95. Candidate `c71b081474ca1ad7845bcb6ce64187bf39b79d32`, tree `39eb28a825674be014b327097b43828bacc353d7`, review independiente 0 BLOQUEANTES / 0 IMPORTANTES / 0 MENORES, CI candidata #510 `success` 8/8 y auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`. Squash merge `10f378a2cc1a8a441bcb6198d23f8fe57865da61`; CI post-merge #511 `success` 8/8. La identidad institucional queda configurable mediante `[institucion].nombre`, disponible también en `SIN_PREPARAR` con fallback neutro y sin reescribir historia. Antes de operar nuevamente el checkout coordinador debe migrarse el `config/system.toml` runtime local con el nombre real.
+
+Con WP-084 integrado se activa la siguiente ola lógicamente paralela: WP-085 (informe de acta/copia externa) y WP-089 (validación del timeout del canal de control). Son materialmente independientes y se ejecutarán físicamente en secuencia por `max_concurrency=1`. El lote realizará primero cleanup de WP-084 y migración idempotente del config runtime local, luego WP-085 IMPLEMENTER→REVIEWER y WP-089 IMPLEMENTER→REVIEWER. El coordinador no mergeará ninguno.
