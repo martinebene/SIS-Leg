@@ -99,7 +99,7 @@ class ServicioFronterasRastreado(ServicioFronterasTemporales):
         coordinador: CoordinadorPublicacion,
         *,
         esperar: Callable[[float], Awaitable[None]],
-        cerrar_marcadores_vencidos: Callable[[], Awaitable[None]] | None = None,
+        procesar_efectos_pendientes: Callable[[], Awaitable[None]] | None = None,
         hay_efecto_pendiente: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__(
@@ -107,7 +107,7 @@ class ServicioFronterasRastreado(ServicioFronterasTemporales):
             ejecutor_mutaciones,
             coordinador,
             esperar=esperar,
-            cerrar_marcadores_vencidos=cerrar_marcadores_vencidos,
+            procesar_efectos_pendientes=procesar_efectos_pendientes,
             hay_efecto_pendiente=hay_efecto_pendiente,
         )
         self.tarea_ejecucion: asyncio.Task[None] | None = None
@@ -180,7 +180,7 @@ async def test_lifespan_no_pierde_cancelacion_durante_cleanup_de_frontera(
         _ejecutor_mutaciones: EjecutorMutaciones,
         _coordinador: CoordinadorPublicacion,
         *,
-        cerrar_marcadores_vencidos: Callable[[], Awaitable[None]] | None = None,
+        procesar_efectos_pendientes: Callable[[], Awaitable[None]] | None = None,
         hay_efecto_pendiente: Callable[[], bool] | None = None,
     ) -> ServicioFronterasTemporales:
         """Sustituye solo dependencias temporales sin cambiar el lifespan probado.
@@ -198,7 +198,7 @@ async def test_lifespan_no_pierde_cancelacion_durante_cleanup_de_frontera(
             ejecutor,
             coordinador,
             esperar=esperar_controlado,
-            cerrar_marcadores_vencidos=cerrar_marcadores_vencidos,
+            procesar_efectos_pendientes=procesar_efectos_pendientes,
             hay_efecto_pendiente=hay_efecto_pendiente,
         )
         return servicio_creado

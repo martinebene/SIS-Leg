@@ -1329,6 +1329,26 @@
             entendiendo que durante la cuenta regresiva todavía no hay emisión pública.
           </p>
 
+          <h4>Cómo queda asentada la transmisión</h4>
+
+          <p>
+            Mientras hay una preparación o sesión activa, los registros distinguen la orden del
+            operador del momento efectivo. <code>TRANSMISION_INICIADA</code> anota la orden de
+            iniciar; <code>TRANSMISION_EN_VIVO_INICIO</code> aparece cuando el indicador llega
+            realmente a «En vivo», de inmediato o al terminar la cuenta regresiva. Al detener o
+            reemplazar una transmisión que ya estaba en vivo se agrega
+            <code>TRANSMISION_EN_VIVO_FIN</code>, además de conservar la orden
+            <code>TRANSMISION_DETENIDA</code> cuando corresponde.
+          </p>
+
+          <p>
+            Una cuenta regresiva cancelada antes de llegar a cero no inventa un fin de transmisión.
+            Estos hechos son de operación normal: están en los archivos L1 y L2, pero no en L3 ni
+            en el informe <code>-ACTA.txt</code>. Si el sistema todavía está sin preparar, el
+            indicador funciona igual pero no crea archivos de registro nuevos ni agrega hechos de
+            forma retrospectiva al preparar después.
+          </p>
+
           <h3>8.2 Avisos</h3>
 
           <p>

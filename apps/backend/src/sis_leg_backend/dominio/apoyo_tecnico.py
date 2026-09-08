@@ -35,7 +35,10 @@ calcula al proyectar comparando ese instante con el reloj. Así:
 El único trabajo del temporizador de ``servicios/fronteras_temporales.py`` es
 *despertar* en esas fronteras para publicar una revisión nueva, porque el
 payload observable cambia aunque nadie haya ejecutado un comando. Eso es lo
-que permite cumplir la restricción del WP de no introducir polling.
+que permite cumplir la restricción del WP de no introducir polling. Desde
+WP-092 la intención conserva además si el cruce a ``EN_VIVO`` ya fue
+procesado: el estado visible sigue derivándose del reloj, pero el hecho durable
+puede registrarse exactamente una vez sin releer los CSV.
 """
 
 from __future__ import annotations
@@ -102,11 +105,15 @@ class TransmisionTecnica:
             o ``None`` cuando el inicio fue inmediato. Se conserva únicamente
             como dato informativo para el puesto técnico; la verdad temporal
             siempre es ``en_vivo_desde``.
+        inicio_en_vivo_procesado: indica que el cruce efectivo de esta intención
+            ya fue tratado, hubiera o no una auditoría abierta en ese instante.
+            Así una preparación posterior no inventa un replay durable.
     """
 
     iniciada_en: datetime
     en_vivo_desde: datetime
     cuenta_regresiva_segundos: int | None
+    inicio_en_vivo_procesado: bool
 
 
 @dataclass(frozen=True, slots=True)

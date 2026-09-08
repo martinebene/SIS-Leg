@@ -483,7 +483,7 @@ async def test_el_temporizador_registra_el_fin_al_cruzar_la_frontera(tmp_path: P
         entorno.ejecutor,
         entorno.coordinador,
         esperar=esperar,
-        cerrar_marcadores_vencidos=servicio.cerrar_marcadores_recinto_vencidos,
+        procesar_efectos_pendientes=servicio.procesar_efectos_temporales_pendientes,
     )
     tarea = asyncio.create_task(fronteras.ejecutar())
     try:
@@ -541,7 +541,7 @@ async def test_una_mutacion_simultanea_al_vencimiento_no_suprime_el_fin(
         entorno.ejecutor,
         entorno.coordinador,
         esperar=esperar,
-        cerrar_marcadores_vencidos=servicio.cerrar_marcadores_recinto_vencidos,
+        procesar_efectos_pendientes=servicio.procesar_efectos_temporales_pendientes,
         hay_efecto_pendiente=servicio.hay_marcador_recinto_vencido,
     )
     tarea = asyncio.create_task(fronteras.ejecutar())
@@ -590,7 +590,7 @@ async def test_la_carrera_no_duplica_el_fin_de_un_aviso_ya_cancelado(
         entorno.ejecutor,
         entorno.coordinador,
         esperar=esperar,
-        cerrar_marcadores_vencidos=servicio.cerrar_marcadores_recinto_vencidos,
+        procesar_efectos_pendientes=servicio.procesar_efectos_temporales_pendientes,
         hay_efecto_pendiente=servicio.hay_marcador_recinto_vencido,
     )
     tarea = asyncio.create_task(fronteras.ejecutar())
@@ -650,7 +650,7 @@ async def test_el_fin_se_registra_aunque_la_espera_del_deadline_quede_pendiente(
         entorno.ejecutor,
         entorno.coordinador,
         esperar=esperar,
-        cerrar_marcadores_vencidos=servicio.cerrar_marcadores_recinto_vencidos,
+        procesar_efectos_pendientes=servicio.procesar_efectos_temporales_pendientes,
         hay_efecto_pendiente=servicio.hay_marcador_recinto_vencido,
     )
     tarea = asyncio.create_task(fronteras.ejecutar())
@@ -709,7 +709,7 @@ async def test_un_cierre_pendiente_irrecuperable_no_produce_un_ciclo_ocupado(
         entorno.ejecutor,
         entorno.coordinador,
         esperar=esperar,
-        cerrar_marcadores_vencidos=cerrar_fallando,
+        procesar_efectos_pendientes=cerrar_fallando,
         hay_efecto_pendiente=servicio.hay_marcador_recinto_vencido,
     )
     tarea = asyncio.create_task(fronteras.ejecutar())
@@ -804,7 +804,7 @@ async def test_un_fin_irrecuperable_real_no_reintenta_en_ciclo_apretado(
         entorno.servicio,
         entorno.ejecutor,
         entorno.coordinador,
-        cerrar_marcadores_vencidos=cerrar_real,
+        procesar_efectos_pendientes=cerrar_real,
         hay_efecto_pendiente=servicio.hay_marcador_recinto_vencido,
     )
     tarea = asyncio.create_task(fronteras.ejecutar())
@@ -937,7 +937,7 @@ async def test_el_temporizador_sobrevive_a_un_fallo_de_auditoria(tmp_path: Path)
         entorno.ejecutor,
         entorno.coordinador,
         esperar=esperar,
-        cerrar_marcadores_vencidos=cerrar_fallando,
+        procesar_efectos_pendientes=cerrar_fallando,
     )
     tarea = asyncio.create_task(fronteras.ejecutar())
     try:
@@ -981,10 +981,10 @@ async def test_el_ciclo_de_vida_inyecta_el_cierre_automatico() -> None:
     finally:
         modulo_aplicacion.ServicioFronterasTemporales = original  # type: ignore[misc]
 
-    cierre = capturado.get("cerrar_marcadores_vencidos")
+    cierre = capturado.get("procesar_efectos_pendientes")
     assert cierre is not None
     assert getattr(cierre, "__self__", None).__class__ is ServicioApoyoTecnico
-    assert getattr(cierre, "__name__", "") == "cerrar_marcadores_recinto_vencidos"
+    assert getattr(cierre, "__name__", "") == "procesar_efectos_temporales_pendientes"
 
     # WP-081: la consulta de efecto pendiente viaja por la misma costura y debe
     # apuntar al mismo servicio, porque un cierre y un predicado que miraran
@@ -992,4 +992,4 @@ async def test_el_ciclo_de_vida_inyecta_el_cierre_automatico() -> None:
     pendiente = capturado.get("hay_efecto_pendiente")
     assert pendiente is not None
     assert getattr(pendiente, "__self__", None) is getattr(cierre, "__self__", None)
-    assert getattr(pendiente, "__name__", "") == "hay_marcador_recinto_vencido"
+    assert getattr(pendiente, "__name__", "") == "hay_efecto_temporal_pendiente"

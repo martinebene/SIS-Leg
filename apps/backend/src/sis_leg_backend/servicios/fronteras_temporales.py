@@ -25,8 +25,9 @@ class ServicioFronterasTemporales:
     Desde WP-078 el cruce de una frontera puede además **registrar un hecho**:
     el aviso que vence en la Pantalla del Recinto cierra su período con un
     evento principal ``FIN``. Ese trabajo no vive acá sino en
-    ``cerrar_marcadores_vencidos``, una corrutina inyectada por el lifespan, de
-    modo que el temporizador siga sin conocer reglas del plano técnico.
+    ``procesar_efectos_pendientes``, una corrutina inyectada por el lifespan, de
+    modo que el temporizador siga sin conocer reglas del plano técnico. WP-092
+    incorpora por esa misma costura el inicio efectivo de una transmisión.
 
     Desde WP-081 ese hecho tampoco se decide observando qué tarea de espera
     quedó ``done``. El lifespan inyecta además ``hay_efecto_pendiente``, una
@@ -43,14 +44,14 @@ class ServicioFronterasTemporales:
         coordinador: CoordinadorPublicacion,
         *,
         esperar: Callable[[float], Awaitable[None]] = asyncio.sleep,
-        cerrar_marcadores_vencidos: Callable[[], Awaitable[None]] | None = None,
+        procesar_efectos_pendientes: Callable[[], Awaitable[None]] | None = None,
         hay_efecto_pendiente: Callable[[], bool] | None = None,
     ) -> None:
         self._proyecciones = servicio_proyecciones
         self._ejecutor = ejecutor_mutaciones
         self._coordinador = coordinador
         self._esperar = esperar
-        self._cerrar_marcadores_vencidos = cerrar_marcadores_vencidos
+        self._procesar_efectos_pendientes = procesar_efectos_pendientes
         self._hay_efecto_pendiente = hay_efecto_pendiente
 
     async def ejecutar(self) -> None:
@@ -179,15 +180,13 @@ class ServicioFronterasTemporales:
             volver a intentar sin esperar un cambio real sólo quemaría CPU.
         """
 
-        if self._cerrar_marcadores_vencidos is None:
+        if self._procesar_efectos_pendientes is None:
             await self._ejecutor.publicar_frontera_temporal()
             return True
         try:
-            await self._cerrar_marcadores_vencidos()
+            await self._procesar_efectos_pendientes()
         except ErrorAuditoria:
-            REGISTRO.exception(
-                "No se pudo registrar el FIN automático de un aviso de la Pantalla del Recinto"
-            )
+            REGISTRO.exception("No se pudo registrar un efecto automático de una frontera temporal")
             return False
         return True
 
