@@ -236,7 +236,7 @@ WP-033 quedó integrado antes de continuar WP-026 y deja disponible el harness m
 | WP-082 | Endurecer privacidad y exclusividad efectiva del Device Bridge | INTEGRADO | WP-079, WP-075 | - |
 | WP-083 | Aplicar ajustes UX de quinta ronda en Apoyo Técnico y Q3 | INTEGRADO | WP-079, WP-049, WP-076 | - |
 | WP-084 | Generalizar identidad institucional y hacer configurable el cuerpo legislativo | INTEGRADO | WP-079, WP-077 | - |
-| WP-085 | Generar informe formal de acta y copia externa opcional de registros al cierre | EN_CURSO | WP-081, WP-073, WP-078 | claude |
+| WP-085 | Generar informe formal de acta y copia externa opcional de registros al cierre | INTEGRADO | WP-081, WP-073, WP-078 | - |
 | WP-086 | Rechazar NaN e infinitos en todos los temporizadores configurables | INTEGRADO | WP-079, WP-003 | - |
 | WP-088 | Evitar reconstrucción del sentido del voto desde logs operativos del Device Bridge | INTEGRADO | WP-082, WP-019 | - |
 | WP-089 | Validar el timeout del canal de control del Device Bridge | INTEGRADO | WP-020 | - |
