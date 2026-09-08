@@ -15,13 +15,66 @@ from sis_leg_backend.servicios.apoyo_tecnico import (
     RUTA_MENSAJES_TECNICOS_POR_DEFECTO,
     leer_biblioteca_mensajes_tecnicos,
 )
-from sis_leg_backend.servicios.cliente_bridge import ClienteControlBridge
+from sis_leg_backend.servicios.cliente_bridge import (
+    TIMEOUT_CONTROL_POR_DEFECTO,
+    ClienteControlBridge,
+    error_timeout_control_invalido,
+    exigir_timeout_control_valido,
+)
 from sis_leg_backend.servicios.preparacion import RUTA_CONFIGURACION_POR_DEFECTO
 from sis_leg_backend.servicios.proyecciones import ServicioProyecciones
 from sis_leg_backend.servicios.publicacion import CoordinadorPublicacion
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
 
 NOMBRE_RECURSOS = "recursos_sis-leg"
+
+# Variables de entorno que configuran el canal de control hacia el
+# device-bridge. Se declaran como constantes porque el mensaje de error de
+# WP-089 debe nombrar literalmente la variable: si el nombre viviera suelto en
+# la llamada a ``os.getenv`` y en el texto del error, ambos podrían divergir.
+NOMBRE_ENTORNO_URL_CONTROL_BRIDGE = "SIS_LEG_BRIDGE_CONTROL_URL"
+NOMBRE_ENTORNO_TIMEOUT_CONTROL_BRIDGE = "SIS_LEG_BRIDGE_CONTROL_TIMEOUT"
+URL_CONTROL_BRIDGE_POR_DEFECTO = "http://127.0.0.1:8765"
+
+
+def _leer_timeout_control_bridge() -> float:
+    """Traduce ``SIS_LEG_BRIDGE_CONTROL_TIMEOUT`` a una duración utilizable.
+
+    Reglas (WP-089):
+
+    - variable ausente: rige exactamente el default histórico de 3.0 segundos;
+    - variable presente: debe ser un número finito y estrictamente mayor que
+      cero, sea entero o decimal;
+    - cualquier otra cosa —texto no numérico, cadena vacía, ``nan``, ``inf``,
+      ``-inf``, cero o negativos— aborta el arranque.
+
+    El punto importante es el **fail-fast**: una variable inválida no puede
+    caer silenciosamente al default ni diferirse hasta el primer remapeo, que
+    es justamente la operación urgente donde nadie quiere descubrir que el
+    timeout del socket era ``nan``. El error se produce mientras se construyen
+    los recursos, es decir durante el arranque del proceso.
+
+    Errores:
+        ``ErrorConfiguracionBridge`` nombrando la variable y el valor recibido.
+    """
+
+    valor_crudo = os.getenv(NOMBRE_ENTORNO_TIMEOUT_CONTROL_BRIDGE)
+    if valor_crudo is None:
+        return TIMEOUT_CONTROL_POR_DEFECTO
+    try:
+        # ``float`` acepta enteros y decimales, y también los literales
+        # ``nan``/``inf``; por eso el resultado todavía debe pasar por la
+        # validación compartida antes de considerarse una duración.
+        numero = float(valor_crudo)
+    except ValueError as error:
+        raise error_timeout_control_invalido(
+            valor_crudo,
+            origen=NOMBRE_ENTORNO_TIMEOUT_CONTROL_BRIDGE,
+        ) from error
+    return exigir_timeout_control_valido(
+        numero,
+        origen=NOMBRE_ENTORNO_TIMEOUT_CONTROL_BRIDGE,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +125,10 @@ def crear_recursos_aplicacion(
     exigiendo la sección.
     """
 
+    # La configuración del canal de control se valida antes que nada: si el
+    # entorno está mal, conviene fallar sin haber leído archivos ni construido
+    # a medias el estado del proceso.
+    timeout_control_bridge = _leer_timeout_control_bridge()
     estado_operativo = EstadoOperativo()
     estado_operativo.biblioteca_mensajes_tecnicos = leer_biblioteca_mensajes_tecnicos(
         ruta_mensajes_tecnicos
@@ -88,8 +145,8 @@ def crear_recursos_aplicacion(
         coordinador,
     )
     cliente_control_bridge = ClienteControlBridge(
-        url_base=os.getenv("SIS_LEG_BRIDGE_CONTROL_URL", "http://127.0.0.1:8765"),
-        timeout_segundos=float(os.getenv("SIS_LEG_BRIDGE_CONTROL_TIMEOUT", "3.0")),
+        url_base=os.getenv(NOMBRE_ENTORNO_URL_CONTROL_BRIDGE, URL_CONTROL_BRIDGE_POR_DEFECTO),
+        timeout_segundos=timeout_control_bridge,
     )
     return RecursosAplicacion(
         estado_operativo=estado_operativo,

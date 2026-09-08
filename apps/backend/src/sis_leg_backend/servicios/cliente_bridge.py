@@ -3,10 +3,87 @@
 from __future__ import annotations
 
 import json
+import math
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, cast
+
+# Duración por defecto del canal de control cuando nadie configura otra cosa.
+# Vive acá, junto a la validación, para que la clase y quien lea la variable de
+# entorno usen literalmente el mismo número y no puedan divergir (WP-089).
+TIMEOUT_CONTROL_POR_DEFECTO = 3.0
+
+
+class ErrorConfiguracionBridge(ValueError):
+    """La duración configurada para el canal de control no es utilizable.
+
+    Se distingue de los errores de transporte porque no describe una falla al
+    hablar con el bridge: describe una configuración que jamás debería llegar a
+    ``urllib``. ``urlopen`` interpreta ``timeout=0`` como "sin espera",
+    ``timeout=nan`` produce comparaciones siempre falsas y un negativo tiene
+    semántica de socket indefinida. Por eso WP-089 exige rechazar esos valores
+    en el momento de construir el cliente, no cuando alguien pide un remapeo.
+
+    Hereda de ``ValueError`` porque sigue siendo un valor inválido recibido por
+    un constructor; el tipo propio permite distinguirlo cuando importa.
+    """
+
+
+def exigir_timeout_control_valido(valor: float, *, origen: str) -> float:
+    """Devuelve la duración si es finita y estrictamente positiva; si no, falla.
+
+    Es la **única** frontera que define qué es una duración aceptable para el
+    canal de control. La usan tanto el constructor de ``ClienteControlBridge``
+    como la lectura de ``SIS_LEG_BRIDGE_CONTROL_TIMEOUT`` en ``recursos.py``:
+    así una llamada directa desde código y un despliegue mal configurado quedan
+    sujetos exactamente a la misma invariante, sin repetir la comprobación en
+    dos lugares que puedan desincronizarse.
+
+    Parámetros:
+        valor: duración candidata, en segundos.
+        origen: nombre que el mensaje de error debe mencionar para que quien
+            lee el fallo sepa qué corregir. Puede ser el nombre de la variable
+            de entorno (``SIS_LEG_BRIDGE_CONTROL_TIMEOUT``) o el del parámetro
+            del constructor, según quién llame.
+
+    Resultado:
+        El mismo valor convertido a ``float``, para que un ``int`` como ``30``
+        llegue a ``urllib`` con el tipo esperado.
+
+    Errores:
+        ``ErrorConfiguracionBridge`` ante ``nan``, ``inf``, ``-inf``, cero o
+        cualquier número negativo. El mensaje siempre nombra ``origen``.
+
+    Los booleanos no se comprueban explícitamente: el tipado estricto ya impide
+    pasarlos, y ``float(True)`` sería ``1.0``, una duración válida y no una
+    semántica indefinida como las que este WP debe cerrar.
+    """
+
+    numero = float(valor)
+    if not math.isfinite(numero) or numero <= 0.0:
+        raise error_timeout_control_invalido(valor, origen=origen)
+    return numero
+
+
+def error_timeout_control_invalido(valor: object, *, origen: str) -> ErrorConfiguracionBridge:
+    """Construye el error único que describe una duración de control inválida.
+
+    Existe para que haya **un solo texto** posible. Quien lee la variable de
+    entorno debe rechazar además valores que ni siquiera son números (``abc``,
+    cadena vacía), un caso que esta función no puede detectar porque recibe ya
+    un ``float``; si cada frontera redactara su propio mensaje, un operador
+    vería explicaciones distintas para el mismo problema.
+
+    Parámetros:
+        valor: lo que se recibió, tal cual, para citarlo en el mensaje. Se
+            acepta ``object`` porque puede ser el texto crudo del entorno.
+        origen: nombre de la variable o parámetro que hay que corregir.
+    """
+
+    return ErrorConfiguracionBridge(
+        f"{origen} debe ser una duración en segundos finita y mayor que cero; se recibió {valor!r}"
+    )
 
 
 class ErrorTransporteBridge(Exception):
@@ -41,10 +118,20 @@ class ClienteControlBridge:
     def __init__(
         self,
         url_base: str = "http://127.0.0.1:8765",
-        timeout_segundos: float = 3.0,
+        timeout_segundos: float = TIMEOUT_CONTROL_POR_DEFECTO,
     ) -> None:
+        """Fija destino y duración máxima de espera de cada comando de control.
+
+        El timeout se valida acá y no en cada solicitud porque el cliente vive
+        todo el proceso: si la duración fuese inválida, conviene enterarse al
+        construirlo —durante el arranque— y no en medio de un remapeo urgente.
+        """
+
         self._url_base = url_base.rstrip("/")
-        self._timeout = timeout_segundos
+        self._timeout = exigir_timeout_control_valido(
+            timeout_segundos,
+            origen="timeout_segundos",
+        )
 
     def iniciar(self, remapeo_id: str, dispositivo: str) -> EstadoControlBridge:
         """Ordena captura idempotente para un devXX."""
