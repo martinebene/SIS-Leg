@@ -57,14 +57,22 @@ function sinComentarios(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '')
 }
 
-describe('Borde de la banca NORMAL en Q3 · WP-083', () => {
-  it('pinta el borde transparente sólo para el estado NORMAL', () => {
+describe('Borde de la banca NORMAL en Q3 · WP-083 / WP-090', () => {
+  it('deja transparentar el fondo de Q3 sólo a través del borde NORMAL', () => {
     const css = sinComentarios(estilosDeLaBanca())
 
-    // La regla existe, apunta al selector de estado y no depende de ninguna clase nueva.
-    expect(css).toMatch(
-      /\.banca-concejal-moderacion\[data-estado-banca='NORMAL'\]\s*\{[^}]*border-color:\s*transparent/,
-    )
+    const reglaNormal = css.match(
+      /\.banca-concejal-moderacion\[data-estado-banca='NORMAL'\]\s*\{([^}]*)\}/,
+    )?.[1]
+    expect(reglaNormal).toBeDefined()
+
+    /*
+      WP-083 cubría sólo el color transparente. WP-090 prueba también la regla efectiva de
+      pintura: `padding-box` impide que el fondo blanco ocupe el área del borde y permite
+      ver allí el fondo oscuro de Q3.
+    */
+    expect(reglaNormal).toMatch(/border-color:\s*transparent/)
+    expect(reglaNormal).toMatch(/background-clip:\s*padding-box/)
 
     /*
       Y es la única regla del componente que toca `border-color`. Se comprueba así, y no
@@ -93,7 +101,9 @@ describe('Borde de la banca NORMAL en Q3 · WP-083', () => {
       /\.banca-concejal-moderacion\[data-estado-banca='NORMAL'\]\s*\{([^}]*)\}/,
     )?.[1]
     expect(reglaNormal).toBeDefined()
-    expect(reglaNormal).not.toMatch(/border-width|padding|margin|border-radius|transform|scale/)
+    expect(reglaNormal).not.toMatch(
+      /(?:^|;)\s*(?:border-width|padding(?:-[\w-]+)?|margin(?:-[\w-]+)?|border-radius|transform|scale)\s*:/,
+    )
   })
 
   it('no toca la paleta compartida, de modo que el Recinto no cambia', () => {

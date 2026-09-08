@@ -37,6 +37,10 @@
  * con el resultado de la votación anterior todavía visible, los controles de apertura
  * quedaran fuera del área visible de Q1 a 1366×768. El formulario no cambia de reglas ni
  * de validaciones: sólo deja de crecer a lo alto cuando la mayoría es especial.
+ *
+ * WP-090 limita a tres líneas únicamente el tema de la votación proyectada. Si el texto
+ * necesita más espacio, ese encabezado conserva el contenido completo y ofrece scroll
+ * vertical propio, sin agrandar la tarjeta ni desplazar el formulario siguiente.
  */
 
 import { computed, ref, watch } from 'vue'
@@ -436,11 +440,22 @@ async function desempatar(sentido: 'POSITIVO' | 'NEGATIVO'): Promise<void> {
       class="space-y-2 rounded-lg border border-slate-700 bg-slate-950/70 p-2"
     >
       <div class="flex flex-wrap items-start justify-between gap-2">
-        <div>
+        <div class="min-w-0 flex-1">
           <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">
             Votación Nº {{ votacion.numero_votacion }} · {{ votacion.tipo }}
           </p>
-          <h4 class="font-semibold leading-tight text-slate-100">{{ votacion.tema }}</h4>
+          <!--
+            WP-090: el tema conserva todo su texto, pero sólo este bloque puede crecer hasta
+            tres líneas. `tabindex` permite recorrer con teclado el excedente que habilita
+            `overflow-y: auto`; el formulario y la tarjeta completa no reciben scroll.
+          -->
+          <h4
+            data-testid="tema-votacion-proyectada"
+            class="tema-votacion-proyectada font-semibold text-slate-100"
+            tabindex="0"
+          >
+            {{ votacion.tema }}
+          </h4>
         </div>
         <!--
           WP-044: con la votación cerrada, el resultado deja de ser un badge más y pasa a
@@ -815,3 +830,17 @@ async function desempatar(sentido: 'POSITIVO' | 'NEGATIVO'): Promise<void> {
     />
   </section>
 </template>
+
+<style scoped>
+/*
+  Tres renglones de 1,25 rem producen una cota estable en las dos resoluciones operativas.
+  `auto` no dibuja scroll cuando el tema entra y mantiene accesible todo el texto cuando
+  desborda; no se usa `line-clamp` porque ocultaría el contenido restante.
+*/
+.tema-votacion-proyectada {
+  max-height: calc(3 * 1.25rem);
+  overflow-y: auto;
+  line-height: 1.25rem;
+  overflow-wrap: anywhere;
+}
+</style>
