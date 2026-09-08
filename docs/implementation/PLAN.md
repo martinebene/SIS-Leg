@@ -240,8 +240,11 @@ WP-033 quedó integrado antes de continuar WP-026 y deja disponible el harness m
 | WP-086 | Rechazar NaN e infinitos en todos los temporizadores configurables | INTEGRADO | WP-079, WP-003 | - |
 | WP-088 | Evitar reconstrucción del sentido del voto desde logs operativos del Device Bridge | INTEGRADO | WP-082, WP-019 | - |
 | WP-089 | Validar el timeout del canal de control del Device Bridge | INTEGRADO | WP-020 | - |
+| WP-090 | Corregir borde NORMAL de Q3 y contener temas largos en Q1 | EN_CURSO | WP-083, WP-048, WP-049 | codex |
+| WP-091 | Canonicalizar tipos de votación del Orden del Día con tolerancia humana | EN_CURSO | WP-016, WP-003 | codex |
+| WP-092 | Auditar inicio y fin efectivos de la transmisión EN VIVO | EN_CURSO | WP-055, WP-080, WP-081 | codex |
 | WP-087 | Endurecer migración, systemd y smoke de release antes del despliegue | BLOQUEADO | WP-029, WP-077 | claude |
-| WP-029 | Validar bridge/hardware real, regresión funcional y candidato de producción | BLOQUEADO | WP-019, WP-020, WP-027, WP-028, WP-034, WP-035, WP-036, WP-037, WP-038, WP-039, WP-040, WP-041, WP-043, WP-044, WP-045, WP-046, WP-047, WP-048, WP-049, WP-050, WP-051, WP-052, WP-053, WP-054, WP-055, WP-056, WP-057, WP-058, WP-059, WP-060, WP-061, WP-062, WP-063, WP-064, WP-065, WP-066, WP-067, WP-069, WP-070, WP-071, WP-072, WP-073, WP-077, WP-078, WP-076, WP-075, WP-074, WP-079, WP-080, WP-081, WP-082, WP-083, WP-084, WP-085, WP-086, WP-088, WP-089 | - |
+| WP-029 | Validar bridge/hardware real, regresión funcional y candidato de producción | BLOQUEADO | WP-019, WP-020, WP-027, WP-028, WP-034, WP-035, WP-036, WP-037, WP-038, WP-039, WP-040, WP-041, WP-043, WP-044, WP-045, WP-046, WP-047, WP-048, WP-049, WP-050, WP-051, WP-052, WP-053, WP-054, WP-055, WP-056, WP-057, WP-058, WP-059, WP-060, WP-061, WP-062, WP-063, WP-064, WP-065, WP-066, WP-067, WP-069, WP-070, WP-071, WP-072, WP-073, WP-077, WP-078, WP-076, WP-075, WP-074, WP-079, WP-080, WP-081, WP-082, WP-083, WP-084, WP-085, WP-086, WP-088, WP-089, WP-090, WP-091, WP-092 | - |
 
 HUMAN_GATE seleccionó Codex como implementador y Antigravity/AGY como revisor independiente de WP-047. WP-047 queda `EN_CURSO`; WP-048 y WP-049 permanecen bloqueados por esta dependencia y todavía no tienen agente asignado.
 
@@ -545,3 +548,20 @@ WP-084 quedó integrado desde PR #95. Candidate `c71b081474ca1ad7845bcb6ce64187b
 Con WP-084 integrado se activa la siguiente ola lógicamente paralela: WP-085 (informe de acta/copia externa) y WP-089 (validación del timeout del canal de control). Son materialmente independientes y se ejecutarán físicamente en secuencia por `max_concurrency=1`. El lote realizará primero cleanup de WP-084 y migración idempotente del config runtime local, luego WP-085 IMPLEMENTER→REVIEWER y WP-089 IMPLEMENTER→REVIEWER. El coordinador no mergeará ninguno.
 
 WP-089 quedó integrado desde PR #97. Candidate `7e97b2d3e6b1f35ff47cde9dea8730f9c171cfe2`, tree `22aab017a1dc74edf678a46dea321c536737a1a8`, review independiente 0 BLOQUEANTES / 0 IMPORTANTES / 0 MENORES, CI candidata #513 `success` 8/8 y auditoría ORCHESTRATOR `APROBADO_PARA_MERGE` con un hardening MENOR aceptado para construcción directa con booleanos. Squash merge `6f6008f2980acd44e9470490de65d39a87b6814b`; CI post-merge #514 `success` 8/8. El timeout de control conserva default 3.0 s y ahora falla temprano ante valores de entorno no finitos, no positivos o no numéricos.
+
+
+## Sexta corrección pre-WP-029 - prueba humana reducida 08/09/2026
+
+HUMAN_GATE detectó cuatro ajustes adicionales antes de comenzar la validación con hardware real. Se crean WP-090, WP-091 y WP-092 y se mantienen separados de WP-029 para resolverlos en el entorno de desarrollo habitual.
+
+WP-090 agrupa dos defectos exclusivamente visuales de Moderación: (a) la corrección de WP-083 dejó `border-color: transparent` en Q3 NORMAL pero el fondo blanco sigue pintándose bajo el borde transparente, por lo que el borde continúa visible en la captura humana; la corrección debe actuar sobre el clip/pintura del fondo sin alterar caja, padding, paleta ni Recinto; (b) un tema largo de la votación proyectada en Q1 aumenta la tarjeta hasta expulsar el formulario/botón de apertura, por lo que el área de tema se limita a tres líneas con scroll vertical interno y sin scroll global.
+
+WP-091 hace que el tipo descriptivo proveniente del Orden del Día se resuelva contra `voting.types` ignorando diferencias exclusivamente de mayúsculas/minúsculas, diacríticos y whitespace, conservando siempre la grafía canónica configurada y sin fuzzy matching ni selección arbitraria ante ambigüedad.
+
+WP-092 registra en auditoría L2 el inicio y fin **efectivos** de `EN_VIVO`, además de los comandos ya existentes de WP-055. El countdown debe generar el inicio exactamente al cruzar su frontera temporal; stop/reemplazo y carreras deben ser idempotentes, sin polling y sin convertir estos hechos en L3 ni incorporarlos al ACTA de WP-085.
+
+Los tres WPs son materialmente independientes: WP-090 toca Moderación; WP-091 canonicalización asistencial del Orden del Día; WP-092 dominio/temporización de Apoyo Técnico. HUMAN_GATE autoriza un lote lógico paralelo con ejecución física `max_concurrency=1`. IMPLEMENTER para los tres: Codex / GPT-5.6 Sol. REVIEWER independiente: Antigravity/AGY / Gemini 3.8 Flash (High). COORDINADOR_LOCAL: OpenCode / DeepSeek V4 Pro desde el checkout coordinador de `main`, limitado a scheduling/lifecycle/gates objetivos. Claude no participa por indisponibilidad de cuota.
+
+La transición IMPLEMENTER -> REVIEWER queda preautorizada sólo si PR/SHA/tree/CI/worktree y demás gates objetivos coinciden exactamente con el manifiesto de Control. El coordinador no interpreta handoffs/reviews, no corrige, no mergea, no cierra ni limpia. Al terminar lo ejecutable devuelve HUMAN_GATE -> ORCHESTRATOR GPT Web.
+
+WP-029 continúa `BLOQUEADO` y pasa a depender también de WP-090, WP-091 y WP-092. WP-087 continúa posterior a WP-029.
