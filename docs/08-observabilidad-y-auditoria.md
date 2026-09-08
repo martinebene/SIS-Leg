@@ -290,13 +290,68 @@ Nada de esto altera los CSV: la fila persistida conserva siempre el mensaje
 humano completo, los metadatos estructurados viven únicamente en el buffer en
 memoria y la auditoría histórica no se reescribe.
 
-## 14. Edición posterior
+## 14. Logs operativos del Device Bridge
+
+Los CSV institucionales y la proyección descrita arriba no son el único registro que
+produce el sistema. El Device Bridge es un proceso de sistema y deja además su propio log
+operativo en `stdout`/`stderr` y en el journal de systemd. Ese registro es de naturaleza
+distinta y por eso tiene su propia regla.
+
+La diferencia que importa: los CSV son la evidencia institucional aprobada, viven donde el
+despliegue los ubica y respetan la frontera autoritativa de revelado individual. El journal
+del proceso no es evidencia institucional, no tiene control de acceso propio y lo lee
+cualquier persona con una sesión en el equipo, incluso mientras la votación sigue
+`EN_CURSO`.
+
+Regla de no reconstructibilidad:
+
+> Ningún mensaje del log operativo del Device Bridge emitido por una pulsación funcional
+> puede contener a la vez la identidad de una banca y el contenido de su tecla, en ningún
+> nivel de registro, `DEBUG` incluido.
+
+La combinación prohibida es la que reconstruye el voto: `dev07`, su fingerprint o su ruta
+`/dev/input/eventN` identifican una banca, y las teclas `1`, `2` y `3` son el sentido
+POSITIVO, ABSTENCIÓN y NEGATIVO. Cualquiera de las dos mitades por separado es admisible.
+
+Qué se conserva, porque es diagnóstico legítimo y no reconstruye nada:
+
+- la identidad física y lógica para descubrimiento, mapping, remapeo y exclusividad;
+- el hecho de que una banca despachó una pulsación, sin su contenido;
+- el código HTTP, la clase de resultado, el motivo estable devuelto por el backend y el
+  detalle de red de un fallo de transporte;
+- el nombre de una tecla física que el normalizador **rechaza**, que por definición nunca
+  se envía al backend y por lo tanto no tiene semántica de voto.
+
+Qué no puede registrarse nunca:
+
+- la tecla normalizada de una pulsación funcional;
+- el payload serializado que viaja al backend;
+- el cuerpo crudo de una respuesta HTTP, ni su longitud, porque un cuerpo que ecoa la
+  pulsación mide distinto según el sentido que ecoa y esa medida basta para distinguirlo;
+- cualquier motivo devuelto por el backend que no pertenezca a su catálogo conocido, tenga
+  o no forma de código estable: un valor como `DEV07_VOTO_1` respeta la sintaxis de un
+  código y aun así reconstruye el voto, de modo que la decisión se toma por enumeración
+  explícita y nunca por la forma del texto;
+- el detalle crudo de una excepción inesperada, que puede citar el fragmento que no pudo
+  procesarse.
+
+La protección se implementa **por construcción** y no filtrando texto ya formateado: los
+mensajes se construyen sin los valores sensibles y las estructuras internas del bridge
+redactan su propia representación textual. El detalle vive en
+`services/device-bridge/src/sis_leg_device_bridge/redaccion.py` y en el README del bridge.
+
+Esta regla endurece observabilidad operativa y **no altera** el contrato HTTP entre bridge
+y backend, los CSV institucionales ni la proyección de eventos: el backend sigue siendo la
+autoridad exclusiva sobre el significado de una tecla y sobre cuándo un voto individual
+puede revelarse.
+
+## 15. Edición posterior
 
 SIS-Leg no ofrece edición de archivos cerrados.
 
 Una corrección externa institucional puede existir fuera del sistema, pero SIS-Leg no reabre ni reescribe automáticamente registros históricos.
 
-## 15. Referencia histórica
+## 16. Referencia histórica
 
 La implementación actual usa:
 
