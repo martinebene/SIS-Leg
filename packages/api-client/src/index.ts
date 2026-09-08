@@ -94,6 +94,8 @@ export type {
   AccionPalabra,
   RespuestaSalud,
   RespuestaVotacion,
+  EstadoCopiaExterna,
+  RespuestaCierreSesion,
   ErrorRespuesta,
   // Solicitudes / Bodies
   SolicitudActualizarPreparacion,

@@ -161,6 +161,23 @@ class ConfiguracionSistema:
     directorio_registros: str
     """Directorio donde se escribirán los CSV de auditoría en el futuro."""
 
+    directorio_copia_registros: str | None = None
+    """Directorio externo opcional donde replicar el conjunto cerrado (WP-085).
+
+    ``None`` significa que ``paths.logs_copy_dir`` no aparece en el archivo: al
+    cerrar la sesión no se intenta ningún acceso externo y Moderación no muestra
+    aviso alguno. Un texto significa que la instalación declaró un destino y
+    quiere la copia.
+
+    SIS-Leg lo interpreta como una **ruta de sistema de archivos ya montada** por
+    el sistema operativo. El backend no implementa cliente SMB ni NFS, no guarda
+    credenciales y no monta nada: si la ruta no está disponible, la copia falla y
+    se informa, pero el cierre institucional ya quedó persistido localmente.
+
+    El valor por omisión ``None`` mantiene compatible la construcción directa de
+    ``ConfiguracionSistema`` en las pruebas anteriores a este WP.
+    """
+
     sonidos_recinto: ConfiguracionSonidosRecinto = ConfiguracionSonidosRecinto()
     """Sonidos configurados para la Pantalla del Recinto (WP-065).
 

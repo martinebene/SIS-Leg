@@ -49,6 +49,10 @@ from sis_leg_backend.dominio.votacion import (
     VotoOrdinario,
 )
 from sis_leg_backend.hechos_operativos import ReferenciaHechoOperativo
+from sis_leg_backend.servicios.acta_institucional import (
+    EstadoCopiaExterna,
+    ResultadoCierreInstitucional,
+)
 from sis_leg_backend.servicios.entrada import ServicioEntradaTecla
 from sis_leg_backend.servicios.preparacion import ServicioPreparacion
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
@@ -275,6 +279,20 @@ def instalar_fallo_en_evento(
         return registrar_original(nivel, etiqueta, codigo_evento, mensaje, referencia=referencia)
 
     monkeypatch.setattr(escritor, "registrar_evento", registrar_evento)
+
+
+def afirmar_cierre_completado(resultado: object) -> None:
+    """Comprueba que la operación observada sea el cierre de sesión ya completado.
+
+    Desde WP-085 ``cerrar_sesion`` ya no devuelve ``None``: entrega el resultado
+    del informe de acta y de la copia externa. Esta prueba no configura
+    ``paths.logs_copy_dir``, así que el desenlace esperado es acta generada y
+    copia omitida.
+    """
+
+    assert isinstance(resultado, ResultadoCierreInstitucional)
+    assert resultado.acta_generada is True
+    assert resultado.copia_externa is EstadoCopiaExterna.OMITIDA
 
 
 async def encolar_en_orden(
@@ -632,14 +650,14 @@ async def test_carrera_desempate_vs_cierre_sesion(
 
     if cierre_primero:
         primero, segundo = await encolar_en_orden(entorno.ejecutor, cierre, desempate)
-        assert primero is None
+        afirmar_cierre_completado(primero)
         assert isinstance(segundo, ErrorEstadoIncompatible)
         assert votacion.resultado is ResultadoVotacion.INCONCLUSA
         assert votacion.voto_desempate is None
     else:
         primero, segundo = await encolar_en_orden(entorno.ejecutor, desempate, cierre)
         assert primero is None
-        assert segundo is None
+        afirmar_cierre_completado(segundo)
         assert votacion.resultado is ResultadoVotacion.APROBADA
         assert votacion.voto_desempate is not None
 

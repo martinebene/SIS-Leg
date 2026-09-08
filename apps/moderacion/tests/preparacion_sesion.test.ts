@@ -112,7 +112,10 @@ function crearMockCliente(overrides: Partial<ClienteModeracion> = {}): ClienteMo
     cancelarPreparacion: vi.fn().mockResolvedValue(undefined),
     abrirSesion: vi.fn().mockResolvedValue(undefined),
     actualizarSesion: vi.fn().mockResolvedValue(undefined),
-    cerrarSesion: vi.fn().mockResolvedValue(undefined),
+    // WP-085: el cierre responde con el resultado del acta y de la copia externa.
+    // Sin `logs_copy_dir` configurado el desenlace es acta generada y copia omitida,
+    // que es el caso que estas pruebas ejercitan.
+    cerrarSesion: vi.fn().mockResolvedValue({ acta_generada: true, copia_externa: 'OMITIDA' }),
     otorgarPalabra: vi.fn().mockResolvedValue(undefined),
     quitarPalabra: vi.fn().mockResolvedValue(undefined),
     suscribirEstado: vi.fn((callbacks) => {

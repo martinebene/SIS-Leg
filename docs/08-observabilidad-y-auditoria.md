@@ -69,6 +69,61 @@ Al cancelar preparación o cerrar sesión:
 - se cierra el conjunto;
 - SIS-Leg no vuelve a modificar esos archivos.
 
+## 4 bis. Informe de acta y copia externa opcional (WP-085)
+
+Al **cerrar una sesión** —no al cancelar una preparación— el conjunto ya cerrado produce
+un cuarto archivo derivado, en el mismo directorio y con el mismo prefijo temporal:
+
+```text
+logs/
+└── AAAA-MM-DD/
+    ├── AAAA-MM-DD_HH-MM-SS-L1.csv
+    ├── AAAA-MM-DD_HH-MM-SS-L2.csv
+    ├── AAAA-MM-DD_HH-MM-SS-L3.csv
+    └── AAAA-MM-DD_HH-MM-SS-ACTA.txt
+```
+
+El informe es texto plano UTF-8 y se deriva del **archivo L3 físico completo**, no del
+buffer de eventos recientes que alimenta la proyección de Moderación: una sesión larga
+supera holgadamente ese buffer y el acta debe contener todos sus eventos.
+
+Formato aprobado:
+
+```text
+SIS-Leg
+Registro de eventos para acta institucional
+Fecha: DD/MM/AAAA
+
+HH:MM:SS — texto del evento
+HH:MM:SS — Inicio: texto del marcador
+HH:MM:SS — Fin: texto del marcador
+```
+
+- una línea por fila del L3, en el orden en que fueron persistidas;
+- no aparecen `seq`, `level`, `tag`, `event_code`, ids técnicos ni emojis;
+- los marcadores `EVENTO/INICIO` y `EVENTO/FIN` (WP-078) se distinguen con los prefijos
+  `Inicio:` y `Fin:`, porque sin ellos dos líneas de texto idéntico serían
+  indistinguibles;
+- el texto de cada línea es el mensaje durable del CSV, sin reescritura.
+
+Si además existe `paths.logs_copy_dir` en `system.toml`, los cuatro archivos se copian a
+`<logs_copy_dir>/AAAA-MM-DD/`. Es una ruta de sistema de archivos que el sistema operativo
+ya debe tener montada: SIS-Leg no implementa cliente SMB ni NFS ni guarda credenciales.
+
+Reglas que no se pueden reinterpretar:
+
+- los CSV locales siguen siendo el registro institucional; el TXT es derivación y la copia
+  externa es redundancia;
+- ambos pasos ocurren **después** del cierre durable, así que un fallo suyo nunca convierte
+  un cierre exitoso en un error ni deja la sesión abierta;
+- los archivos locales no se mueven ni se borran;
+- un nombre ya ocupado en el destino no se sobrescribe: se trata como falla de copia;
+- sin la clave configurada no hay intento de acceso externo ni aviso en Moderación.
+
+Moderación informa el desenlace con un aviso efímero: confirmación cuando la copia se
+completó, y advertencia que empieza aclarando que **la sesión sí cerró** cuando el informe
+o la copia fallaron.
+
 ## 5. Persistencia inmediata y durabilidad
 
 Cada evento se escribe sin acumularlo hasta el cierre.

@@ -228,6 +228,23 @@ export type RespuestaSalud = components['schemas']['RespuestaSalud']
 /** Respuesta tras abrir una votación */
 export type RespuestaVotacion = components['schemas']['RespuestaVotacion']
 
+/**
+ * Desenlace de la copia externa opcional del conjunto cerrado (WP-085).
+ *
+ * `OMITIDA` significa que la instalación no configuró `paths.logs_copy_dir` y por lo
+ * tanto no hubo ningún intento de acceso externo: no corresponde avisar nada.
+ */
+export type EstadoCopiaExterna = components['schemas']['EstadoCopiaExterna']
+
+/**
+ * Cuerpo devuelto por el cierre normal de sesión (WP-085).
+ *
+ * Recibirlo significa siempre que la sesión cerró de forma durable: describe qué pasó
+ * *después* del cierre con el informe de acta y con la copia externa, nunca si el cierre
+ * en sí tuvo éxito.
+ */
+export type RespuestaCierreSesion = components['schemas']['RespuestaCierreSesion']
+
 /** Cuerpo de error estructurado devuelto por el backend */
 export type ErrorRespuesta = components['schemas']['ErrorRespuesta']
 

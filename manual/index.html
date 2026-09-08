@@ -731,6 +731,14 @@
               <strong>inconclusa</strong>, conservando su fecha de cierre y sus votos;
             </li>
             <li>se escribe el evento final y se cierran los tres archivos de registro;</li>
+            <li>
+              se genera el <strong>informe para el acta</strong>, un archivo de texto con los
+              hechos institucionales de la sesión listo para copiar y pegar;
+            </li>
+            <li>
+              si la instalación tiene configurada una carpeta externa, se copian allí los tres
+              registros y el informe;
+            </li>
             <li>el sistema vuelve a <em>sin preparar</em>.</li>
           </ol>
 
@@ -739,6 +747,56 @@
             Si al cerrar la sesión hay alguien usando la palabra o hay pedidos en la cola,
             Moderación pide una confirmación explícita. Cancelar esa confirmación no envía nada y
             deja todo como estaba.
+          </div>
+
+          <h4>Avisos después de cerrar</h4>
+
+          <p>
+            Cuando la instalación tiene configurada una carpeta externa, Moderación muestra un aviso
+            breve que desaparece solo:
+          </p>
+
+          <div class="tabla-contenedor">
+            <table>
+              <thead>
+                <tr><th>Qué aparece</th><th>Qué significa</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>«Sesión cerrada. Registros copiados a la carpeta externa.»</td>
+                  <td>Los tres registros y el informe quedaron también en la carpeta externa.</td>
+                </tr>
+                <tr>
+                  <td>Un aviso que empieza diciendo que la sesión cerró y que no se pudo copiar</td>
+                  <td>
+                    La carpeta externa no estaba disponible, no era escribible o ya tenía archivos
+                    con esos nombres. La copia es lo único que falló.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Un aviso que empieza diciendo que la sesión cerró y que no se pudo generar el informe</td>
+                  <td>
+                    El archivo de texto para el acta no se pudo escribir. Los tres registros CSV
+                    están completos y son el registro válido.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Ningún aviso</td>
+                  <td>
+                    La instalación no tiene carpeta externa configurada y todo salió como debía. Es
+                    el comportamiento normal cuando no se usa esa función.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="cuidado">
+            <strong>Un aviso de error de copia no significa que la sesión no cerró</strong>
+            Esos avisos hablan de archivos que se generan <em>después</em> del cierre. Cuando
+            aparecen, la sesión ya cerró, el estado ya volvió a «sin preparar» y los tres registros
+            ya quedaron completos en el equipo. No hay que volver a cerrar la sesión ni repetir
+            nada: lo que corresponde es avisar a soporte para revisar la carpeta externa.
           </div>
 
           <a class="volver" href="#inicio">↑ Volver al índice</a>
@@ -1636,7 +1694,8 @@ public_initial_countdown_seconds = 4
 public_result_display_seconds = 6
 
 [paths]
-logs_dir = "logs"</code></pre>
+logs_dir = "logs"
+# logs_copy_dir = "/mnt/registros-institucionales"</code></pre>
 
           <div class="tabla-contenedor">
             <table>
@@ -1686,6 +1745,15 @@ logs_dir = "logs"</code></pre>
                 <tr>
                   <td><code>paths.logs_dir</code></td>
                   <td>Directorio donde se escriben los tres archivos de registro.</td>
+                </tr>
+                <tr>
+                  <td><code>paths.logs_copy_dir</code></td>
+                  <td>
+                    Opcional, y el único parámetro del archivo que puede faltar. Carpeta externa
+                    donde copiar automáticamente los registros y el informe al cerrar cada sesión.
+                    Si la línea no está, no se intenta ninguna copia y Moderación no muestra ningún
+                    aviso. Si está, tiene que tener una ruta escrita: dejarla vacía impide arrancar.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -1859,6 +1927,82 @@ volumen = 90</code></pre>
             editarlos. Ante un corte abrupto, quedan hasta el último evento efectivamente grabado.
           </p>
 
+          <h3>10.6 Informe para el acta</h3>
+
+          <p>
+            Al <strong>cerrar una sesión</strong> —no al cancelar una preparación— se agrega un
+            cuarto archivo junto a los tres registros, con el mismo nombre y el final
+            <code>-ACTA.txt</code>:
+          </p>
+
+          <pre><code>logs/
+└── AAAA-MM-DD/
+    ├── AAAA-MM-DD_HH-MM-SS-L1.csv
+    ├── AAAA-MM-DD_HH-MM-SS-L2.csv
+    ├── AAAA-MM-DD_HH-MM-SS-L3.csv
+    └── AAAA-MM-DD_HH-MM-SS-ACTA.txt</code></pre>
+
+          <p>
+            Es un archivo de texto común, pensado para abrirlo, seleccionar lo que haga falta y
+            pegarlo en el acta. Contiene los hechos institucionales de la sesión —los mismos del
+            registro L3, todos, sin límite de cantidad— con una línea por hecho:
+          </p>
+
+          <pre><code>SIS-Leg
+Registro de eventos para acta institucional
+Fecha: DD/MM/AAAA
+
+09:14:02 — Apertura de sesión Nº 12
+09:31:47 — Inicio: cuarto intermedio
+09:52:10 — Fin: cuarto intermedio</code></pre>
+
+          <p>
+            No incluye números de secuencia, códigos, etiquetas técnicas, identificadores internos
+            ni emojis: sólo la hora y el texto del hecho. Los períodos que empiezan y terminan se
+            distinguen con <code>Inicio:</code> y <code>Fin:</code>.
+          </p>
+
+          <div class="nota">
+            <strong>El informe no reemplaza a los registros</strong>
+            Los tres archivos CSV siguen siendo el registro institucional completo y auditable. El
+            informe es una comodidad para redactar el acta y se deriva de ellos.
+          </div>
+
+          <h3>10.7 Copia externa automática (opcional)</h3>
+
+          <p>
+            Si la configuración declara <code>paths.logs_copy_dir</code>, al cerrar cada sesión el
+            sistema copia los tres registros y el informe a esa carpeta, dentro de una subcarpeta con
+            la fecha:
+          </p>
+
+          <pre><code>&lt;carpeta externa&gt;/
+└── AAAA-MM-DD/
+    ├── AAAA-MM-DD_HH-MM-SS-L1.csv
+    ├── AAAA-MM-DD_HH-MM-SS-L2.csv
+    ├── AAAA-MM-DD_HH-MM-SS-L3.csv
+    └── AAAA-MM-DD_HH-MM-SS-ACTA.txt</code></pre>
+
+          <p>Reglas de esta función, que conviene conocer antes de habilitarla:</p>
+
+          <ul>
+            <li>
+              es una carpeta del sistema de archivos que <strong>ya tiene que estar montada</strong>
+              por el sistema operativo y ser escribible. SIS-Leg no se conecta a recursos de red por
+              su cuenta ni guarda usuarios ni contraseñas;
+            </li>
+            <li>los archivos del equipo nunca se mueven ni se borran: la copia es un agregado;</li>
+            <li>
+              nunca se pisa un archivo que ya exista en el destino con el mismo nombre. Si eso
+              ocurriera, la copia se informa como fallida y no se toca nada de lo que ya estaba;
+            </li>
+            <li>
+              si la copia falla, la sesión igual cerró y los registros del equipo quedaron
+              completos;
+            </li>
+            <li>si el parámetro no está configurado, no se intenta ningún acceso externo.</li>
+          </ul>
+
           <a class="volver" href="#inicio">↑ Volver al índice</a>
         </section>
 
@@ -2020,7 +2164,10 @@ volumen = 90</code></pre>
             <li>Abrir la sesión.</li>
             <li>Conducir votaciones y uso de la palabra.</li>
             <li>Cerrar la sesión.</li>
-            <li>Copiar los tres archivos de registro al resguardo institucional que corresponda.</li>
+            <li>
+              Copiar los tres archivos de registro y el informe para el acta al resguardo
+              institucional que corresponda.
+            </li>
           </ol>
 
           <div class="cuidado">
@@ -2243,9 +2390,17 @@ curl --fail http://127.0.0.1/manual/</code></pre>
           <h3>12.6 Resguardo de los registros</h3>
 
           <p>
-            Los tres archivos de cada sesión quedan en el directorio de registros configurado, fuera
-            del árbol de versiones. Ni actualizar ni volver atrás los borra. El sistema no hace copias
-            automáticas a otro destino: el resguardo periódico es una tarea administrativa.
+            Los archivos de cada sesión —los tres registros y el informe para el acta— quedan en el
+            directorio de registros configurado, fuera del árbol de versiones. Ni actualizar ni
+            volver atrás los borra.
+          </p>
+
+          <p>
+            Si se configuró <code>paths.logs_copy_dir</code>, el sistema copia además ese conjunto a
+            la carpeta externa al cerrar cada sesión (ver 10.7). Esa copia es una redundancia
+            cómoda, no un resguardo completo: sólo se hace al cerrar una sesión, no incluye las
+            preparaciones canceladas y depende de que la carpeta esté disponible en ese momento. El
+            resguardo periódico sigue siendo una tarea administrativa.
           </p>
 
           <h3>12.7 Migración desde una instalación con el nombre anterior</h3>

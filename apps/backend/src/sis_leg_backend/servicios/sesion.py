@@ -5,6 +5,13 @@ sección crítica se mantiene la regla institucional ``AUDITAR -> MUTAR``: un
 cambio no toca memoria hasta que su evento obligatorio quedó persistido con la
 durabilidad del escritor de WP-004. WP-013 extiende el cierre para resolver
 una votación ``EN_CURSO`` o ``EMPATADA`` dentro de esa misma adquisición.
+
+WP-085 agrega un tercer tramo al cierre, deliberadamente **después** de mutar el
+estado: derivar el informe de acta del L3 cerrado y, si la instalación lo
+configuró, copiar el conjunto a un directorio externo. Ese tramo no puede
+fallar hacia afuera —ver ``servicios.acta_institucional``— porque la sesión ya
+cerró de forma durable y anunciar un error de cierre haría que el operador
+intentara cerrarla otra vez.
 """
 
 from __future__ import annotations
@@ -32,6 +39,10 @@ from sis_leg_backend.dominio.votacion import (
     CausaFinalizacionInconclusa,
     EstadoVotacion,
     ResultadoVotacion,
+)
+from sis_leg_backend.servicios.acta_institucional import (
+    ResultadoCierreInstitucional,
+    generar_acta_y_copiar_conjunto,
 )
 from sis_leg_backend.servicios.finalizacion_votacion import (
     finalizar_votacion_inconclusa_bajo_lock,
@@ -93,10 +104,17 @@ class ServicioSesion:
 
         await self._ejecutor.ejecutar(lambda: self._actualizar_autoridades_bajo_lock(actualizacion))
 
-    async def cerrar_sesion(self) -> None:
-        """Resuelve la votación pendiente autorizada y cierra el contexto."""
+    async def cerrar_sesion(self) -> ResultadoCierreInstitucional:
+        """Resuelve la votación pendiente autorizada y cierra el contexto.
 
-        await self._ejecutor.ejecutar(self._cerrar_sesion_bajo_lock)
+        Resultado:
+            Qué ocurrió con el informe de acta y con la copia externa opcional
+            (WP-085). Es información posterior al cierre: si el cierre no puede
+            completarse, este método levanta la excepción correspondiente y no
+            devuelve ningún resultado.
+        """
+
+        return await self._ejecutor.ejecutar(self._cerrar_sesion_bajo_lock)
 
     async def _actualizar_preparacion_bajo_lock(
         self,
@@ -273,12 +291,20 @@ class ServicioSesion:
                 )
                 contexto.secretaria_legislativa = secretaria
 
-    async def _cerrar_sesion_bajo_lock(self) -> None:
+    async def _cerrar_sesion_bajo_lock(self) -> ResultadoCierreInstitucional:
         """Compone votación y sesión bajo una sola adquisición del lock.
 
         Cada hecho se audita antes de su mutación. Si la votación ya quedó
         ``INCONCLUSA`` y luego falla ``SESION_CERRADA``, no se hace rollback:
         la memoria refleja el último evento institucional durable.
+
+        El informe de acta y la copia externa de WP-085 se derivan al final,
+        dentro de esta misma sección crítica pero **después** de que el estado
+        volvió a ``SIN_PREPARAR``. Que ocurra bajo el lock impide que una nueva
+        preparación empiece a crear archivos mientras se copia el conjunto
+        anterior; que ocurra después de mutar garantiza que un fallo externo no
+        deje la sesión abierta con su escritor ya cerrado, un estado desde el
+        cual ninguna operación posterior podría auditarse.
         """
 
         if self._estado.estado_global is not EstadoGlobal.SESION_ABIERTA:
@@ -343,6 +369,10 @@ class ServicioSesion:
             CODIGO_SESION_CERRADA,
             f"Cierre de sesión Nº{sesion.numero_sesion}",
         )
+        # Las rutas se copian antes de soltar la sesión: después de las
+        # asignaciones de abajo el contexto ya no es alcanzable desde el estado.
+        rutas_conjunto = dict(escritor.rutas)
+        directorio_copia = sesion.contexto_operativo.configuracion.directorio_copia_registros
         escritor.cerrar()
 
         # Si ``cerrar()`` falla, la excepción corta el flujo antes de estas
@@ -352,6 +382,11 @@ class ServicioSesion:
         self._estado.votacion_activa = None
         self._estado.archivos_auditoria_activos = ()
         self._estado.estado_global = EstadoGlobal.SIN_PREPARAR
+
+        # Desde acá el cierre institucional es un hecho consumado e irreversible.
+        # ``generar_acta_y_copiar_conjunto`` no levanta excepciones por contrato,
+        # así que nada de lo que siga puede convertir este cierre en un error.
+        return generar_acta_y_copiar_conjunto(rutas_conjunto, directorio_copia)
 
     def _rechazar(
         self,
