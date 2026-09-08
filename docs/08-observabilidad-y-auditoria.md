@@ -104,7 +104,13 @@ HH:MM:SS — Fin: texto del marcador
 - los marcadores `EVENTO/INICIO` y `EVENTO/FIN` (WP-078) se distinguen con los prefijos
   `Inicio:` y `Fin:`, porque sin ellos dos líneas de texto idéntico serían
   indistinguibles;
-- el texto de cada línea es el mensaje durable del CSV, sin reescritura.
+- cada familia L3 tiene una redacción explícita: conserva el hecho institucional útil y
+  descarta identificadores, fingerprints, dispositivos, posiciones y banderas que el
+  `message` durable necesita para la trazabilidad técnica;
+- una familia desconocida, un encabezado distinto del canónico, una fila con más o menos de
+  seis columnas o un timestamp inválido hacen fallar el informe completo. Ninguna fila se
+  repara ni se omite silenciosamente; los tres CSV cerrados permanecen intactos y siguen
+  siendo la evidencia autoritativa.
 
 Si además existe `paths.logs_copy_dir` en `system.toml`, los cuatro archivos se copian a
 `<logs_copy_dir>/AAAA-MM-DD/`. Es una ruta de sistema de archivos que el sistema operativo

@@ -17,6 +17,32 @@ WP-085 agrega dos cosas, ambas **posteriores** al cierre durable:
    TXT) hacia un directorio de sistema de archivos ya montado, cuando la
    instalación lo configuró en ``paths.logs_copy_dir``.
 
+Quitar las columnas técnicas no alcanza
+---------------------------------------
+
+Las columnas ``seq``, ``level``, ``tag`` y ``event_code`` no son el único lugar
+donde vive lo técnico: el propio ``message`` durable transporta identificadores
+internos, huellas de dispositivo, banderas booleanas y posiciones de cola,
+porque está redactado para reconstruir un hecho, no para leerse en un acta.
+
+Por eso el texto de cada línea **no** se copia del CSV: lo redacta el catálogo
+explícito de :mod:`sis_leg_backend.servicios.politica_acta`, que declara familia
+por familia qué información institucional se publica y qué metadata se descarta.
+
+Integridad estructural: fallo cerrado
+-------------------------------------
+
+Un informe formal no puede parecer completo si su fuente no lo está. La lectura
+del L3 valida el encabezado canónico, la forma de cada fila, el timestamp y que
+la familia ``(tag, event_code)`` tenga política declarada. Cualquier desvío
+aborta **todo** el acta con ``ErrorActaNoDerivable``: no se repara la fila, no se
+descarta y no se sigue de largo.
+
+Cuando eso ocurre los CSV quedan intactos, el cierre institucional sigue
+consumado, la copia externa no se intenta y la API informa ``acta_generada`` en
+``false`` para que Moderación avise que la sesión sí cerró pero el informe no se
+pudo derivar.
+
 La regla que ordena todo el módulo
 ----------------------------------
 
@@ -57,11 +83,15 @@ from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 
-from sis_leg_backend.auditoria import FORMATO_NOMBRE, FORMATO_TIMESTAMP, NivelAuditoria
-from sis_leg_backend.servicios.apoyo_tecnico import (
-    CODIGO_MARCADOR_FIN,
-    CODIGO_MARCADOR_INICIO,
-    ETIQUETA_EVENTO_PRINCIPAL,
+from sis_leg_backend.auditoria import (
+    ENCABEZADO_CSV,
+    FORMATO_NOMBRE,
+    FORMATO_TIMESTAMP,
+    NivelAuditoria,
+)
+from sis_leg_backend.servicios.politica_acta import (
+    ErrorActaNoDerivable,
+    redactar_linea_de_acta,
 )
 
 REGISTRO = logging.getLogger(__name__)
@@ -87,16 +117,6 @@ FORMATO_FECHA_ACTA = "%d/%m/%Y"
 
 SEPARADOR_LINEA_ACTA = " — "
 """Raya (U+2014) entre la hora y el texto del evento, con espacios a ambos lados."""
-
-PREFIJO_MARCADOR_INICIO = "Inicio: "
-PREFIJO_MARCADOR_FIN = "Fin: "
-"""Redacción formal de los marcadores ``EVENTO/INICIO`` y ``EVENTO/FIN`` (WP-078).
-
-En el CSV esos dos eventos se distinguen por su ``event_code``, que el acta no
-imprime. Sin este prefijo, un ``INICIO`` y su ``FIN`` producirían dos líneas de
-texto idéntico y quien lee el acta no podría saber cuál abrió y cuál cerró el
-período.
-"""
 
 # Rangos Unicode de emojis y pictogramas. Un evento L3 puede transportar texto
 # escrito por el operador (por ejemplo el cuerpo de un aviso técnico), así que el
@@ -250,6 +270,13 @@ def componer_acta(ruta_l3: Path) -> str:
     Resultado:
         El informe completo, con salto de línea final.
 
+    Errores:
+        ErrorActaNoDerivable: si el encabezado no es el canónico, si alguna fila
+            no tiene la forma canónica o si alguna familia ``(tag, event_code)``
+            no tiene política de redacción. Un informe formal no puede omitir
+            evidencia en silencio, así que se aborta entero.
+        OSError: si el archivo no puede leerse.
+
     Cómo se arma, paso a paso:
 
     1. la fecha del encabezado sale del **nombre** del conjunto, no del reloj
@@ -258,11 +285,12 @@ def componer_acta(ruta_l3: Path) -> str:
     2. se lee el CSV con el mismo dialecto con que se escribió —delimitador
        ``;`` y codificación ``utf-8-sig``—, de modo que un mensaje que contenga
        ``;`` o un salto de línea se recomponga correctamente;
-    3. se descarta únicamente la primera fila, que es el encabezado de columnas;
-    4. **todas** las filas restantes producen una línea, en el mismo orden en que
-       fueron persistidas. No se filtra por ``level``: el archivo L3 contiene por
-       construcción sólo eventos L3, y volver a filtrar acá escondería una fila
-       inesperada en vez de mostrarla.
+    3. la primera fila se compara contra ``ENCABEZADO_CSV``: si no coincide
+       exactamente, el archivo no es un L3 canónico y nada de lo que siga puede
+       interpretarse con confianza;
+    4. **todas** las filas restantes producen exactamente una línea, en el mismo
+       orden en que fueron persistidas. No se filtra por ``level`` ni se saltea
+       ninguna: cada fila se valida y se redacta, o el acta falla.
     """
 
     lineas = [
@@ -274,15 +302,33 @@ def componer_acta(ruta_l3: Path) -> str:
 
     with ruta_l3.open(encoding="utf-8-sig", newline="") as archivo:
         filas = csv.reader(archivo, delimiter=";")
-        # ``next`` con valor por defecto tolera un archivo vacío sin excepción;
-        # un conjunto real siempre tiene encabezado.
-        next(filas, None)
-        for fila in filas:
-            linea = _formatear_evento(fila)
-            if linea is not None:
-                lineas.append(linea)
+        _verificar_encabezado(next(filas, None), ruta_l3)
+        # ``start=2`` porque la fila 1 del archivo es el encabezado ya consumido.
+        # El número se usa sólo para que un fallo indique dónde mirar en el CSV.
+        for numero_fila, fila in enumerate(filas, start=2):
+            lineas.append(_formatear_evento(fila, numero_fila, ruta_l3))
 
     return "\n".join(lineas) + "\n"
+
+
+def _verificar_encabezado(fila: Sequence[str] | None, ruta_l3: Path) -> None:
+    """Exige la primera fila canónica ``seq;timestamp;level;tag;event_code;message``.
+
+    Un encabezado distinto significa que el archivo no fue escrito por el
+    escritor de auditoría vigente, o que fue editado. En cualquiera de los dos
+    casos el resto del archivo deja de ser interpretable con garantías y el acta
+    no puede derivarse.
+    """
+
+    if fila is None:
+        raise ErrorActaNoDerivable(
+            f"El archivo {ruta_l3.name} está vacío y no contiene el encabezado canónico"
+        )
+    if tuple(fila) != ENCABEZADO_CSV:
+        raise ErrorActaNoDerivable(
+            f"El encabezado de {ruta_l3.name} no es el canónico "
+            f"{ENCABEZADO_CSV!r}; se leyó {tuple(fila)!r}"
+        )
 
 
 def ruta_acta_de_conjunto(ruta_l3: Path) -> Path:
@@ -383,37 +429,63 @@ def _fecha_del_conjunto(ruta_l3: Path) -> str:
     return marca.strftime(FORMATO_FECHA_ACTA)
 
 
-def _formatear_evento(fila: Sequence[str]) -> str | None:
+def _formatear_evento(fila: Sequence[str], numero_fila: int, ruta_l3: Path) -> str:
     """Convierte una fila del CSV en la línea ``HH:MM:SS — texto`` del acta.
 
     Entradas:
         fila: las seis columnas canónicas ``seq;timestamp;level;tag;event_code;message``.
+        numero_fila: posición dentro del archivo, sólo para ubicar un fallo.
+        ruta_l3: archivo de origen, sólo para ubicar un fallo.
 
     Resultado:
-        La línea del informe, o ``None`` si la fila no tiene las seis columnas.
-        Descartar una fila truncada es preferible a abortar el informe entero:
-        sólo podría ocurrir con un archivo dañado, y el CSV sigue disponible como
-        registro completo.
+        La línea del informe. Nunca ``None``: una fila que no puede publicarse
+        hace fallar el acta completa.
 
-    De las seis columnas, el acta usa exactamente dos: la hora del ``timestamp``
-    y el ``message``. ``seq``, ``level``, ``tag`` y ``event_code`` son metadatos
-    de auditoría y no aparecen en el informe; ``tag`` y ``event_code`` sólo se
-    consultan para redactar los marcadores de inicio y fin.
+    Errores:
+        ErrorActaNoDerivable: si la fila no tiene exactamente seis columnas, si
+            ``seq`` no es un entero, si ``level`` no es ``L3``, si el timestamp
+            no respeta el formato canónico, o si la familia ``(tag, event_code)``
+            no tiene política de redacción declarada.
+
+    Por qué se valida tan estrictamente: I001 de este WP salteaba las filas
+    truncadas y declaraba el acta exitosa igual. Un informe formal que aparenta
+    estar completo mientras omite evidencia es peor que un informe que no se
+    generó, porque nadie llega a enterarse de que faltaba algo.
+
+    De las seis columnas, el acta publica exactamente una hora y un texto. Ni
+    ``seq``, ni ``level``, ni ``tag``, ni ``event_code`` se imprimen: ``tag`` y
+    ``event_code`` sólo eligen, internamente, qué política redacta el texto.
     """
 
-    if len(fila) < len(("seq", "timestamp", "level", "tag", "event_code", "message")):
-        return None
+    def rechazar(detalle: str) -> ErrorActaNoDerivable:
+        return ErrorActaNoDerivable(
+            f"Fila {numero_fila} de {ruta_l3.name}: {detalle}. "
+            "El acta no se deriva de un L3 que no puede interpretarse por completo."
+        )
 
-    _, timestamp, _, etiqueta, codigo_evento, mensaje = fila[:6]
-    texto = _depurar_texto(mensaje)
+    if len(fila) != len(ENCABEZADO_CSV):
+        raise rechazar(
+            f"se esperaban {len(ENCABEZADO_CSV)} columnas canónicas y se leyeron {len(fila)}"
+        )
 
-    if etiqueta == ETIQUETA_EVENTO_PRINCIPAL:
-        if codigo_evento == CODIGO_MARCADOR_INICIO:
-            texto = f"{PREFIJO_MARCADOR_INICIO}{texto}"
-        elif codigo_evento == CODIGO_MARCADOR_FIN:
-            texto = f"{PREFIJO_MARCADOR_FIN}{texto}"
+    secuencia, timestamp, nivel, etiqueta, codigo_evento, mensaje = fila
 
-    return f"{_hora_del_timestamp(timestamp)}{SEPARADOR_LINEA_ACTA}{texto}"
+    if not secuencia.isdigit():
+        raise rechazar(f"la columna seq {secuencia!r} no es un entero")
+    if nivel != NivelAuditoria.L3.value:
+        raise rechazar(f"la columna level es {nivel!r} y el archivo L3 sólo admite eventos L3")
+
+    try:
+        hora = _hora_del_timestamp(timestamp)
+    except ValueError as error:
+        raise rechazar(f"el timestamp {timestamp!r} no respeta el formato canónico") from error
+
+    try:
+        texto = redactar_linea_de_acta(etiqueta, codigo_evento, _depurar_texto(mensaje))
+    except ErrorActaNoDerivable as error:
+        raise rechazar(str(error)) from error
+
+    return f"{hora}{SEPARADOR_LINEA_ACTA}{texto}"
 
 
 def _hora_del_timestamp(timestamp: str) -> str:
@@ -428,12 +500,13 @@ def _hora_del_timestamp(timestamp: str) -> str:
 
 
 def _depurar_texto(mensaje: str) -> str:
-    """Deja el mensaje humano listo para un acta institucional.
+    """Retira pictogramas antes de aplicar la política explícita de la familia.
 
     Quita emojis y pictogramas, colapsa los espacios dobles que esa eliminación
-    puede dejar y recorta los extremos. No traduce, no resume ni reescribe: el
-    texto durable del CSV es el que llega al acta, porque inventar una redacción
-    distinta sería alterar el registro institucional.
+    puede dejar y recorta los extremos. La función no decide qué parte del
+    mensaje es institucional: esa responsabilidad pertenece al formatter
+    declarado en ``POLITICAS_ACTA``, que reconstruye el hecho sin copiar su
+    metadata técnica.
     """
 
     return _ESPACIOS_REPETIDOS.sub(" ", _EMOJIS.sub("", mensaje)).strip()

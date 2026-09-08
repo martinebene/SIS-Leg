@@ -776,8 +776,9 @@
                 <tr>
                   <td>Un aviso que empieza diciendo que la sesión cerró y que no se pudo generar el informe</td>
                   <td>
-                    El archivo de texto para el acta no se pudo escribir. Los tres registros CSV
-                    están completos y son el registro válido.
+                    El archivo de texto para el acta no se pudo escribir o el L3 no pudo
+                    interpretarse íntegramente. Los tres registros CSV quedan intactos y son el
+                    registro válido.
                   </td>
                 </tr>
                 <tr>
@@ -1958,8 +1959,17 @@ Fecha: DD/MM/AAAA
 
           <p>
             No incluye números de secuencia, códigos, etiquetas técnicas, identificadores internos
-            ni emojis: sólo la hora y el texto del hecho. Los períodos que empiezan y terminan se
-            distinguen con <code>Inicio:</code> y <code>Fin:</code>.
+            ni emojis: cada tipo de evento se redacta de forma institucional para conservar el hecho
+            útil sin copiar la metadata técnica del registro. Los períodos que empiezan y terminan
+            se distinguen con <code>Inicio:</code> y <code>Fin:</code>.
+          </p>
+
+          <p>
+            Si el registro L3 no conserva su encabezado y sus seis columnas canónicas, contiene una
+            fecha u hora inválida o incorpora un tipo de evento que esta versión todavía no sabe
+            redactar, SIS-Leg no omite ni repara filas: no genera el informe y muestra la advertencia
+            posterior al cierre. Los tres CSV cerrados quedan intactos y continúan siendo el registro
+            válido.
           </p>
 
           <div class="nota">

@@ -114,24 +114,24 @@ def test_acta_incluye_todos_los_eventos_aunque_superen_el_buffer_en_memoria(
     for numero in range(1, 251):
         escritor.registrar_evento(
             NivelAuditoria.L3,
-            "SESION",
-            "EVENTO_DE_PRUEBA",
-            f"Evento numero {numero}",
+            ETIQUETA_EVENTO_PRINCIPAL,
+            CODIGO_MARCADOR_INICIO,
+            f"Aviso numero {numero}",
         )
     ruta_l3 = escritor.rutas[NivelAuditoria.L3]
     escritor.cerrar()
 
     # El buffer en memoria efectivamente perdió los primeros eventos.
     assert len(escritor.eventos_recientes) == 200
-    assert escritor.eventos_recientes[0].mensaje == "Evento numero 51"
+    assert escritor.eventos_recientes[0].mensaje == "Aviso numero 51"
 
     lineas = componer_acta(ruta_l3).splitlines()
 
     assert lineas[:4] == ENCABEZADO_ESPERADO
     cuerpo = lineas[4:]
     assert len(cuerpo) == 250
-    assert cuerpo[0] == "11:45:07 — Evento numero 1"
-    assert cuerpo[-1] == "11:45:07 — Evento numero 250"
+    assert cuerpo[0] == "11:45:07 — Inicio: Aviso numero 1"
+    assert cuerpo[-1] == "11:45:07 — Inicio: Aviso numero 250"
 
 
 def test_marcadores_inicio_y_fin_se_distinguen_formalmente(tmp_path: Path) -> None:
@@ -178,8 +178,8 @@ def test_acta_no_publica_metadatos_tecnicos_ni_emojis(tmp_path: Path) -> None:
     escritor = crear_escritor(tmp_path / "logs")
     escritor.registrar_evento(
         NivelAuditoria.L3,
-        "APOYO_TECNICO",
-        "AVISO_TECNICO_PUBLICADO",
+        ETIQUETA_EVENTO_PRINCIPAL,
+        CODIGO_MARCADOR_INICIO,
         "Se reanuda la sesion 🎉 en cinco minutos",
     )
     ruta_l3 = escritor.rutas[NivelAuditoria.L3]
@@ -188,9 +188,9 @@ def test_acta_no_publica_metadatos_tecnicos_ni_emojis(tmp_path: Path) -> None:
     texto = componer_acta(ruta_l3)
     cuerpo = texto.splitlines()[4:]
 
-    assert cuerpo == ["11:45:07 — Se reanuda la sesion en cinco minutos"]
+    assert cuerpo == ["11:45:07 — Inicio: Se reanuda la sesion en cinco minutos"]
     # Ninguna columna técnica del CSV aparece en el informe.
-    for metadato in ("L3", "APOYO_TECNICO", "AVISO_TECNICO_PUBLICADO", ";"):
+    for metadato in ("L3", "EVENTO", "INICIO:", ";"):
         assert metadato not in texto
 
 
