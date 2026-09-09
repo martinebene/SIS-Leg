@@ -234,14 +234,6 @@ function estadoConEstadosDeBanca(): Record<string, unknown> {
   return estado
 }
 
-/** Terna RGBA realmente pintada para una propiedad de color de un elemento. */
-async function colorComputado(page: Page, selector: string, propiedad: string): Promise<string> {
-  return page
-    .locator(selector)
-    .first()
-    .evaluate((elemento, nombre) => getComputedStyle(elemento).getPropertyValue(nombre), propiedad)
-}
-
 /** Alfa efectivo de un color CSS resuelto; 0 significa completamente transparente. */
 function alfaDe(color: string): number {
   if (color.includes('rgba')) {
@@ -268,15 +260,33 @@ for (const viewport of RESOLUCIONES) {
     await expect(page.locator(banca(3))).toHaveAttribute('data-estado-banca', 'TEST')
     await expect(page.locator(banca(4))).toHaveAttribute('data-estado-banca', 'PALABRA')
 
-    // Criterio 7: la banca NORMAL pinta su borde transparente y no muestra etiqueta.
-    const colorNormal = await colorComputado(page, banca(1), 'border-top-color')
-    expect(alfaDe(colorNormal), `NORMAL no debería pintar borde: ${colorNormal}`).toBe(0)
+    // WP-090 completa el criterio 7: además del color transparente, el fondo blanco debe
+    // terminar en el padding para que no siga apareciendo por debajo del borde real.
+    const pinturaNormal = await page.locator(banca(1)).evaluate((elemento) => {
+      const estilo = getComputedStyle(elemento)
+      return {
+        colorBorde: estilo.borderTopColor,
+        recorteFondo: estilo.backgroundClip,
+      }
+    })
+    expect(
+      alfaDe(pinturaNormal.colorBorde),
+      `NORMAL no debería pintar borde: ${pinturaNormal.colorBorde}`,
+    ).toBe(0)
+    expect(pinturaNormal.recorteFondo).toBe('padding-box')
     await expect(page.locator(`${banca(1)} [data-testid="etiqueta-banca"]`)).toHaveCount(0)
 
     // Criterio 8: los demás estados conservan un borde opaco.
     for (const numero of [2, 3, 4]) {
-      const color = await colorComputado(page, banca(numero), 'border-top-color')
-      expect(alfaDe(color), `la banca ${numero} perdió su borde: ${color}`).toBe(1)
+      const pintura = await page.locator(banca(numero)).evaluate((elemento) => {
+        const estilo = getComputedStyle(elemento)
+        return { colorBorde: estilo.borderTopColor, recorteFondo: estilo.backgroundClip }
+      })
+      expect(
+        alfaDe(pintura.colorBorde),
+        `la banca ${numero} perdió su borde: ${pintura.colorBorde}`,
+      ).toBe(1)
+      expect(pintura.recorteFondo).toBe('border-box')
     }
 
     /*

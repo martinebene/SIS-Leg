@@ -16,7 +16,9 @@
  * presencia o test.
  *
  * WP-083 agrega una única diferencia visual respecto del Recinto: en Q3 la banca
- * `NORMAL` pinta su borde transparente. Está explicado junto a la regla CSS, más abajo.
+ * `NORMAL` pinta su borde transparente. WP-090 completa esa corrección evitando que el
+ * fondo blanco se pinte debajo de ese borde. Ambas decisiones están explicadas junto a
+ * la regla CSS, más abajo.
  */
 
 import { computed, ref, watch } from 'vue'
@@ -159,7 +161,7 @@ watch(claveImagen, () => {
 }
 
 /*
-  Borde invisible de la banca presente sin novedad (WP-083).
+  Borde realmente invisible de la banca presente sin novedad (WP-083 y WP-090).
 
   La tarjeta NORMAL es blanca sobre el fondo oscuro de Q3, y el bitmap institucional
   también está compuesto sobre blanco. El borde `#c7d2dd` de la familia BLANCA quedaba
@@ -167,13 +169,19 @@ watch(claveImagen, () => {
   leía como un recuadro superpuesto a la imagen. La revisión de quinta ronda pidió que la
   banca sin novedad no dibuje ese recuadro.
 
-  La corrección es sólo de color y sólo en Moderación:
+  WP-083 volvió transparente el color del borde, pero el fondo blanco de la tarjeta se
+  seguía pintando por debajo de esos 2 px porque el valor inicial de `background-clip` es
+  `border-box`. Por eso el contorno continuaba leyéndose blanco contra el fondo oscuro.
+
+  La corrección completa sigue siendo local a NORMAL y a Moderación:
 
   - se mantiene `border-width: 2px`, así que la caja mide exactamente lo mismo que antes y
     ni la imagen ni la franja de estado se mueven o escalan un píxel;
   - se pinta `transparent` en lugar de tocar `--borde-banca`, porque esa custom property
     sale de la paleta compartida `PALETA_BANCAS` que también consume la Pantalla del
     Recinto: cambiarla ahí habría cambiado el Recinto, que este WP debe dejar intacto;
+  - `background-clip: padding-box` hace que el fondo empiece después del borde, de modo
+    que el área transparente revela el fondo oscuro de Q3 sin cambiar caja ni contenido;
   - el selector es exactamente `NORMAL`, de modo que AUSENTE, PALABRA, TEST, VOTO_EMITIDO
     y los tres estados de resultado conservan su borde tal como está hoy.
 
@@ -184,6 +192,7 @@ watch(claveImagen, () => {
 */
 .banca-concejal-moderacion[data-estado-banca='NORMAL'] {
   border-color: transparent;
+  background-clip: padding-box;
 }
 
 /* Señal secundaria no textual de test o palabra subordinados a otro estado. */
