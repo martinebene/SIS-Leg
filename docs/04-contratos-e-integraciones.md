@@ -279,6 +279,10 @@ nro_votacion,tipo,tema,tipo_mayoria,factor,base
 
 - CSV separado por coma con soporte de quoting CSV normal y UTF-8 con o sin BOM;
 - `nro_votacion`: entero estricto mayor o igual a 1; no se exige secuencia ni unicidad;
+- `tipo`: el parser conserva el texto recortado y, al instalar la colección, lo compara con el
+  snapshot de `voting.types` sin distinguir mayúsculas/minúsculas, diacríticos ni secuencias de
+  whitespace. Una única coincidencia devuelve la grafía configurada exacta; cero coincidencias o
+  una colisión normalizada preservan el valor no permitido para selección manual;
 - `tipo_mayoria` explícito: `SIMPLE | ESPECIAL` (case-insensitive);
 - `SIMPLE`: `factor` vacío o `0` y `base` vacía o `VOTOS_COMPUTABLES`, normalizados canónicamente a `0.0` y `VOTOS_COMPUTABLES`;
 - `ESPECIAL`: factor real finito obligatorio `> 0 <= 1` y `base = VOTOS_COMPUTABLES | PRESENTES | CUERPO`;

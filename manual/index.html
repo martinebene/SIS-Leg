@@ -912,7 +912,16 @@
                   <td><code>nro_votacion</code></td>
                   <td>Número externo de la votación. No se valida secuencia ni repetición.</td>
                 </tr>
-                <tr><td><code>tipo</code></td><td>Texto descriptivo que se copia al formulario.</td></tr>
+                <tr>
+                  <td><code>tipo</code></td>
+                  <td>
+                    Texto descriptivo que se compara con <code>voting.types</code>. Se aceptan
+                    diferencias de mayúsculas/minúsculas, tildes y espacios al inicio, al final o
+                    repetidos entre palabras. Si hay una única coincidencia, el formulario muestra
+                    exactamente la escritura configurada. Un tipo desconocido o ambiguo queda para
+                    selección manual.
+                  </td>
+                </tr>
                 <tr><td><code>tema</code></td><td>Texto descriptivo del asunto.</td></tr>
                 <tr>
                   <td><code>tipo_mayoria</code></td>

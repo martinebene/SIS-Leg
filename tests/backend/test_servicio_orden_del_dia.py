@@ -62,6 +62,8 @@ CSV_INVALIDO = (
 
 def _crear_preparacion_aislada(
     tmp_path: Path,
+    *,
+    tipos_votacion: tuple[str, ...] = ("Despacho", "Mocion"),
 ) -> tuple[EstadoOperativo, Preparacion, EscritorAuditoriaCsv]:
     """Fabrica un estado en PREPARANDO con escritor real sobre tmp_path."""
     logs_dir = tmp_path / "logs"
@@ -70,7 +72,7 @@ def _crear_preparacion_aislada(
     configuracion = ConfiguracionSistema(
         quorum=1,
         filas_bancas=(1,),
-        tipos_votacion=("Despacho", "Mocion"),
+        tipos_votacion=tipos_votacion,
         device_test_seconds=4,
         moderacion_revelado_votos_segundos=0,
         recinto_cuenta_regresiva_inicial_segundos=4,
@@ -102,6 +104,84 @@ def _crear_preparacion_aislada(
     estado.archivos_auditoria_activos = prep.rutas_auditoria()
     estado.estado_global = EstadoGlobal.PREPARANDO
     return estado, prep, escritor
+
+
+async def test_canonicaliza_tipos_con_tolerancia_y_preserva_reglas_mayoria(
+    tmp_path: Path,
+) -> None:
+    """Usa el snapshot real para canonicalizar formas y no tocar SIMPLE/ESPECIAL."""
+
+    estado, prep, escritor = _crear_preparacion_aislada(
+        tmp_path,
+        tipos_votacion=("Ratificación", "Despacho OP", "Ratificación Especial"),
+    )
+    servicio = ServicioOrdenDelDia(estado, EjecutorMutaciones())
+    csv_tolerante = (
+        "nro_votacion,tipo,tema,tipo_mayoria,factor,base\n"
+        "1,ratificacion,Case y acento,SIMPLE,,\n"
+        "2,RATIFICACIÓN,Mayúsculas,ESPECIAL,0.66,PRESENTES\n"
+        "3,  Ratificación  ,Espacios extremos,SIMPLE,0,VOTOS_COMPUTABLES\n"
+        "4,Despacho     OP,Espacios internos,SIMPLE,,\n"
+        "5, \tRATIFICACIO\u0301N   ESPECIAL ,Todo combinado,ESPECIAL,0.75,CUERPO\n"
+    ).encode()
+
+    puntos = await servicio.cargar_orden_del_dia(csv_tolerante)
+
+    assert [punto.tipo for punto in puntos] == [
+        "Ratificación",
+        "Ratificación",
+        "Ratificación",
+        "Despacho OP",
+        "Ratificación Especial",
+    ]
+    assert puntos[0].tipo_mayoria is TipoMayoria.SIMPLE
+    assert puntos[0].factor == 0.0
+    assert puntos[0].base is BaseMayoria.VOTOS_COMPUTABLES
+    assert puntos[1].tipo_mayoria is TipoMayoria.ESPECIAL
+    assert puntos[1].factor == 0.66
+    assert puntos[1].base is BaseMayoria.PRESENTES
+    assert puntos[4].tipo_mayoria is TipoMayoria.ESPECIAL
+    assert puntos[4].factor == 0.75
+    assert puntos[4].base is BaseMayoria.CUERPO
+    assert prep.orden_del_dia == puntos
+    escritor.cerrar()
+
+
+async def test_tipo_desconocido_conserva_valor_recortado_del_parser(tmp_path: Path) -> None:
+    """Un texto sin coincidencias sigue visible como no permitido para selección manual."""
+
+    estado, prep, escritor = _crear_preparacion_aislada(
+        tmp_path,
+        tipos_votacion=("Ratificación",),
+    )
+    servicio = ServicioOrdenDelDia(estado, EjecutorMutaciones())
+    csv_desconocido = (
+        b"nro_votacion,tipo,tema,tipo_mayoria,factor,base\n1,  Dictamen nuevo  ,Tema,SIMPLE,,\n"
+    )
+
+    puntos = await servicio.cargar_orden_del_dia(csv_desconocido)
+
+    assert puntos[0].tipo == "Dictamen nuevo"
+    assert prep.orden_del_dia == puntos
+    escritor.cerrar()
+
+
+async def test_colision_normalizada_no_elige_tipo_arbitrariamente(tmp_path: Path) -> None:
+    """Dos grafías configuradas equivalentes dejan el valor del CSV sin canonicalizar."""
+
+    estado, prep, escritor = _crear_preparacion_aislada(
+        tmp_path,
+        tipos_votacion=("Ratificación", "Ratificacion"),
+    )
+    servicio = ServicioOrdenDelDia(estado, EjecutorMutaciones())
+    csv_ambiguo = b"nro_votacion,tipo,tema,tipo_mayoria,factor,base\n1,RATIFICACION,Tema,SIMPLE,,\n"
+
+    puntos = await servicio.cargar_orden_del_dia(csv_ambiguo)
+
+    assert puntos[0].tipo == "RATIFICACION"
+    assert puntos[0].tipo not in prep.configuracion.tipos_votacion
+    assert prep.orden_del_dia == puntos
+    escritor.cerrar()
 
 
 async def test_carga_inicial_y_reemplazo_en_preparando(tmp_path: Path) -> None:

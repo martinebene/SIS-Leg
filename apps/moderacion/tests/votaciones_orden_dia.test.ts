@@ -447,6 +447,43 @@ describe('WP-023: Orden del Día y ciclo visual de votaciones', () => {
     })
   })
 
+  it('copia de Q2 a Q1 el tipo canónico como una opción permitida normal', async () => {
+    const abrir = vi.fn().mockResolvedValue({ id: 'ratificacion-1' })
+    const puntoCanonicalizado: PuntoOrdenDelDiaProyectado = {
+      ...puntoSimple,
+      tipo: 'Ratificación',
+      tema: 'Convenio institucional',
+    }
+    const estado = crearEstado({
+      configuracion: {
+        ...crearEstado().configuracion!,
+        tipos_votacion: ['Ratificación', 'Otro'],
+      },
+      orden_del_dia: [puntoCanonicalizado],
+    })
+    const wrapper = montar(GestionVotacion, {
+      estado,
+      cliente: crearCliente({ abrirVotacion: abrir }),
+      conectado: true,
+      puntoPreseleccionado: puntoCanonicalizado,
+    })
+    await wrapper.setProps({ puntoPreseleccionado: { ...puntoCanonicalizado } })
+
+    const selector = wrapper.get('[data-testid="select-tipo-votacion"]')
+    expect((selector.element as HTMLSelectElement).value).toBe('Ratificación')
+    expect(selector.findAll('option:disabled')).toHaveLength(0)
+
+    await wrapper.get('[data-testid="btn-abrir-votacion"]').trigger('click')
+    await flushPromises()
+    expect(abrir).toHaveBeenCalledWith({
+      numero_votacion: 7,
+      tipo: 'Ratificación',
+      tema: 'Convenio institucional',
+      tipo_mayoria: 'SIMPLE',
+      base: 'VOTOS_COMPUTABLES',
+    })
+  })
+
   it('aplica CA-062 con orador/cola, permite cancelar y evita confirmaciones duplicadas', async () => {
     let resolverApertura: ((valor: { id: string }) => void) | undefined
     const abrir = vi.fn(
