@@ -285,6 +285,27 @@ fallo cerrado general y no se anuncia una transición que no pudo registrarse. U
 período abierto cuyo conjunto de CSV ya fue cerrado por el fin de la
 preparación/sesión se descarta sin escribir su `FIN` en un conjunto distinto.
 
+La transmisión conserva sus órdenes humanas L2 `TRANSMISION_INICIADA` y
+`TRANSMISION_DETENIDA`, y agrega dos hechos efectivos también L2 bajo la etiqueta
+`APOYO_TECNICO`:
+
+- `TRANSMISION_EN_VIVO_INICIO`, cuando el reloj autoritativo alcanza realmente
+  `en_vivo_desde`, sea un inicio inmediato o el fin de una cuenta regresiva;
+- `TRANSMISION_EN_VIVO_FIN`, cuando una orden detiene o reemplaza una intención
+  que en ese instante estaba efectivamente `EN_VIVO`.
+
+Una cuenta regresiva detenida o reemplazada antes del deadline no genera `FIN`.
+Si el deadline compite con stop o reemplazo, el serializador procesa primero el
+`INICIO` pendiente y cierra después el período una sola vez. El temporizador de
+fronteras usa el mismo predicado autoritativo que la mutación, sin polling; los
+wakeups repetidos no duplican filas. Cuando el cruce ocurre sin preparación ni
+sesión se lo marca como procesado sin crear auditoría, por lo que abrir un nuevo
+conjunto más tarde no inventa un replay. Un conjunto ya cerrado tampoco recibe
+escrituras tardías.
+
+Estos dos hechos pertenecen a L2: aparecen en los CSV L1 y L2 y en la proyección
+operativa reciente, pero no en L3 ni en el informe formal `-ACTA.txt`.
+
 ## 10. Identidad de concejales
 
 La implementación histórica usa principalmente nombre, apellido y banca en mensajes funcionales.

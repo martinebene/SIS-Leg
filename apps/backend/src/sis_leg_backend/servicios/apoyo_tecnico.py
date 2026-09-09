@@ -35,9 +35,9 @@ La biblioteca de mensajes precargados no se audita: es mantenimiento de
 configuración, del mismo orden que editar ``config/concejales.csv``, y no una
 interacción del transcurso de la sesión. Su rastro durable es el propio CSV.
 
-La cuenta regresiva que llega a ``EN VIVO`` no se audita ni muta el dominio:
-es un estado derivado del reloj, exactamente como la expiración del test de
-dispositivo de WP-006.
+El estado visible de la cuenta regresiva sigue derivándose del reloj. Desde
+WP-092, al alcanzar ``EN VIVO`` el temporizador registra además un hecho L2 y
+marca esa intención como procesada, sin cambiar el contrato proyectado.
 
 Marcadores de sesión INICIO/FIN (WP-078)
 ----------------------------------------
@@ -74,6 +74,7 @@ helper privado, así que ninguno puede duplicar el ``FIN``:
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -90,9 +91,11 @@ from sis_leg_backend.dominio.apoyo_tecnico import (
     DestinoAvisoTecnico,
     ErrorBibliotecaMensajesNoDisponible,
     ErrorMensajeTecnicoNoExistente,
+    EstadoTransmision,
     MarcadorRecintoAbierto,
     MensajeTecnico,
     TransmisionTecnica,
+    estado_transmision,
 )
 from sis_leg_backend.dominio.estado import EstadoOperativo
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
@@ -113,6 +116,8 @@ MOTIVO_BIBLIOTECA_INVALIDA = "BIBLIOTECA_MENSAJES_INVALIDA"
 ETIQUETA_APOYO_TECNICO = "APOYO_TECNICO"
 CODIGO_TRANSMISION_INICIADA = "TRANSMISION_INICIADA"
 CODIGO_TRANSMISION_DETENIDA = "TRANSMISION_DETENIDA"
+CODIGO_TRANSMISION_EN_VIVO_INICIO = "TRANSMISION_EN_VIVO_INICIO"
+CODIGO_TRANSMISION_EN_VIVO_FIN = "TRANSMISION_EN_VIVO_FIN"
 CODIGO_AVISO_PUBLICADO = "AVISO_TECNICO_PUBLICADO"
 CODIGO_AVISO_CANCELADO = "AVISO_TECNICO_CANCELADO"
 
@@ -202,6 +207,10 @@ class ServicioApoyoTecnico:
             obligar a apagar el indicador delante del público. La orden es
             siempre explícita y humana, así que no puede producirse sola.
 
+            Si la intención anterior ya estaba efectivamente ``EN_VIVO``,
+            cierra ese período antes de instalar la nueva. Un inicio inmediato
+            registra además su ``INICIO`` efectivo en esta misma mutación.
+
         Errores:
             ``ErrorAuditoria`` si existe una preparación/sesión activa y el
             evento ``TRANSMISION_INICIADA`` no pudo persistirse. En ese caso el
@@ -224,14 +233,28 @@ class ServicioApoyoTecnico:
                     f"en_vivo_desde={en_vivo_desde.isoformat()}"
                 ),
             )
-            # La memoria se actualiza recién después de que la auditoría
-            # confirmó su ``fsync``: nunca se anuncia como aplicada una orden
-            # cuyo registro institucional falló.
-            self._estado.transmision_tecnica = TransmisionTecnica(
+            # La orden nueva ya quedó durable. Antes de instalarla se cierra el
+            # período anterior según el reloj autoritativo. El helper procesa
+            # primero un INICIO que pudiera haber coincidido con esta carrera,
+            # de modo que nunca aparezca un FIN huérfano ni duplicado.
+            self._cerrar_transmision_en_vivo("REEMPLAZO", ahora)
+
+            nueva_transmision = TransmisionTecnica(
                 iniciada_en=ahora,
                 en_vivo_desde=en_vivo_desde,
                 cuenta_regresiva_segundos=cuenta_regresiva_segundos,
+                inicio_en_vivo_procesado=False,
             )
+            if cuenta_regresiva_segundos is None:
+                # El cruce inmediato forma parte del mismo comando seguro. La
+                # intención no se instala hasta que el fsync efectivo termina:
+                # un fallo no puede proyectar EN VIVO sin el hecho requerido.
+                self._auditar_inicio_transmision(nueva_transmision)
+                nueva_transmision = replace(
+                    nueva_transmision,
+                    inicio_en_vivo_procesado=True,
+                )
+            self._estado.transmision_tecnica = nueva_transmision
 
         await self._ejecutor.ejecutar(aplicar)
 
@@ -247,6 +270,7 @@ class ServicioApoyoTecnico:
             if self._estado.transmision_tecnica is None:
                 return
             self._auditar(CODIGO_TRANSMISION_DETENIDA, "Transmisión detenida por orden manual")
+            self._cerrar_transmision_en_vivo("DETENCION_MANUAL", self._reloj())
             self._estado.transmision_tecnica = None
 
         await self._ejecutor.ejecutar(aplicar)
@@ -385,6 +409,37 @@ class ServicioApoyoTecnico:
         # aviso que un comando acaba de instalar en la misma ranura.
         return aviso.aviso_id == marcador.aviso_id and not aviso.vigente(self._reloj())
 
+    def hay_efecto_temporal_pendiente(self) -> bool:
+        """Informa si alguna frontera técnica alcanzada todavía debe procesarse.
+
+        El temporizador consulta este predicado dentro del lock compartido. Se
+        combinan los dos hechos automáticos del plano técnico —inicio efectivo
+        de transmisión y fin de un aviso— para conservar una sola costura y una
+        sola tarea de fronteras, sin agregar polling.
+        """
+
+        return self._hay_inicio_transmision_pendiente(self._reloj()) or (
+            self.hay_marcador_recinto_vencido()
+        )
+
+    async def procesar_efectos_temporales_pendientes(self) -> None:
+        """Audita y confirma todos los efectos técnicos cuyo plazo ya venció.
+
+        La comprobación se repite dentro del ``EjecutorMutaciones`` porque un
+        stop, reemplazo o cambio de aviso pudo ganar la carrera desde la lectura
+        previa del temporizador. Un fallo de auditoría se propaga sin marcar el
+        efecto como procesado; ``ServicioFronterasTemporales`` espera entonces
+        un cambio real y evita un ciclo ocupado.
+        """
+
+        async def aplicar() -> None:
+            ahora = self._reloj()
+            self._procesar_inicio_transmision_pendiente(ahora)
+            if self.hay_marcador_recinto_vencido():
+                self._cerrar_marcador_recinto()
+
+        await self._ejecutor.ejecutar(aplicar)
+
     async def cerrar_marcadores_recinto_vencidos(self) -> None:
         """Convierte el vencimiento por duración en un ``FIN`` durable.
 
@@ -518,6 +573,78 @@ class ServicioApoyoTecnico:
             codigo_evento,
             mensaje,
         )
+
+    def _hay_inicio_transmision_pendiente(self, ahora: datetime) -> bool:
+        """Decide por reloj si la intención vigente cruzó y aún no fue tratada."""
+
+        transmision = self._estado.transmision_tecnica
+        return (
+            transmision is not None
+            and not transmision.inicio_en_vivo_procesado
+            and estado_transmision(transmision, ahora) is EstadoTransmision.EN_VIVO
+        )
+
+    def _procesar_inicio_transmision_pendiente(self, ahora: datetime) -> None:
+        """Registra un único ``INICIO`` efectivo y marca esa intención.
+
+        En ``SIN_PREPARAR`` ``_auditar`` es deliberadamente un no-op, pero la
+        marca igualmente avanza: si más tarde se abre una preparación, el
+        backend no reconstruye retrospectivamente un hecho ocurrido sin CSV.
+        """
+
+        if not self._hay_inicio_transmision_pendiente(ahora):
+            return
+        transmision = self._estado.transmision_tecnica
+        if transmision is None:  # Defensa para el tipado; el predicado ya lo excluye.
+            return
+        self._auditar_inicio_transmision(transmision)
+        self._estado.transmision_tecnica = replace(
+            transmision,
+            inicio_en_vivo_procesado=True,
+        )
+
+    def _auditar_inicio_transmision(self, transmision: TransmisionTecnica) -> None:
+        """Persiste el hecho efectivo sin decidir todavía la mutación de memoria."""
+
+        self._auditar(
+            CODIGO_TRANSMISION_EN_VIVO_INICIO,
+            (
+                "Transmisión efectivamente EN VIVO; "
+                f"iniciada_en={transmision.iniciada_en.isoformat()}; "
+                f"en_vivo_desde={transmision.en_vivo_desde.isoformat()}"
+            ),
+        )
+
+    def _cerrar_transmision_en_vivo(self, causa: str, ahora: datetime) -> None:
+        """Cierra el período vigente una sola vez si el reloj ya marca EN VIVO.
+
+        Un deadline que compite con stop/reemplazo puede estar visible pero aún
+        no procesado. En ese caso se confirma primero su ``INICIO`` y después el
+        ``FIN``. Al persistir el cierre se retira inmediatamente la intención:
+        si una fila posterior del reemplazo falla, no queda en memoria un vivo
+        cuyo fin ya fue registrado.
+        """
+
+        transmision = self._estado.transmision_tecnica
+        if (
+            transmision is None
+            or estado_transmision(transmision, ahora) is not EstadoTransmision.EN_VIVO
+        ):
+            return
+        self._procesar_inicio_transmision_pendiente(ahora)
+        transmision = self._estado.transmision_tecnica
+        if transmision is None:  # Defensa para el tipado; no hay awaits entre pasos.
+            return
+        self._auditar(
+            CODIGO_TRANSMISION_EN_VIVO_FIN,
+            (
+                "Transmisión dejó de estar EN VIVO; "
+                f"iniciada_en={transmision.iniciada_en.isoformat()}; "
+                f"en_vivo_desde={transmision.en_vivo_desde.isoformat()}; "
+                f"causa={causa}"
+            ),
+        )
+        self._estado.transmision_tecnica = None
 
     def _abrir_marcador_recinto(self, aviso: AvisoTecnico) -> None:
         """Registra el ``INICIO`` de un período de visualización en Recinto.
