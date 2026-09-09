@@ -570,3 +570,10 @@ WP-090, WP-091 y WP-092 quedaron integrados secuencialmente mediante squash de l
 
 
 HUMAN_GATE inició WP-029 en la PC real de producción el 09/09/2026. La fase 0 de diagnóstico read-only fue completada por AGY / Gemini 3.8 Flash (High) sin modificar el sistema Legacy: se verificaron Linux Mint 22.3, Legacy en `/opt/botonera/BOTONERA`, backend `botonera-backend.service` en `127.0.0.1:8000`, bridge `botonera-teclados.service`, Nginx en :80, 12 numpads reales mapeados por topología USB y ausencia de EVIOCGRAB en Legacy. WP-029 queda `EN_CURSO` bajo ORCHESTRATOR GPT Web; la siguiente fase es diseño read-only de instalación paralela y reversible. No se autoriza todavía detener servicios, capturar dispositivos, modificar Nginx/systemd, instalar SIS-Leg ni ejecutar WP-087.
+
+
+## Corrección productiva detectada durante WP-029 - WP-093 (09/09/2026)
+
+La primera conmutación reversible de WP-029 sobre el host real alcanzó backend SIS-Leg healthy y Device Bridge con EVIOCGRAB exitoso sobre los 12 numpads, pero falló en la verificación de superficies estáticas inmediatamente después de `systemctl reload nginx.service`: `/moderacion/` fue atendida transitoriamente por la configuración Legacy y terminó proxied al backend SIS-Leg con HTTP 404. El rollback externo restauró `ESTABLE_LEGACY` sin intervención manual.
+
+Se formaliza WP-093 para hacer health-gated la convergencia post-reload de Nginx en `deploy/herramienta_despliegue.py`, con reintento acotado y fail-closed, sin sleeps ciegos ni reinicios de Nginx. WP-029 queda `SUSPENDIDO_POR_DEFECTO_CORRECTIVO_WP093` hasta integrar WP-093, obtener un nuevo artifact productivo, preparar la nueva release en el host real y superar un nuevo HUMAN_GATE. WP-087 continúa posterior a WP-029.
