@@ -40,6 +40,13 @@ URL_NGINX_TECNICO = "http://127.0.0.1/tecnico/"
 # El manual de usuario (WP-067) se publica en su propia ruta estática. Se comprueba junto
 # a las SPA porque el icono de ayuda de Moderación y el de Apoyo Técnico dependen de él.
 URL_NGINX_MANUAL = "http://127.0.0.1/manual/"
+SUPERFICIES_NGINX = (
+    URL_NGINX_MODERACION,
+    URL_NGINX_RECINTO,
+    URL_NGINX_SIMULADOR,
+    URL_NGINX_TECNICO,
+    URL_NGINX_MANUAL,
+)
 MAXIMO_ARCHIVOS_TAR = 20_000
 MAXIMO_BYTES_TAR = 2 * 1024 * 1024 * 1024
 MAXIMO_LONGITUD_RUTA = 512
@@ -450,6 +457,7 @@ class GestorDespliegue:
         ejecutor: EjecutorComandos | None = None,
         consultor_json: Callable[[str, float], dict[str, Any]] = consultar_json,
         consultor_texto: Callable[[str, float], str] = consultar_texto,
+        durmiente: Callable[[float], None] | None = None,
         directorio_systemd: Path = Path("/etc/systemd/system"),
         ruta_nginx: Path = Path("/etc/nginx/conf.d/sis-leg.conf"),
         python_base: Path | None = None,
@@ -466,6 +474,10 @@ class GestorDespliegue:
         self.ejecutor = ejecutor or EjecutorSubprocess()
         self.consultor_json = consultor_json
         self.consultor_texto = consultor_texto
+        # Mantener ``None`` hasta cada espera permite que los tests antiguos que
+        # reemplazan ``time.sleep`` sigan interceptando la llamada. Los tests de
+        # convergencia nuevos pueden inyectar directamente un durmiente sin demora.
+        self.durmiente = durmiente
         self.directorio_systemd = directorio_systemd
         self.ruta_nginx = ruta_nginx
         # La herramienta productiva se invoca con ``python3.14``. Guardamos
@@ -1034,11 +1046,52 @@ class GestorDespliegue:
                     return
             except Exception as error:  # noqa: BLE001 - se conserva diagnóstico de frontera
                 ultimo = error
-            time.sleep(pausa)
+            (self.durmiente or time.sleep)(pausa)
         raise ErrorDespliegue(f"El backend no alcanzó health a tiempo: {ultimo}")
 
+    def _comprobar_convergencia_nginx(self) -> None:
+        """Exige que health y todas las superficies pertenezcan al vhost SIS-Leg.
+
+        Una respuesta saludable del backend no alcanza para distinguir la configuración
+        nueva de un worker Legacy que todavía está drenando conexiones. Por eso cada
+        intento se considera exitoso únicamente si, en la misma pasada, el proxy responde
+        ``estado=ok`` y las cinco rutas estáticas entregan el HTML esperado.
+        """
+
+        if self.consultor_json(URL_NGINX_HEALTH, 3.0).get("estado") != "ok":
+            raise ErrorDespliegue("El health vía Nginx no devolvió estado=ok.")
+        for url in SUPERFICIES_NGINX:
+            contenido = self.consultor_texto(url, 3.0).lower()
+            if "<!doctype html" not in contenido or "sis-leg" not in contenido:
+                raise ErrorDespliegue(
+                    f"La ruta no respondió HTML válido de SIS-Leg por Nginx: {url}"
+                )
+
+    def _esperar_convergencia_nginx(self, *, intentos: int = 20, pausa: float = 0.5) -> None:
+        """Espera acotadamente la convergencia real del reload graceful de Nginx.
+
+        Los errores HTTP, de conexión o de contenido pueden ser transitorios mientras los
+        workers anteriores terminan de drenar. Se vuelve a comprobar el conjunto completo
+        hasta agotar el presupuesto; entre intentos se usa el durmiente inyectable para que
+        las pruebas sean deterministas. Si nunca converge, el último diagnóstico queda en
+        el error y ``activar`` ejecuta su rollback normal.
+        """
+
+        ultimo: Exception | None = None
+        for numero_intento in range(intentos):
+            try:
+                self._comprobar_convergencia_nginx()
+                return
+            except Exception as error:  # noqa: BLE001 - diagnóstico de la frontera HTTP
+                ultimo = error
+            if numero_intento + 1 < intentos:
+                (self.durmiente or time.sleep)(pausa)
+        raise ErrorDespliegue(
+            f"Nginx no alcanzó convergencia dentro del presupuesto; último diagnóstico: {ultimo}"
+        )
+
     def _verificar_servicios_y_nginx(self) -> None:
-        """Confirma servicios, recarga Nginx y prueba mismo origen completo."""
+        """Confirma servicios, recarga una vez y espera el mismo origen completo."""
 
         for servicio in (SERVICIO_BACKEND, SERVICIO_BRIDGE):
             resultado = self.ejecutor.ejecutar(
@@ -1048,17 +1101,7 @@ class GestorDespliegue:
                 raise ErrorDespliegue(f"{servicio} no quedó activo: {resultado.error}")
         self.ejecutor.ejecutar(["nginx", "-t"])
         self.ejecutor.ejecutar(["systemctl", "reload", "nginx.service"])
-        if self.consultor_json(URL_NGINX_HEALTH, 3.0).get("estado") != "ok":
-            raise ErrorDespliegue("El health vía Nginx no devolvió estado=ok.")
-        for url in (
-            URL_NGINX_MODERACION,
-            URL_NGINX_RECINTO,
-            URL_NGINX_SIMULADOR,
-            URL_NGINX_TECNICO,
-            URL_NGINX_MANUAL,
-        ):
-            if "<!doctype html" not in self.consultor_texto(url, 3.0).lower():
-                raise ErrorDespliegue(f"La ruta no respondió HTML válido por Nginx: {url}")
+        self._esperar_convergencia_nginx()
 
     def activar(self, sha: str) -> None:
         """Activa una release y restaura automáticamente la anterior si falla."""

@@ -8,7 +8,7 @@ import stat
 import subprocess
 import sys
 import tarfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -463,7 +463,12 @@ def crear_release_preparada(gestor: GestorDespliegue, sha: str) -> Path:
     return release
 
 
-def crear_gestor(tmp_path: Path, ejecutor: EjecutorFalso | None = None) -> GestorDespliegue:
+def crear_gestor(
+    tmp_path: Path,
+    ejecutor: EjecutorFalso | None = None,
+    *,
+    durmiente: Callable[[float], None] | None = None,
+) -> GestorDespliegue:
     """Aísla todas las rutas que en producción pertenecen a /opt y /etc."""
 
     ejecutor = ejecutor or EjecutorFalso()
@@ -478,13 +483,14 @@ def crear_gestor(tmp_path: Path, ejecutor: EjecutorFalso | None = None) -> Gesto
         """Emula el HTML que Nginx sirve para cualquiera de las dos SPA."""
 
         del url, timeout
-        return "<!doctype html>"
+        return "<!doctype html><title>SIS-Leg</title>"
 
     return GestorDespliegue(
         tmp_path / "opt/sis-leg",
         ejecutor=ejecutor,
         consultor_json=json_ok,
         consultor_texto=html_ok,
+        durmiente=durmiente,
         directorio_systemd=tmp_path / "etc/systemd/system",
         ruta_nginx=tmp_path / "etc/nginx/conf.d/sis-leg.conf",
         python_base=Path("/usr/bin/python3"),
@@ -507,6 +513,214 @@ def crear_config_externa(gestor: GestorDespliegue) -> None:
         ruta.parent.mkdir(parents=True, exist_ok=True)
         ruta.write_text("fixture externo", encoding="utf-8")
     gestor.logs.mkdir(parents=True, exist_ok=True)
+
+
+def test_convergencia_tolera_404_inicial_y_luego_exige_todas_las_superficies(
+    tmp_path: Path,
+) -> None:
+    """Un worker Legacy transitorio no invalida un reload que luego converge completo."""
+
+    pausas: list[float] = []
+    gestor = crear_gestor(tmp_path, durmiente=pausas.append)
+    consultas: list[str] = []
+
+    def html_con_404_inicial(url: str, _timeout: float) -> str:
+        """Representa el 404 observado en campo para la primera Moderación."""
+
+        consultas.append(url)
+        if consultas == [modulo_despliegue.URL_NGINX_MODERACION]:
+            raise ErrorDespliegue("HTTP 404 transitorio")
+        return "<!doctype html><title>SIS-Leg</title>"
+
+    gestor.consultor_texto = html_con_404_inicial
+    gestor._esperar_convergencia_nginx()  # pyright: ignore[reportPrivateUsage]
+
+    assert pausas == [0.5]
+    assert consultas == [
+        modulo_despliegue.URL_NGINX_MODERACION,
+        *modulo_despliegue.SUPERFICIES_NGINX,
+    ]
+
+
+def test_convergencia_tolera_varios_fallos_transitorios_sin_espera_real(
+    tmp_path: Path,
+) -> None:
+    """Cada intento vuelve a validar el conjunto después de health y HTML transitorios."""
+
+    pausas: list[float] = []
+    gestor = crear_gestor(tmp_path, durmiente=pausas.append)
+    cantidad_health = 0
+    cantidad_moderacion = 0
+
+    def health_transitorio(_url: str, _timeout: float) -> dict[str, Any]:
+        """La primera conexión falla y las siguientes alcanzan al backend sano."""
+
+        nonlocal cantidad_health
+        cantidad_health += 1
+        if cantidad_health == 1:
+            raise ErrorDespliegue("URLError transitorio")
+        return {"estado": "ok"}
+
+    def html_transitorio(_url: str, _timeout: float) -> str:
+        """La segunda pasada aún recibe contenido Legacy y la tercera converge."""
+
+        nonlocal cantidad_moderacion
+        cantidad_moderacion += 1
+        if cantidad_moderacion == 1:
+            return "respuesta Legacy sin documento SIS-Leg"
+        return "<!doctype html><title>SIS-Leg</title>"
+
+    gestor.consultor_json = health_transitorio
+    gestor.consultor_texto = html_transitorio
+    gestor._esperar_convergencia_nginx(  # pyright: ignore[reportPrivateUsage]
+        intentos=3, pausa=0.25
+    )
+
+    assert cantidad_health == 3
+    assert pausas == [0.25, 0.25]
+
+
+def test_convergencia_que_nunca_llega_falla_acotada_con_ultimo_diagnostico(
+    tmp_path: Path,
+) -> None:
+    """Agotar el presupuesto informa la última superficie y no duerme tras el final."""
+
+    pausas: list[float] = []
+    gestor = crear_gestor(tmp_path, durmiente=pausas.append)
+
+    def html_legacy(_url: str, _timeout: float) -> str:
+        """Mantiene al cliente en el vhost anterior durante todo el presupuesto."""
+
+        return "contenido Legacy"
+
+    gestor.consultor_texto = html_legacy
+
+    with pytest.raises(ErrorDespliegue) as captura:
+        gestor._esperar_convergencia_nginx(  # pyright: ignore[reportPrivateUsage]
+            intentos=3, pausa=0.2
+        )
+
+    assert "último diagnóstico" in str(captura.value)
+    assert modulo_despliegue.URL_NGINX_MODERACION in str(captura.value)
+    assert pausas == [0.2, 0.2]
+
+
+def test_convergencia_falla_si_health_proxy_permanece_incorrecto(tmp_path: Path) -> None:
+    """Las páginas estáticas no convierten en éxito un health proxy inválido."""
+
+    pausas: list[float] = []
+    gestor = crear_gestor(tmp_path, durmiente=pausas.append)
+    consultas_html = 0
+
+    def health_degradado(_url: str, _timeout: float) -> dict[str, Any]:
+        """Simula un backend accesible cuyo contrato de salud no está satisfecho."""
+
+        return {"estado": "degradado"}
+
+    gestor.consultor_json = health_degradado
+
+    def contar_html(_url: str, _timeout: float) -> str:
+        nonlocal consultas_html
+        consultas_html += 1
+        return "<!doctype html><title>SIS-Leg</title>"
+
+    gestor.consultor_texto = contar_html
+    with pytest.raises(ErrorDespliegue, match="health vía Nginx"):
+        gestor._esperar_convergencia_nginx(  # pyright: ignore[reportPrivateUsage]
+            intentos=2
+        )
+
+    assert consultas_html == 0
+    assert pausas == [0.5]
+
+
+def test_convergencia_falla_si_una_superficie_estatica_permanece_incorrecta(
+    tmp_path: Path,
+) -> None:
+    """Una sola ruta Legacy impide aceptar parcialmente el vhost nuevo."""
+
+    pausas: list[float] = []
+    gestor = crear_gestor(tmp_path, durmiente=pausas.append)
+    consultas: list[str] = []
+
+    def html_con_recinto_legacy(url: str, _timeout: float) -> str:
+        consultas.append(url)
+        if url == modulo_despliegue.URL_NGINX_RECINTO:
+            return "<!doctype html><title>Legacy</title>"
+        return "<!doctype html><title>SIS-Leg</title>"
+
+    gestor.consultor_texto = html_con_recinto_legacy
+    with pytest.raises(ErrorDespliegue, match="recinto"):
+        gestor._esperar_convergencia_nginx(  # pyright: ignore[reportPrivateUsage]
+            intentos=2
+        )
+
+    assert consultas == [
+        modulo_despliegue.URL_NGINX_MODERACION,
+        modulo_despliegue.URL_NGINX_RECINTO,
+        modulo_despliegue.URL_NGINX_MODERACION,
+        modulo_despliegue.URL_NGINX_RECINTO,
+    ]
+    assert pausas == [0.5]
+
+
+def test_activacion_inmediata_verifica_cinco_superficies_y_recarga_nginx_una_vez(
+    tmp_path: Path,
+) -> None:
+    """Sin transición no hay pausa, reload duplicado ni restart de Nginx."""
+
+    pausas: list[float] = []
+    ejecutor = EjecutorFalso()
+    gestor = crear_gestor(tmp_path, ejecutor, durmiente=pausas.append)
+    release = crear_release_preparada(gestor, SHA_A)
+    crear_config_externa(gestor)
+    consultas: list[str] = []
+
+    def registrar_html(url: str, _timeout: float) -> str:
+        consultas.append(url)
+        return "<!doctype html><title>SIS-Leg</title>"
+
+    gestor.consultor_texto = registrar_html
+    gestor.activar(SHA_A)
+
+    assert resolver_enlace_release(gestor.current, gestor.releases) == release
+    assert consultas == list(modulo_despliegue.SUPERFICIES_NGINX)
+    assert pausas == []
+    assert ejecutor.llamadas.count(["systemctl", "reload", "nginx.service"]) == 1
+    assert ["systemctl", "restart", "nginx.service"] not in ejecutor.llamadas
+
+
+def test_primera_instalacion_sin_convergencia_restaura_estado_inicial(
+    tmp_path: Path,
+) -> None:
+    """Sin release anterior, un vhost persistente incorrecto deja todo desactivado."""
+
+    ejecutor = EjecutorFalso()
+
+    def no_dormir(_pausa: float) -> None:
+        """Recorre el presupuesto de producción sin demoras de reloj en el test."""
+
+    gestor = crear_gestor(tmp_path, ejecutor, durmiente=no_dormir)
+    crear_release_preparada(gestor, SHA_A)
+    crear_config_externa(gestor)
+
+    def html_legacy(_url: str, _timeout: float) -> str:
+        """Impide que la primera instalación llegue a observar su nuevo vhost."""
+
+        return "contenido Legacy"
+
+    gestor.consultor_texto = html_legacy
+
+    with pytest.raises(ErrorDespliegue, match="se restauró la release anterior"):
+        gestor.activar(SHA_A)
+
+    assert resolver_enlace_release(gestor.current, gestor.releases) is None
+    assert resolver_enlace_release(gestor.previous, gestor.releases) is None
+    assert not (gestor.directorio_systemd / modulo_despliegue.SERVICIO_BACKEND).exists()
+    assert not (gestor.directorio_systemd / modulo_despliegue.SERVICIO_BRIDGE).exists()
+    assert not gestor.ruta_nginx.exists()
+    assert ["systemctl", "stop", modulo_despliegue.SERVICIO_BRIDGE] in ejecutor.llamadas
+    assert ["systemctl", "stop", modulo_despliegue.SERVICIO_BACKEND] in ejecutor.llamadas
 
 
 def test_activacion_previous_y_rollback_preservan_config_y_logs(tmp_path: Path) -> None:
