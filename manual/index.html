@@ -1352,11 +1352,36 @@
 
           <p>
             Una cuenta regresiva cancelada antes de llegar a cero no inventa un fin de transmisión.
-            Estos hechos son de operación normal: están en los archivos L1 y L2, pero no en L3 ni
-            en el informe <code>-ACTA.txt</code>. Si el sistema todavía está sin preparar, el
+            Esos cuatro hechos son de operación normal: están en los archivos L1 y L2, pero no en
+            L3 ni en el informe <code>-ACTA.txt</code>. Si el sistema todavía está sin preparar, el
             indicador funciona igual pero no crea archivos de registro nuevos ni agrega hechos de
             forma retrospectiva al preparar después.
           </p>
+
+          <p>
+            Además, cada vez que el indicador <strong>enciende o se apaga de verdad</strong> queda
+            un hecho principal, con el mismo peso que la apertura de la sesión o el resultado de
+            una votación: <code>TRANSMISION_EN_VIVO_INICIADA</code> y
+            <code>TRANSMISION_EN_VIVO_FINALIZADA</code>. Su texto es siempre el mismo —«Transmisión
+            en vivo iniciada» y «Transmisión en vivo finalizada»—, están en los tres archivos y en
+            el informe <code>-ACTA.txt</code>.
+          </p>
+
+          <div class="nota">
+            <strong>Dónde se ven</strong>
+            Estos dos hechos aparecen en el panel de eventos de Moderación y de Apoyo Técnico con
+            el nivel de detalle «Principales», que es el que el panel muestra por omisión. No hace
+            falta cambiar de nivel para saber cuándo empezó y cuándo terminó la transmisión.
+          </div>
+
+          <div class="nota">
+            <strong>Detalle importante</strong>
+            Lo que cuenta es lo que ve el público, no cuántas órdenes se dieron. Programar una
+            cuenta regresiva, reprogramarla o cancelarla no produce ningún hecho principal. Volver a
+            iniciar de inmediato una transmisión que ya estaba en vivo tampoco: el indicador no
+            llegó a apagarse, así que no hay un fin ni un inicio nuevos. En cambio, pasar de «en
+            vivo» a una cuenta regresiva sí apaga el indicador y queda asentado como fin.
+          </div>
 
           <h3>8.2 Avisos</h3>
 

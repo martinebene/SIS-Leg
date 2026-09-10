@@ -27,6 +27,8 @@ from sis_leg_backend.servicios.apoyo_tecnico import (
     CODIGO_TRANSMISION_EN_VIVO_FIN,
     CODIGO_TRANSMISION_EN_VIVO_INICIO,
     CODIGO_TRANSMISION_INICIADA,
+    CODIGO_TRANSMISION_PRINCIPAL_FIN,
+    CODIGO_TRANSMISION_PRINCIPAL_INICIO,
     ServicioApoyoTecnico,
 )
 from sis_leg_backend.servicios.fronteras_temporales import ServicioFronterasTemporales
@@ -96,10 +98,17 @@ async def ejecutar_carrera_en_deadline(
             await tarea
 
 
-async def test_inicio_inmediato_y_stop_auditan_hechos_l2_sin_tocar_l3_ni_acta(
+async def test_inicio_inmediato_y_stop_conservan_los_hechos_tecnicos_l2(
     tmp_path: Path,
 ) -> None:
-    """Los comandos se conservan y los dos hechos nuevos quedan sólo en L1/L2."""
+    """Los comandos y los dos hechos técnicos de WP-092 conservan su contrato.
+
+    Desde WP-096 cada transición efectiva agrega además su evento principal, así
+    que la secuencia esperada intercala ambas familias. Lo que este test sigue
+    protegiendo es el contrato de WP-092: los códigos técnicos siguen siendo
+    ``L2``, siguen apareciendo en los CSV L1 y L2, y su ``event_code`` técnico no
+    aparece nunca en el L3 ni en el acta.
+    """
 
     entorno = crear_entorno_proyecciones(tmp_path)
     servicio = crear_servicio_apoyo_tecnico(entorno, tmp_path / "mensajes.csv")
@@ -110,13 +119,23 @@ async def test_inicio_inmediato_y_stop_auditan_hechos_l2_sin_tocar_l3_ni_acta(
     assert codigos(entorno) == [
         CODIGO_TRANSMISION_INICIADA,
         CODIGO_TRANSMISION_EN_VIVO_INICIO,
+        CODIGO_TRANSMISION_PRINCIPAL_INICIO,
         CODIGO_TRANSMISION_DETENIDA,
         CODIGO_TRANSMISION_EN_VIVO_FIN,
+        CODIGO_TRANSMISION_PRINCIPAL_FIN,
     ]
-    assert all(
-        evento.nivel is NivelAuditoria.L2
+    niveles_tecnicos = {
+        evento.nivel
         for evento in entorno.contexto.escritor_auditoria.eventos_recientes
-    )
+        if evento.codigo_evento
+        in (
+            CODIGO_TRANSMISION_INICIADA,
+            CODIGO_TRANSMISION_DETENIDA,
+            CODIGO_TRANSMISION_EN_VIVO_INICIO,
+            CODIGO_TRANSMISION_EN_VIVO_FIN,
+        )
+    }
+    assert niveles_tecnicos == {NivelAuditoria.L2}
 
     rutas = entorno.contexto.escritor_auditoria.rutas
     for nivel in (NivelAuditoria.L1, NivelAuditoria.L2):

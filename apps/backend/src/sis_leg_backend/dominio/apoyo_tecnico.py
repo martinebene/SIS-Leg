@@ -117,6 +117,36 @@ class TransmisionTecnica:
 
 
 @dataclass(frozen=True, slots=True)
+class MarcadorTransmisionPrincipal:
+    """Transmisión anunciada en el log principal y todavía no finalizada (WP-096).
+
+    El log principal no registra intenciones sino el estado observable del
+    indicador: mientras el público ve "EN VIVO" hay exactamente un período
+    institucional abierto, sin importar cuántas órdenes técnicas lo hayan
+    sostenido por debajo. Reemplazar un inicio inmediato por otro, por ejemplo,
+    cambia la ``TransmisionTecnica`` vigente pero **no** apaga el indicador, así
+    que no abre ni cierra un período institucional.
+
+    Ese dato no puede deducirse de ``EstadoOperativo.transmision_tecnica``: esa
+    intención se reemplaza entera en cada orden y no recuerda si su ``INICIO``
+    principal llegó a persistirse. Por eso el marcador vive aparte, se instala
+    recién **después** de que el ``INICIO`` quedó confirmado por la auditoría y
+    se retira recién después de confirmar el ``FIN``. Es el mismo mecanismo con
+    el que WP-078 hizo verificable "un INICIO y un FIN por período" para los
+    avisos del Recinto.
+
+    Atributos:
+        escritor_auditoria: conjunto de CSV en el que se persistió el ``INICIO``.
+            Se compara por identidad: la transmisión es independiente del ciclo
+            preparación/sesión y puede seguir EN VIVO cuando ese conjunto ya fue
+            cerrado, y en ese caso su ``FIN`` no puede escribirse en otro
+            conjunto sin inventar un hecho que ese conjunto nunca vio empezar.
+    """
+
+    escritor_auditoria: EscritorAuditoriaCsv
+
+
+@dataclass(frozen=True, slots=True)
 class AvisoTecnico:
     """Aviso vigente en una ranura de destino, con vencimiento opcional.
 
