@@ -17,6 +17,8 @@ import pytest
 import deploy.herramienta_despliegue as modulo_despliegue
 import scripts.verificar_reproducibilidad_produccion as modulo_reproducibilidad
 from deploy.herramienta_despliegue import (
+    DIRECTORIO_SONDAS_RUNTIME,
+    EjecutorSubprocess,
     ErrorDespliegue,
     GestorDespliegue,
     ResultadoComando,
@@ -404,6 +406,7 @@ class EjecutorFalso:
 
     def __init__(self) -> None:
         self.llamadas: list[list[str]] = []
+        self.invocaciones: list[tuple[list[str], Path | None, bool]] = []
         self.estado_backend = "active"
 
     def ejecutar(
@@ -414,9 +417,9 @@ class EjecutorFalso:
         entorno: Mapping[str, str] | None = None,
         comprobar: bool = True,
     ) -> ResultadoComando:
-        del comprobar
         args = [str(valor) for valor in argumentos]
         self.llamadas.append(args)
+        self.invocaciones.append((args, directorio, comprobar))
         if len(args) >= 3 and args[1] == "-c" and "sys.version_info" in args[2]:
             return ResultadoComando(0, "3.14\n")
         if args[:2] == ["uv", "sync"]:
@@ -855,6 +858,7 @@ def test_permisos_incompatibles_fallan_antes_del_switch(tmp_path: Path) -> None:
                 str(tmp_path / "opt/sis-leg/logs"),
             ]:
                 self.llamadas.append(args)
+                self.invocaciones.append((args, directorio, comprobar))
                 return ResultadoComando(1, error="permiso denegado")
             return super().ejecutar(
                 argumentos,
@@ -874,6 +878,12 @@ def test_permisos_incompatibles_fallan_antes_del_switch(tmp_path: Path) -> None:
     assert resolver_enlace_release(gestor.current, gestor.releases) is None
     assert not (gestor.directorio_systemd / modulo_despliegue.SERVICIO_BACKEND).exists()
     assert not any(llamada[:2] == ["systemctl", "restart"] for llamada in ejecutor.llamadas)
+    assert any(
+        llamada[0][4:] == ["test", "-w", str(gestor.logs)]
+        and llamada[1] == DIRECTORIO_SONDAS_RUNTIME
+        and llamada[2] is False
+        for llamada in ejecutor.invocaciones
+    )
 
 
 def test_permisos_correctos_verifican_ambos_usuarios_y_grupo_input(tmp_path: Path) -> None:
@@ -910,7 +920,160 @@ def test_permisos_correctos_verifican_ambos_usuarios_y_grupo_input(tmp_path: Pat
     ] in llamadas_runuser
     assert ["id", "--groups", "--name", "sis-leg-backend"] in ejecutor.llamadas
     assert ["id", "--groups", "--name", "sis-leg-bridge"] in ejecutor.llamadas
+    sondas_runtime = [
+        invocacion for invocacion in ejecutor.invocaciones if invocacion[0][:1] == ["runuser"]
+    ]
+    assert any(invocacion[0][4] == "test" for invocacion in sondas_runtime)
+    assert any(invocacion[0][4] == "find" for invocacion in sondas_runtime)
+    assert all(
+        directorio == DIRECTORIO_SONDAS_RUNTIME and comprobar is False
+        for _, directorio, comprobar in sondas_runtime
+    )
     assert resolver_enlace_release(gestor.current, gestor.releases) == release
+
+
+def test_release_valida_no_depende_del_cwd_privado_del_invocador(tmp_path: Path) -> None:
+    """Un home privado sólo dañaría una sonda ``runuser`` que heredara ese cwd."""
+
+    class EjecutorConCwdPrivado(EjecutorFalso):
+        """Modela el fallo de campo sin necesitar usuarios reales ni privilegios."""
+
+        def ejecutar(
+            self,
+            argumentos: Sequence[str],
+            *,
+            directorio: Path | None = None,
+            entorno: Mapping[str, str] | None = None,
+            comprobar: bool = True,
+        ) -> ResultadoComando:
+            args = [str(valor) for valor in argumentos]
+            if args[:1] == ["runuser"] and directorio is None:
+                self.llamadas.append(args)
+                self.invocaciones.append((args, directorio, comprobar))
+                return ResultadoComando(
+                    1,
+                    error=(
+                        "find: fallo al restaurar el directorio de trabajo inicial: "
+                        "/home/concejo: Permiso denegado"
+                    ),
+                )
+            return super().ejecutar(
+                argumentos,
+                directorio=directorio,
+                entorno=entorno,
+                comprobar=comprobar,
+            )
+
+    ejecutor = EjecutorConCwdPrivado()
+    gestor = crear_gestor(tmp_path, ejecutor)
+    release = crear_release_preparada(gestor, SHA_A)
+    crear_config_externa(gestor)
+
+    gestor.activar(SHA_A)
+
+    assert resolver_enlace_release(gestor.current, gestor.releases) == release
+    assert all(
+        directorio == DIRECTORIO_SONDAS_RUNTIME
+        for argumentos, directorio, _ in ejecutor.invocaciones
+        if argumentos[:1] == ["runuser"]
+    )
+
+
+def test_release_escribible_sigue_rechazada_antes_del_switch(tmp_path: Path) -> None:
+    """Fijar el cwd no reduce el recorrido ``find -writable`` de la release."""
+
+    class EjecutorConReleaseEscribible(EjecutorFalso):
+        """Devuelve la ruta que una identidad runtime podría modificar."""
+
+        def ejecutar(
+            self,
+            argumentos: Sequence[str],
+            *,
+            directorio: Path | None = None,
+            entorno: Mapping[str, str] | None = None,
+            comprobar: bool = True,
+        ) -> ResultadoComando:
+            args = [str(valor) for valor in argumentos]
+            if args[:5] == ["runuser", "--user", "sis-leg-backend", "--", "find"]:
+                self.llamadas.append(args)
+                self.invocaciones.append((args, directorio, comprobar))
+                return ResultadoComando(0, salida=f"{args[5]}/archivo-escribible\n")
+            return super().ejecutar(
+                argumentos,
+                directorio=directorio,
+                entorno=entorno,
+                comprobar=comprobar,
+            )
+
+    ejecutor = EjecutorConReleaseEscribible()
+    gestor = crear_gestor(tmp_path, ejecutor)
+    crear_release_preparada(gestor, SHA_A)
+    crear_config_externa(gestor)
+
+    with pytest.raises(ErrorDespliegue, match="archivo-escribible"):
+        gestor.activar(SHA_A)
+
+    assert resolver_enlace_release(gestor.current, gestor.releases) is None
+
+
+def test_error_real_de_find_sigue_fallando_cerrado(tmp_path: Path) -> None:
+    """Un error de ``runuser``/``find`` conserva stderr y bloquea la activación."""
+
+    class EjecutorConFindFallido(EjecutorFalso):
+        """Inyecta un código no cero equivalente al observado en producción."""
+
+        def ejecutar(
+            self,
+            argumentos: Sequence[str],
+            *,
+            directorio: Path | None = None,
+            entorno: Mapping[str, str] | None = None,
+            comprobar: bool = True,
+        ) -> ResultadoComando:
+            args = [str(valor) for valor in argumentos]
+            if args[:5] == ["runuser", "--user", "sis-leg-backend", "--", "find"]:
+                self.llamadas.append(args)
+                self.invocaciones.append((args, directorio, comprobar))
+                return ResultadoComando(1, error="find: permiso denegado real")
+            return super().ejecutar(
+                argumentos,
+                directorio=directorio,
+                entorno=entorno,
+                comprobar=comprobar,
+            )
+
+    ejecutor = EjecutorConFindFallido()
+    gestor = crear_gestor(tmp_path, ejecutor)
+    crear_release_preparada(gestor, SHA_A)
+    crear_config_externa(gestor)
+
+    with pytest.raises(ErrorDespliegue, match="find: permiso denegado real"):
+        gestor.activar(SHA_A)
+
+    assert resolver_enlace_release(gestor.current, gestor.releases) is None
+
+
+def test_ejecutor_subprocess_propaga_cwd_sin_shell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """La frontera real pasa cwd a subprocess y mantiene argumentos estructurados."""
+
+    def ejecutar_falso(argumentos: list[str], **opciones: Any) -> subprocess.CompletedProcess[str]:
+        assert argumentos == ["runuser", "--user", "usuario", "--", "test", "-r", "/ruta"]
+        assert opciones["cwd"] == DIRECTORIO_SONDAS_RUNTIME
+        assert "shell" not in opciones
+        assert opciones["check"] is False
+        return subprocess.CompletedProcess(argumentos, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(modulo_despliegue.subprocess, "run", ejecutar_falso)
+
+    resultado = EjecutorSubprocess().ejecutar(
+        ["runuser", "--user", "usuario", "--", "test", "-r", "/ruta"],
+        directorio=DIRECTORIO_SONDAS_RUNTIME,
+        comprobar=False,
+    )
+
+    assert resultado.codigo == 0
 
 
 def test_fallo_health_restaura_current_y_no_actualiza_previous(

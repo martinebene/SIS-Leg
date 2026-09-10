@@ -50,6 +50,9 @@ SUPERFICIES_NGINX = (
 MAXIMO_ARCHIVOS_TAR = 20_000
 MAXIMO_BYTES_TAR = 2 * 1024 * 1024 * 1024
 MAXIMO_LONGITUD_RUTA = 512
+# Las sondas cambian temporalmente de usuario con ``runuser``. Ejecutarlas desde
+# la raíz evita heredar un home privado del operador y no altera el cwd global.
+DIRECTORIO_SONDAS_RUNTIME = Path("/")
 
 
 class ErrorDespliegue(RuntimeError):
@@ -762,6 +765,7 @@ class GestorDespliegue:
 
         resultado = self.ejecutor.ejecutar(
             ["runuser", "--user", usuario, "--", "test", *argumentos_test],
+            directorio=DIRECTORIO_SONDAS_RUNTIME,
             comprobar=False,
         )
         if resultado.codigo != 0:
@@ -894,6 +898,7 @@ class GestorDespliegue:
                     "-print",
                     "-quit",
                 ],
+                directorio=DIRECTORIO_SONDAS_RUNTIME,
                 comprobar=False,
             )
             if resultado.codigo != 0 or resultado.salida.strip():
