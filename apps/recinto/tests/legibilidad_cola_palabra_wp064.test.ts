@@ -138,16 +138,21 @@ describe('Tamaño declarado del nombre de la cola (WP-064)', () => {
    */
   function leerClampDeclarado() {
     const fuente = readFileSync(rutaComponente, 'utf8')
-    const bloque = fuente.match(/\.persona-cola strong \{([\s\S]*?)\}/)
-    expect(bloque, 'PanelPalabraPublico.vue debe declarar la regla .persona-cola strong').not.toBe(
+    const bloque = fuente.match(/\.cola-palabra strong \{([\s\S]*?)\}/)
+    expect(bloque, 'PanelPalabraPublico.vue debe declarar la regla .cola-palabra strong').not.toBe(
       null,
     )
+    /*
+      WP-097 envolvió el `clamp` en un `min()` que le agrega un techo geométrico
+      en `cqi`. El `clamp` sigue siendo el que fijó WP-064 y se lo extrae igual;
+      el techo se comprueba aparte, en su propia prueba.
+    */
     const coincidencia = bloque![1]!.match(
-      /font-size:\s*clamp\(\s*([\d.]+)rem\s*,\s*([\d.]+)vw\s*,\s*([\d.]+)rem\s*\)/,
+      /font-size:\s*min\(\s*clamp\(\s*([\d.]+)rem\s*,\s*([\d.]+)vw\s*,\s*([\d.]+)rem\s*\)\s*,\s*[\d.]+cqi\s*\)/,
     )
     expect(
       coincidencia,
-      'El nombre debe seguir dimensionado con un clamp de tres términos',
+      'El nombre debe seguir dimensionado con un clamp de tres términos bajo un techo en cqi',
     ).not.toBe(null)
     const [, minimoRem, elasticoVw, maximoRem] = coincidencia!
     return {
@@ -190,7 +195,35 @@ describe('Tamaño declarado del nombre de la cola (WP-064)', () => {
     expect(circulo).toContain('width: 1.6rem')
     expect(circulo).toContain('height: 1.6rem')
 
-    const banca = fuente.match(/\.persona-cola small \{([\s\S]*?)\}/)![1]!
+    const banca = fuente.match(/\.referencia-cola small \{([\s\S]*?)\}/)![1]!
     expect(banca).toContain('font-size: clamp(0.74rem, 0.8vw, 0.98rem)')
+  })
+
+  /**
+   * Techo geométrico agregado por WP-097.
+   *
+   * El `clamp` de WP-064 sigue mandando en las tres resoluciones objetivo. El
+   * techo sólo actúa si la columna llegara a angostarse por debajo de lo previsto
+   * y existe para que la promesa de «un nombre de 18 caracteres entra completo»
+   * no dependa de la resolución ni de la tipografía disponible.
+   */
+  it('acota el cuerpo del nombre a una fracción del ancho del contenedor (WP-097)', () => {
+    const fuente = readFileSync(rutaComponente, 'utf8')
+
+    const bloqueNombre = fuente.match(/\.cola-palabra strong \{([\s\S]*?)\}/)![1]!
+    const techo = bloqueNombre.match(/,\s*([\d.]+)cqi\s*\)/)
+    expect(techo, 'El nombre debe declarar un techo en cqi').not.toBe(null)
+    // 18 caracteres ocupan como máximo ~11,2 em, así que el techo no puede pasar
+    // de 100/11,2 ≈ 8,9 cqi sin dejar de garantizar el encaje.
+    expect(Number(techo![1])).toBeLessThanOrEqual(8.9)
+
+    // El techo sólo tiene sentido si el panel es contenedor de consultas de ancho.
+    const panel = fuente.match(/\.panel-palabra \{([\s\S]*?)\}/)![1]!
+    expect(panel).toContain('container-type: inline-size')
+
+    // Y la lista debe reservar siempre el canal de la barra de desplazamiento:
+    // sin eso, el ancho útil cambiaría según la cantidad de pedidos.
+    const lista = fuente.match(/\.cola-palabra \{([\s\S]*?)\}/)![1]!
+    expect(lista).toContain('scrollbar-gutter: stable')
   })
 })

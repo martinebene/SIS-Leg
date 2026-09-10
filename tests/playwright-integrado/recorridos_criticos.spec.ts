@@ -151,9 +151,13 @@ test.describe.serial('WP-027 · recorridos críticos sobre el stack real', () =>
         await expect(moderacion.getByTestId('cabecera-quorum')).toContainText('Quórum 7/12')
         // WP-054: el indicador público muestra `presentes/total` del padrón (12 bancas).
         await expect(recinto.getByTestId('cantidad-presentes')).toHaveText('7/12')
-        // Con 7 presentes sobre los 7 exigidos por `config/system.toml`, WP-058
-        // exige la redacción de límite en vez de la genérica.
-        await expect(recinto.getByTestId('estado-quorum')).toContainText('Quórum límite')
+        // Con 7 presentes sobre los 7 exigidos por `config/system.toml` el nivel es
+        // `limite`. WP-058 lo anunciaba además con palabras; desde WP-097 el bloque
+        // de quórum quedó con título y número, así que el nivel se lee del atributo.
+        await expect(recinto.getByTestId('panel-quorum')).toHaveAttribute(
+          'data-nivel-quorum',
+          'limite',
+        )
 
         await moderacion.getByTestId('input-numero-sesion').fill('27')
         await moderacion.getByTestId('input-presidencia').fill('Presidencia E2E Ficticia')

@@ -74,7 +74,11 @@ describe('Shell público del Recinto', () => {
     expect(wrapper.get('[data-testid="cabecera-autoridades"]').text()).toContain(
       'María Presidencia',
     )
-    expect(wrapper.get('[data-testid="estado-quorum"]').text()).toBe('Sin quórum')
+    // Desde WP-097 el bloque de quórum sólo dibuja título y número: el nivel se
+    // lee del atributo del panel, que es su único portador.
+    expect(
+      wrapper.get('[data-testid="panel-quorum"]').element.getAttribute('data-nivel-quorum'),
+    ).toBe('insuficiente')
 
     const filas = wrapper.findAll('.fila-bancas')
     expect(filas).toHaveLength(2)
@@ -149,7 +153,9 @@ describe('Shell público del Recinto', () => {
     expect(wrapper.get('[data-testid="cabecera-sesion"]').text()).toContain('59')
     expect(wrapper.get('[data-testid="cabecera-autoridades"]').text()).toContain('Ana Presidencia')
     expect(wrapper.get('[data-testid="cabecera-autoridades"]').text()).toContain('Luis Secretaría')
-    expect(wrapper.get('[data-testid="estado-quorum"]').text()).toBe('Quórum alcanzado')
+    expect(
+      wrapper.get('[data-testid="panel-quorum"]').element.getAttribute('data-nivel-quorum'),
+    ).toBe('holgado')
     expect(wrapper.get('[data-banca="4"]').element.getAttribute('data-estado-banca')).toBe(
       'PALABRA',
     )
@@ -157,10 +163,16 @@ describe('Shell público del Recinto', () => {
     expect(wrapper.get('[data-testid="cabecera-sesion"]').text()).toContain('59')
     expect(wrapper.get('[data-testid="cabecera-tiempo-sesion"]').exists()).toBe(true)
 
+    /*
+      WP-097 redistribuyó el renglón: el nombre pasó a la primera línea, a ancho
+      completo, y el número de orden bajó junto a la banca. El orden FIFO de la
+      cola no cambió —sigue siendo 7 y después 1—; lo que cambia es la posición
+      del número dentro de cada renglón.
+    */
     const pedidos = wrapper.findAll('[data-testid="cola-palabra"] li')
     expect(pedidos.map((pedido) => pedido.text())).toEqual([
-      '1Nombre7 Apellido7Banca 7',
-      '2Nombre1 Apellido1Banca 1',
+      'Nombre7 Apellido71Banca 7',
+      'Nombre1 Apellido12Banca 1',
     ])
     expect(wrapper.get('[data-testid="tema-votacion"]').text()).toContain(
       'Tema reservado para WP-026',

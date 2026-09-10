@@ -50,8 +50,14 @@ describe('Quórum público como presentes/total (WP-054)', () => {
 
     // El testid conserva su nombre histórico; su contenido es ahora la fracción.
     expect(wrapper.get('[data-testid="cantidad-presentes"]').text()).toBe('8/12')
-    // El mínimo reglamentario sigue estando disponible como dato secundario.
-    expect(wrapper.get('.detalle-quorum').text()).toContain('requiere 7')
+    /*
+      WP-097 eliminó el detalle `Presentes · requiere N` por decisión de
+      HUMAN_GATE: el bloque quedó sólo con título y número. El mínimo
+      reglamentario lo sigue publicando el backend y lo sigue mostrando la
+      pantalla de Moderación, que es la superficie de quien opera.
+    */
+    expect(wrapper.find('.detalle-quorum').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('requiere 7')
   })
 
   /**
@@ -73,20 +79,21 @@ describe('Quórum público como presentes/total (WP-054)', () => {
     // Por encima del mínimo: hay margen ante una ausencia.
     const holgado = montarQuorum(8, 7, 12)
     expect(nivelDeclarado(holgado)).toBe('holgado')
-    expect(holgado.get('[data-testid="estado-quorum"]').text()).toBe('Quórum alcanzado')
+    expect(tieneClaseDeNivel(holgado, 'holgado')).toBe(true)
 
     // Exactamente en el mínimo: el quórum está alcanzado, pero al límite.
     const limite = montarQuorum(7, 7, 12)
     expect(nivelDeclarado(limite)).toBe('limite')
     // La condición reglamentaria no cambia: igualar el mínimo alcanza quórum.
-    // Lo que cambió en WP-058 es la redacción, que ahora distingue ese caso del
-    // caso holgado en palabras y no sólo con el color introducido acá.
-    expect(limite.get('[data-testid="estado-quorum"]').text()).toBe('Quórum límite')
+    // WP-058 lo había distinguido además con palabras; WP-097 dejó el bloque con
+    // título y número, así que el color y el atributo vuelven a ser el vehículo
+    // único de esa distinción, sin que la distinción se pierda.
+    expect(tieneClaseDeNivel(limite, 'limite')).toBe(true)
 
     // Por debajo del mínimo: sin quórum.
     const insuficiente = montarQuorum(6, 7, 12)
     expect(nivelDeclarado(insuficiente)).toBe('insuficiente')
-    expect(insuficiente.get('[data-testid="estado-quorum"]').text()).toBe('Sin quórum')
+    expect(tieneClaseDeNivel(insuficiente, 'insuficiente')).toBe(true)
   })
 
   it('cada nivel usa una clase cromática distinta y sólo una', () => {

@@ -190,9 +190,12 @@ describe('Experiencia pública de votación', () => {
     expect(wrapper.get('[data-banca="2"]').element.getAttribute('data-presente')).toBe('false')
     expect(wrapper.get('[data-testid="conteos-votacion"]').text()).toContain('Positivos 8')
     expect(wrapper.get('[data-testid="conteos-votacion"]').text()).toContain('Total 11')
-    // La fixture tiene 3 presentes sobre 3 requeridos: desde WP-058 ese empate
-    // exacto se anuncia como `Quórum límite`, sin dejar de estar alcanzado.
-    expect(wrapper.get('[data-testid="estado-quorum"]').text()).toBe('Quórum límite')
+    // La fixture tiene 3 presentes sobre 3 requeridos: ese empate exacto es el
+    // nivel `limite`, sin dejar de estar alcanzado. Desde WP-097 el bloque de
+    // quórum sólo dibuja título y número, así que el nivel se lee del atributo.
+    expect(
+      wrapper.get('[data-testid="panel-quorum"]').element.getAttribute('data-nivel-quorum'),
+    ).toBe('limite')
     expect(wrapper.get('[data-testid="panel-palabra"]').text()).not.toContain('Nombre1 Apellido1')
     wrapper.unmount()
   })

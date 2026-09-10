@@ -22,6 +22,21 @@ export const RESOLUCIONES = [
   { width: 1366, height: 768 },
 ] as const
 
+/**
+ * Resoluciones objetivo de Moderación y del Recinto desde WP-097.
+ *
+ * HUMAN_GATE probó las dos superficies de sesión en un monitor de 1280×720 y
+ * pidió que funcionen completas también ahí, sin perder nada en las mayores. La
+ * lista es propia y no amplía `RESOLUCIONES` a propósito: el puesto de Apoyo
+ * Técnico es otra superficie, con su propio alcance y sus propios WPs, y WP-097
+ * no fue autorizado a modificarla.
+ */
+export const RESOLUCIONES_SESION = [
+  { width: 1920, height: 1080 },
+  { width: 1366, height: 768 },
+  { width: 1280, height: 720 },
+] as const
+
 // =============================================================================
 // Fábricas de estado
 // =============================================================================
@@ -113,6 +128,37 @@ export function concejalesPublicos(cantidad: number) {
       test_expira_en: null,
     }
   })
+}
+
+/**
+ * Votación pública ya cerrada, con conteos y resultado visibles.
+ *
+ * Es el peor caso de la franja superior del Recinto: los tres renglones traen
+ * texto, el del estado trae además la píldora del resultado y el detalle de
+ * conteos, y el tema es largo. Sirve para comprobar que la tipografía ampliada de
+ * WP-097 entra en la franja sin desbordarla ni ganar scroll.
+ */
+export function votacionPublicaCerrada(parcial: Record<string, unknown> = {}) {
+  return {
+    id: 'votacion-geometria',
+    numero_votacion: 12,
+    tipo: 'Despacho de comisión',
+    tema: 'Expediente 1234/2026 — Ordenanza de presupuesto general del ejercicio siguiente',
+    tipo_mayoria: 'ESPECIAL',
+    factor: 0.6666,
+    base: 'PRESENTES',
+    estado_recepcion: 'CERRADA',
+    resultado: 'APROBADA',
+    fecha_hora_apertura: '2026-09-02T09:58:00Z',
+    fecha_hora_cierre: '2026-09-02T09:59:30Z',
+    cuenta_regresiva_hasta: null,
+    resultado_visible_hasta: null,
+    bancas_voto_emitido: null,
+    votos_individuales: null,
+    conteos: { positivos: 8, negativos: 3, abstenciones: 1, total: 12 },
+    voto_presidencial: null,
+    ...parcial,
+  }
 }
 
 export function estadoRecinto(parcialTecnico: Record<string, unknown> = {}) {
