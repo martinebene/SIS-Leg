@@ -147,6 +147,22 @@ CODIGO_REMAPEO_AUTORIZADO = "REMAPEO_AUTORIZADO"
 ETIQUETA_EVENTO_PRINCIPAL = "EVENTO"
 CODIGO_MARCADOR_INICIO = "INICIO"
 CODIGO_MARCADOR_FIN = "FIN"
+CODIGO_TRANSMISION_PRINCIPAL_INICIO = "TRANSMISION_EN_VIVO_INICIADA"
+CODIGO_TRANSMISION_PRINCIPAL_FIN = "TRANSMISION_EN_VIVO_FINALIZADA"
+
+MENSAJE_TRANSMISION_PRINCIPAL_INICIO = "Transmisión en vivo iniciada"
+MENSAJE_TRANSMISION_PRINCIPAL_FIN = "Transmisión en vivo finalizada"
+"""Frases institucionales exactas de los eventos de transmisión (WP-096).
+
+Se repiten acá por el mismo motivo que las etiquetas y los códigos —evitar el
+ciclo de importación con los servicios— y el test de cobertura del catálogo
+comprueba en CI que sigan coincidiendo con las constantes de
+``servicios/apoyo_tecnico.py``.
+
+El acta las publica tal cual, sin prefijo: a diferencia de los marcadores de
+aviso, estas dos frases ya dicen por sí solas cuál abrió y cuál cerró el
+período, y no arrastran ningún dato técnico que haya que descartar.
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -687,6 +703,20 @@ POLITICAS_ACTA: Mapping[tuple[str, str], PoliticaActa] = MappingProxyType(
         (ETIQUETA_EVENTO_PRINCIPAL, CODIGO_MARCADOR_FIN): PoliticaActa(
             redactar=_con_prefijo(PREFIJO_MARCADOR_FIN),
             motivo="Texto del aviso tal como lo vio el recinto, con marca de cierre.",
+        ),
+        (ETIQUETA_EVENTO_PRINCIPAL, CODIGO_TRANSMISION_PRINCIPAL_INICIO): PoliticaActa(
+            redactar=_texto_fijo(
+                MENSAJE_TRANSMISION_PRINCIPAL_INICIO,
+                "el inicio efectivo de la transmisión EN VIVO",
+            ),
+            motivo="Conserva la frase institucional fija; no publica horas ni banderas internas.",
+        ),
+        (ETIQUETA_EVENTO_PRINCIPAL, CODIGO_TRANSMISION_PRINCIPAL_FIN): PoliticaActa(
+            redactar=_texto_fijo(
+                MENSAJE_TRANSMISION_PRINCIPAL_FIN,
+                "el fin efectivo de la transmisión EN VIVO",
+            ),
+            motivo="Conserva la frase institucional fija; no publica la causa técnica del cierre.",
         ),
     }
 )

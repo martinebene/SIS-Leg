@@ -39,6 +39,44 @@ El estado visible de la cuenta regresiva sigue derivándose del reloj. Desde
 WP-092, al alcanzar ``EN VIVO`` el temporizador registra además un hecho L2 y
 marca esa intención como procesada, sin cambiar el contrato proyectado.
 
+Transmisión en el log principal (WP-096)
+----------------------------------------
+
+Los hechos técnicos ``L2`` de WP-092 se conservan sin cambios, pero el panel de
+eventos muestra por omisión el nivel "Principales (L3)": la operación no veía
+allí cuándo empezó ni cuándo terminó la transmisión. Por eso cada transición
+**efectiva** agrega ahora, además del hecho técnico, un único evento principal
+``L3`` con etiqueta ``EVENTO``:
+
+- ``TRANSMISION_EN_VIVO_INICIADA`` cuando el indicador pasa realmente a EN VIVO;
+- ``TRANSMISION_EN_VIVO_FINALIZADA`` cuando deja realmente de estarlo.
+
+Los dos eventos cuelgan de las mismas costuras que WP-092 dejó como únicas
+autoridades del cambio efectivo de estado,
+:meth:`ServicioApoyoTecnico._auditar_inicio_transmision` y
+:meth:`ServicioApoyoTecnico._cerrar_transmision_en_vivo`. Programar o cancelar
+una cuenta regresiva no pasa por ninguna de las dos, así que una intención que
+nunca llegó a EN VIVO no puede producir un evento principal.
+
+Pero el "exactamente uno por transición real" no se puede deducir de esas
+costuras solas, porque ellas siguen la vida de la **intención** técnica y el log
+principal sigue la del **indicador**. Reemplazar un EN VIVO por un inicio
+inmediato cierra una intención y abre otra sin que el indicador se apague nunca:
+para WP-092 son dos hechos técnicos, para WP-096 no ocurrió ninguna transición.
+Por eso la autoridad institucional es
+``EstadoOperativo.marcador_transmision_principal``, que se instala recién después
+de persistir el ``INICIO`` y se retira recién después de persistir el ``FIN``,
+tal como WP-078 hizo con los avisos del Recinto:
+
+- ``_abrir_marcador_transmision`` no reabre un período ya abierto, de modo que un
+  start repetido o un reemplazo con continuidad no duplican el ``INICIO``;
+- ``_cerrar_transmision_en_vivo`` recibe ``continuidad=True`` cuando la misma
+  mutación va a dejar el indicador encendido, y entonces no cierra el período.
+
+Un ``FIN`` cuyo escritor ya no es el vigente no se escribe en otro conjunto de
+CSV: la transmisión sobrevive al ciclo preparación/sesión y su cierre pertenece
+al conjunto que vio su ``INICIO``.
+
 Marcadores de sesión INICIO/FIN (WP-078)
 ----------------------------------------
 
@@ -93,6 +131,7 @@ from sis_leg_backend.dominio.apoyo_tecnico import (
     ErrorMensajeTecnicoNoExistente,
     EstadoTransmision,
     MarcadorRecintoAbierto,
+    MarcadorTransmisionPrincipal,
     MensajeTecnico,
     TransmisionTecnica,
     estado_transmision,
@@ -131,6 +170,30 @@ CODIGO_AVISO_CANCELADO = "AVISO_TECNICO_CANCELADO"
 ETIQUETA_EVENTO_PRINCIPAL = "EVENTO"
 CODIGO_MARCADOR_INICIO = "INICIO"
 CODIGO_MARCADOR_FIN = "FIN"
+
+# Datos canónicos de los eventos principales de transmisión (WP-096).
+#
+# Comparten la etiqueta general ``EVENTO`` con los marcadores de WP-078 porque
+# son exactamente la misma clase de registro: un momento general de la sesión
+# que la operación necesita ver en el nivel "Principales (L3)" del panel de
+# eventos, junto a la apertura de sesión o al resultado de una votación.
+#
+# El ``event_code`` es distinto del que usan los hechos técnicos L2
+# ``TRANSMISION_EN_VIVO_INICIO`` / ``TRANSMISION_EN_VIVO_FIN`` de WP-092, y
+# también distinto de ``INICIO`` / ``FIN`` de los avisos. Esa separación es
+# deliberada: quien filtra el CSV por ``event_code`` debe poder distinguir sin
+# ambigüedad el hecho institucional de transmisión del hecho técnico homónimo y
+# del marcador de un aviso cuyo texto podría casualmente hablar de transmisión.
+CODIGO_TRANSMISION_PRINCIPAL_INICIO = "TRANSMISION_EN_VIVO_INICIADA"
+CODIGO_TRANSMISION_PRINCIPAL_FIN = "TRANSMISION_EN_VIVO_FINALIZADA"
+
+# Los mensajes principales son frases fijas y legibles, sin metadata técnica.
+# El log institucional (y el acta que se deriva de él) no debe contener horas
+# internas, banderas ni identificadores: la hora la aporta la columna
+# ``timestamp`` que escribe el propio escritor, que es la misma fuente temporal
+# autoritativa que usan los demás eventos institucionales.
+MENSAJE_TRANSMISION_PRINCIPAL_INICIO = "Transmisión en vivo iniciada"
+MENSAJE_TRANSMISION_PRINCIPAL_FIN = "Transmisión en vivo finalizada"
 
 
 def leer_biblioteca_mensajes_tecnicos(ruta: Path) -> BibliotecaMensajesTecnicos:
@@ -237,7 +300,17 @@ class ServicioApoyoTecnico:
             # período anterior según el reloj autoritativo. El helper procesa
             # primero un INICIO que pudiera haber coincidido con esta carrera,
             # de modo que nunca aparezca un FIN huérfano ni duplicado.
-            self._cerrar_transmision_en_vivo("REEMPLAZO", ahora)
+            #
+            # Un reemplazo por un inicio inmediato deja el indicador encendido
+            # sin ningún intervalo apagado, así que se declara continuidad: el
+            # hecho técnico L2 se registra igual y el período institucional de
+            # WP-096 sigue abierto. Reemplazar por una cuenta regresiva sí apaga
+            # el indicador, y por eso no la declara.
+            self._cerrar_transmision_en_vivo(
+                "REEMPLAZO",
+                ahora,
+                continuidad=cuenta_regresiva_segundos is None,
+            )
 
             nueva_transmision = TransmisionTecnica(
                 iniciada_en=ahora,
@@ -574,6 +647,74 @@ class ServicioApoyoTecnico:
             mensaje,
         )
 
+    def _abrir_marcador_transmision(self) -> None:
+        """Registra el ``INICIO`` principal de un período EN VIVO (WP-096).
+
+        Usa el mismo mecanismo autoritativo que el resto del log institucional:
+        un ``registrar_evento`` de nivel ``L3`` con etiqueta general ``EVENTO``
+        sobre el escritor del contexto activo. No existe un segundo log ni una
+        fuente de verdad paralela.
+
+        Escribe **una sola vez por período**. Si ya hay un marcador abierto, el
+        indicador nunca llegó a apagarse —es un reemplazo de intención con
+        continuidad— y no hubo transición institucional que registrar.
+
+        Igual que en WP-078, el marcador en memoria se instala recién después de
+        que ``registrar_evento`` confirmó su ``fsync``: si la persistencia falla,
+        la excepción aborta la mutación completa y no queda abierto un período
+        que nadie podría cerrar.
+
+        En ``SIN_PREPARAR`` no hay conjunto de auditoría abierto, así que no se
+        registra nada ni se abre marcador. El indicador funciona igual, pero ese
+        encendido no pertenece a ninguna preparación ni sesión, y preparar más
+        tarde no debe reconstruirlo retrospectivamente.
+        """
+
+        if self._estado.marcador_transmision_principal is not None:
+            return
+        contexto = self._estado.contexto_operativo_activo()
+        if contexto is None:
+            return
+        contexto.escritor_auditoria.registrar_evento(
+            NivelAuditoria.L3,
+            ETIQUETA_EVENTO_PRINCIPAL,
+            CODIGO_TRANSMISION_PRINCIPAL_INICIO,
+            MENSAJE_TRANSMISION_PRINCIPAL_INICIO,
+        )
+        self._estado.marcador_transmision_principal = MarcadorTransmisionPrincipal(
+            escritor_auditoria=contexto.escritor_auditoria,
+        )
+
+    def _cerrar_marcador_transmision(self) -> None:
+        """Registra el ``FIN`` principal del período abierto, si existe.
+
+        Es el **único** camino de cierre institucional de la transmisión, igual
+        que :meth:`_cerrar_marcador_recinto` lo es para los avisos. Como el
+        marcador se borra en la misma llamada que escribe el ``FIN``, dos causas
+        que coincidan —el temporizador cruzando el deadline y una detención
+        manual, por ejemplo— producen un solo ``FIN``: la segunda ya no encuentra
+        período abierto.
+
+        Un marcador cuyo escritor ya no es el vigente pertenece a un conjunto de
+        CSV cerrado por una preparación/sesión anterior. La transmisión es
+        independiente de ese ciclo y puede seguir encendida cuando la sesión
+        termina, así que escribir su ``FIN`` en los archivos de otra sesión sería
+        un registro falso: el marcador se descarta sin auditar.
+        """
+
+        marcador = self._estado.marcador_transmision_principal
+        if marcador is None:
+            return
+        contexto = self._estado.contexto_operativo_activo()
+        if contexto is not None and contexto.escritor_auditoria is marcador.escritor_auditoria:
+            contexto.escritor_auditoria.registrar_evento(
+                NivelAuditoria.L3,
+                ETIQUETA_EVENTO_PRINCIPAL,
+                CODIGO_TRANSMISION_PRINCIPAL_FIN,
+                MENSAJE_TRANSMISION_PRINCIPAL_FIN,
+            )
+        self._estado.marcador_transmision_principal = None
+
     def _hay_inicio_transmision_pendiente(self, ahora: datetime) -> bool:
         """Decide por reloj si la intención vigente cruzó y aún no fue tratada."""
 
@@ -604,7 +745,28 @@ class ServicioApoyoTecnico:
         )
 
     def _auditar_inicio_transmision(self, transmision: TransmisionTecnica) -> None:
-        """Persiste el hecho efectivo sin decidir todavía la mutación de memoria."""
+        """Persiste el hecho efectivo sin decidir todavía la mutación de memoria.
+
+        Es el **único** lugar del backend donde se registra que la transmisión
+        pasó realmente de no-activa a activa, sin importar si el cruce llegó por
+        un inicio inmediato o por el vencimiento de una cuenta regresiva. Por eso
+        el evento principal de WP-096 se escribe acá y no en los comandos: un
+        countdown programado, uno reemplazado y uno cancelado nunca llegan a
+        este método, así que no pueden generar un ``INICIO`` institucional falso.
+
+        Escribe en este orden:
+
+        1. el hecho técnico ``L2`` de WP-092, siempre, porque esa intención sí
+           empezó a estar vigente y conserva su contrato completo;
+        2. el ``INICIO`` principal ``L3`` de WP-096, sólo cuando no había ya un
+           período institucional abierto. Un reemplazo con continuidad reutiliza
+           el período vigente y por eso no agrega una segunda fila.
+
+        Todo lo que se escriba queda durable antes de que el llamador marque la
+        intención como procesada, de modo que un fallo de auditoría aborta la
+        mutación entera y el sistema no proyecta un EN VIVO cuyo registro no pudo
+        escribirse.
+        """
 
         self._auditar(
             CODIGO_TRANSMISION_EN_VIVO_INICIO,
@@ -614,8 +776,15 @@ class ServicioApoyoTecnico:
                 f"en_vivo_desde={transmision.en_vivo_desde.isoformat()}"
             ),
         )
+        self._abrir_marcador_transmision()
 
-    def _cerrar_transmision_en_vivo(self, causa: str, ahora: datetime) -> None:
+    def _cerrar_transmision_en_vivo(
+        self,
+        causa: str,
+        ahora: datetime,
+        *,
+        continuidad: bool = False,
+    ) -> None:
         """Cierra el período vigente una sola vez si el reloj ya marca EN VIVO.
 
         Un deadline que compite con stop/reemplazo puede estar visible pero aún
@@ -623,6 +792,18 @@ class ServicioApoyoTecnico:
         ``FIN``. Al persistir el cierre se retira inmediatamente la intención:
         si una fila posterior del reemplazo falla, no queda en memoria un vivo
         cuyo fin ya fue registrado.
+
+        Entradas:
+            causa: motivo técnico que se registra en el hecho ``L2``.
+            ahora: instante civil autoritativo de la mutación en curso.
+            continuidad: ``True`` cuando el llamador va a dejar el indicador
+                encendido sin interrupción en esta misma mutación, es decir un
+                reemplazo por un inicio inmediato. El hecho técnico ``L2`` de
+                WP-092 se registra igual —esa intención sí terminó—, pero el
+                período **institucional** no se cierra: para el público y para el
+                log principal la transmisión nunca dejó de estar EN VIVO, y
+                emitir un FIN seguido de un INICIO produciría exactamente el par
+                espurio que WP-096 prohíbe.
         """
 
         transmision = self._estado.transmision_tecnica
@@ -644,6 +825,13 @@ class ServicioApoyoTecnico:
                 f"causa={causa}"
             ),
         )
+        # El evento principal de WP-096 acompaña al hecho técnico dentro del
+        # mismo cierre, salvo continuidad. La causa (detención manual o
+        # reemplazo) es información técnica de operación y se conserva sólo en el
+        # mensaje L2: para el log institucional el hecho relevante es que la
+        # transmisión terminó.
+        if not continuidad:
+            self._cerrar_marcador_transmision()
         self._estado.transmision_tecnica = None
 
     def _abrir_marcador_recinto(self, aviso: AvisoTecnico) -> None:
