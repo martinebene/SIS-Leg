@@ -1,9 +1,15 @@
 /**
  * Legibilidad y estados de la Pantalla del Recinto (WP-058).
  *
- * Acá viven las comprobaciones que se pueden hacer sobre el DOM: qué texto
- * muestra el quórum en cada relación presentes/requerido y qué rótulo acompaña
- * a la cuenta regresiva de una votación ya abierta.
+ * Acá viven las comprobaciones que se pueden hacer sobre el DOM: qué nivel de
+ * quórum declara la pantalla en cada relación presentes/requerido y qué rótulo
+ * acompaña a la cuenta regresiva de una votación ya abierta.
+ *
+ * WP-097 cambió el **vehículo** del primer dato, no su contenido: el bloque de
+ * quórum quedó reducido a título y número por pedido de HUMAN_GATE, así que el
+ * nivel se lee del atributo `data-nivel-quorum` en lugar de la palabra impresa.
+ * Los tres casos de borde que exigía WP-058 se siguen comprobando, y se agrega
+ * una regresión que prohíbe que las redacciones vuelvan sin decisión humana.
  *
  * La parte geométrica del WP —cuerpos tipográficos, altura de la cabecera,
  * contención dentro del content box del bloque de transmisión y escala útil del
@@ -49,46 +55,70 @@ function montarQuorum(cantidadPresentes: number, requerido: number, total: numbe
   return wrapper
 }
 
-function textoEstado(wrapper: VueWrapper): string {
-  return wrapper.get('[data-testid="estado-quorum"]').text()
+/**
+ * Nivel declarado por el indicador, leído del atributo del contenedor.
+ *
+ * Hasta WP-097 este dato tenía dos vehículos redundantes: el atributo y la
+ * palabra impresa debajo del número. HUMAN_GATE pidió dejar el bloque de quórum
+ * sólo con título y número, así que la palabra ya no se dibuja y el atributo
+ * queda como el único portador del nivel. Las tres distinciones que WP-058
+ * exigía —falta, límite exacto y holgura— se siguen comprobando igual, sobre los
+ * mismos casos de borde.
+ */
+function nivelDeclarado(wrapper: VueWrapper): string | null {
+  return wrapper.get('[data-testid="panel-quorum"]').element.getAttribute('data-nivel-quorum')
 }
 
-describe('Quórum público con tres redacciones (WP-058)', () => {
-  it('distingue en palabras la falta, el empate exacto y la holgura', () => {
+describe('Quórum público con tres niveles distinguibles (WP-058, forma revisada por WP-097)', () => {
+  it('distingue la falta, el empate exacto y la holgura', () => {
     // Por debajo del mínimo reglamentario.
-    expect(textoEstado(montarQuorum(6, 7, 12))).toBe('Sin quórum')
+    expect(nivelDeclarado(montarQuorum(6, 7, 12))).toBe('insuficiente')
     // Exactamente en el mínimo: alcanzado, pero sin margen ante una ausencia.
-    expect(textoEstado(montarQuorum(7, 7, 12))).toBe('Quórum límite')
+    expect(nivelDeclarado(montarQuorum(7, 7, 12))).toBe('limite')
     // Por encima del mínimo.
-    expect(textoEstado(montarQuorum(8, 7, 12))).toBe('Quórum alcanzado')
+    expect(nivelDeclarado(montarQuorum(8, 7, 12))).toBe('holgado')
   })
 
   it('el empate exacto sigue siendo quórum alcanzado para el backend', () => {
     const limite = montarQuorum(7, 7, 12)
 
-    // La redacción cambia, la condición reglamentaria no: el nivel cromático de
-    // WP-054 y el texto de WP-058 derivan de la misma comparación de números ya
-    // proyectados, y ninguno de los dos recalcula la regla.
-    expect(
-      limite.get('[data-testid="panel-quorum"]').element.getAttribute('data-nivel-quorum'),
-    ).toBe('limite')
-    expect(textoEstado(limite)).toBe('Quórum límite')
-    expect(textoEstado(limite)).not.toBe('Sin quórum')
+    // La forma cambia, la condición reglamentaria no: el nivel de WP-054 deriva
+    // de la misma comparación de números ya proyectados y no recalcula la regla.
+    expect(nivelDeclarado(limite)).toBe('limite')
+    expect(nivelDeclarado(limite)).not.toBe('insuficiente')
   })
 
   it('un mínimo de una sola banca también distingue límite de holgura', () => {
     // Caso de borde: con `requerido = 1`, un solo presente ya es el límite.
-    expect(textoEstado(montarQuorum(1, 1, 3))).toBe('Quórum límite')
-    expect(textoEstado(montarQuorum(2, 1, 3))).toBe('Quórum alcanzado')
-    expect(textoEstado(montarQuorum(0, 1, 3))).toBe('Sin quórum')
+    expect(nivelDeclarado(montarQuorum(1, 1, 3))).toBe('limite')
+    expect(nivelDeclarado(montarQuorum(2, 1, 3))).toBe('holgado')
+    expect(nivelDeclarado(montarQuorum(0, 1, 3))).toBe('insuficiente')
   })
 
-  it('sin quórum proyectado no inventa ninguna de las tres redacciones', () => {
+  it('sin quórum proyectado no declara ningún nivel', () => {
     const wrapper = mount(IndicadorQuorumPublico, { props: { quorum: null, total: 12 } })
     montados.push(wrapper)
 
-    expect(wrapper.find('[data-testid="estado-quorum"]').exists()).toBe(false)
+    expect(nivelDeclarado(wrapper)).toBeNull()
     expect(wrapper.text()).toContain('Quórum sin información')
+  })
+
+  /**
+   * Regresión de WP-097: las tres redacciones que introdujo WP-058 dejaron de
+   * dibujarse. Se comprueba explícitamente para que nadie las reintroduzca sin
+   * una decisión humana nueva.
+   */
+  it('ya no imprime ninguna de las tres redacciones de WP-058', () => {
+    for (const wrapper of [
+      montarQuorum(6, 7, 12),
+      montarQuorum(7, 7, 12),
+      montarQuorum(8, 7, 12),
+    ]) {
+      expect(wrapper.find('[data-testid="estado-quorum"]').exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('Sin quórum')
+      expect(wrapper.text()).not.toContain('Quórum límite')
+      expect(wrapper.text()).not.toContain('Quórum alcanzado')
+    }
   })
 })
 

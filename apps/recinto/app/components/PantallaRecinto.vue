@@ -334,14 +334,20 @@ useSonidosRecinto({
 
 /*
   Ancho de quórum calibrado contra producción: allí la caja mide 220 px en
-  1920×1080 y 164 px en 1366×768 (≈12 % del ancho). El `clamp` reproduce esas
-  dos medidas y devuelve al renglón del tema el ancho que sobraba.
+  1920×1080 y 164 px en 1366×768 (≈12 % del ancho).
+
+  WP-097 lo ensancha porque el bloque cambió de contenido: perdió los dos textos
+  secundarios y ganó un número un 50 % más grande y un título al doble. Con el
+  ancho anterior la fracción rozaba los bordes de la caja; el nuevo `clamp` le da
+  el aire que pidió HUMAN_GATE («aprovechar mejor el ancho») sin dejar de ser una
+  fracción del viewport. El renglón del tema cede unos 30 px, que sigue siendo
+  holgado porque ese texto se recorta con elipsis desde WP-054.
 */
 .franja-votacion-quorum {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(150px, 12vw, 224px);
+  grid-template-columns: minmax(0, 1fr) clamp(184px, 13.5vw, 248px);
   gap: clamp(0.45rem, 0.7vw, 0.7rem);
   overflow: hidden;
 }
@@ -350,12 +356,24 @@ useSonidosRecinto({
   Palabra a la derecha con el mismo ancho relativo que producción
   (`flex: 0 0 20vw`): 384 px en 1920×1080 y 273 px en 1366×768. El resto del
   ancho queda para las bancas, que siguen siendo la superficie dominante.
+
+  WP-097 ensancha esa franja porque HUMAN_GATE exige que un nombre de 18 caracteres
+  entre completo en la cola de pedidos. Con la columna anterior —256 px a 1280×720,
+  273 px a 1366×768 y 384 px en Full HD— no entraba ni redistribuyendo el renglón:
+  el ancho que necesita un nombre de 18 caracteres al cuerpo que fijó WP-064 es de
+  ~313 px a 1280×720 y ~372 px a 1920×1080, más el marco del panel.
+
+  Los tres términos del `clamp` se recalcularon contra esas medidas dejando margen
+  para la barra de desplazamiento de la lista —que la propia lista reserva siempre—
+  y para tipografías más anchas que Inter. Las bancas ceden ancho —de 995 px a
+  888 px a 1280×720 y de 1499 px a 1401 px en Full HD— y siguen siendo la superficie
+  dominante: son seis columnas por fila y su límite real es el alto, no el ancho.
 */
 .zona-principal-recinto {
   min-height: 0;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(230px, 20vw, 384px);
+  grid-template-columns: minmax(0, 1fr) clamp(365px, 25vw, 480px);
   gap: clamp(0.5rem, 0.8vw, 0.8rem);
   overflow: hidden;
 }

@@ -269,7 +269,12 @@ for (const viewport of [
     await expect(page.getByTestId('cabecera-fecha-hora')).toBeVisible()
     await expect(page.getByTestId('cabecera-sesion')).toContainText('Preparando')
     await expect(page.getByTestId('cabecera-tiempo-sesion')).toHaveCount(0)
-    await expect(page.getByTestId('estado-quorum')).toHaveText('Sin quórum')
+    // Desde WP-097 el bloque de quórum sólo dibuja título y número: el nivel se
+    // afirma sobre el atributo del panel, su único portador.
+    await expect(page.getByTestId('panel-quorum')).toHaveAttribute(
+      'data-nivel-quorum',
+      'insuficiente',
+    )
     // WP-045: una sola etiqueta por banca; el test se pinta sin texto.
     await expect(page.locator('[data-banca="2"]')).toHaveAttribute('data-estado-banca', 'AUSENTE')
     await expect(page.locator('[data-banca="2"] [data-testid="etiqueta-banca"]')).toHaveText(
@@ -358,7 +363,7 @@ for (const viewport of [
     await expect(page.getByTestId('cabecera-tiempo-sesion')).toContainText('00:15:00')
     await expect(page.getByTestId('cabecera-autoridades')).toContainText('Ana Presidencia')
     await expect(page.getByTestId('cabecera-autoridades')).toContainText('Luis Secretaría')
-    await expect(page.getByTestId('estado-quorum')).toHaveText('Quórum alcanzado')
+    await expect(page.getByTestId('panel-quorum')).toHaveAttribute('data-nivel-quorum', 'holgado')
     await expect(page.locator('[data-banca="4"]')).toHaveAttribute('data-estado-banca', 'PALABRA')
     await expect(page.getByTestId('panel-palabra')).not.toContainText('Nombre4 Apellido4')
     await expect(page.getByTestId('cola-palabra').locator('li')).toHaveCount(32)
@@ -830,11 +835,24 @@ for (const viewport of [
       cajaFranja.width * cajaFranja.height + cajaPalabra.width * cajaPalabra.height
     expect(superficieBancas).toBeGreaterThan(superficieResto)
 
-    // Anchos calibrados contra producción: 20 vw exactos de palabra (igual que
-    // `flex: 0 0 20vw`) y ≈12 % de ancho para el quórum (220 px y 164 px allá).
-    expect(Math.abs(cajaPalabra.width - viewport.width * 0.2)).toBeLessThanOrEqual(2)
-    expect(cajaQuorum.width / viewport.width).toBeGreaterThanOrEqual(0.11)
-    expect(cajaQuorum.width / viewport.width).toBeLessThanOrEqual(0.125)
+    /*
+      Anchos recalibrados por WP-097.
+
+      Hasta este WP la columna de palabra medía 20 vw exactos y el quórum ≈12 %
+      del ancho, ambos calibrados contra producción. HUMAN_GATE pidió dos cosas
+      que obligan a mover esas medidas: que un nombre de 18 caracteres entre
+      completo en la cola y que el bloque de quórum aproveche mejor el ancho con
+      su número más grande.
+
+      Las dos siguen siendo fracciones acotadas del viewport, no valores fijos,
+      así que la comprobación reproduce el `clamp` declarado en el componente en
+      lugar de repetir píxeles medidos a mano.
+    */
+    function anchoAcotado(minimo: number, fraccion: number, maximo: number): number {
+      return Math.min(Math.max(minimo, viewport.width * fraccion), maximo)
+    }
+    expect(cajaPalabra.width).toBeCloseTo(anchoAcotado(365, 0.25, 480), 0)
+    expect(cajaQuorum.width).toBeCloseTo(anchoAcotado(184, 0.135, 248), 0)
 
     // ---------------------------------------------------------------------
     // 4 · Sin scroll global y sin imágenes recortadas
@@ -1195,9 +1213,10 @@ for (const viewport of [
     await expect(page.getByTestId('cantidad-presentes')).toHaveText('7/12')
     const quorumLimite = await medirQuorum()
     expect(quorumLimite.nivel).toBe('limite')
-    // WP-058: el empate exacto con el mínimo tiene texto propio. El quórum sigue
-    // alcanzado; lo que la pantalla agrega es que no queda margen.
-    await expect(page.getByTestId('estado-quorum')).toHaveText('Quórum límite')
+    // WP-058 distinguía el empate exacto también con palabras; desde WP-097 esa
+    // distinción vive sólo en el color y en el atributo. El quórum sigue
+    // alcanzado: lo que la pantalla informa es que no queda margen.
+    await expect(page.getByTestId('panel-quorum')).toHaveAttribute('data-nivel-quorum', 'limite')
 
     // Por debajo del mínimo: rojo y sin quórum.
     await publicar(page, {
@@ -1208,7 +1227,10 @@ for (const viewport of [
     await expect(page.getByTestId('cantidad-presentes')).toHaveText('6/12')
     const quorumInsuficiente = await medirQuorum()
     expect(quorumInsuficiente.nivel).toBe('insuficiente')
-    await expect(page.getByTestId('estado-quorum')).toHaveText('Sin quórum')
+    await expect(page.getByTestId('panel-quorum')).toHaveAttribute(
+      'data-nivel-quorum',
+      'insuficiente',
+    )
 
     // Los tres estados se distinguen por color real, no sólo por nombre de clase.
     const colores = [quorumHolgado.color, quorumLimite.color, quorumInsuficiente.color]
@@ -1523,9 +1545,11 @@ for (const viewport of [
     expect(escalaDespues / escalaAntes).toBeCloseTo(1.053, 2)
 
     // -----------------------------------------------------------------------
-    // 4 · Quórum: las tres redacciones sobre números ya proyectados
+    // 4 · Quórum: los tres niveles sobre números ya proyectados
     // -----------------------------------------------------------------------
-    await expect(page.getByTestId('estado-quorum')).toHaveText('Quórum alcanzado')
+    // WP-097 dejó el bloque con título y número, así que el nivel se comprueba
+    // por atributo. Las tres distinciones de WP-058 se siguen exigiendo.
+    await expect(page.getByTestId('panel-quorum')).toHaveAttribute('data-nivel-quorum', 'holgado')
 
     await publicar(page, {
       ...sesion,
@@ -1533,7 +1557,6 @@ for (const viewport of [
       quorum: { cantidad_presentes: 7, requerido: 7, alcanzado: true },
     })
     await expect(page.getByTestId('cantidad-presentes')).toHaveText('7/12')
-    await expect(page.getByTestId('estado-quorum')).toHaveText('Quórum límite')
     // El backend sigue declarando alcanzado: la pantalla no cambió la regla.
     await expect(page.getByTestId('panel-quorum')).toHaveAttribute('data-nivel-quorum', 'limite')
 
@@ -1542,7 +1565,10 @@ for (const viewport of [
       revision: 3,
       quorum: { cantidad_presentes: 6, requerido: 7, alcanzado: false },
     })
-    await expect(page.getByTestId('estado-quorum')).toHaveText('Sin quórum')
+    await expect(page.getByTestId('panel-quorum')).toHaveAttribute(
+      'data-nivel-quorum',
+      'insuficiente',
+    )
 
     // -----------------------------------------------------------------------
     // 5 · EN VIVO: mismo contenedor, texto mucho mayor, sin desbordes
@@ -1642,20 +1668,28 @@ for (const viewport of [
  *
  * Baselines medidas en Chromium sobre el commit base de este WP (raíz 16 px):
  *
- * | dato                          | 1920×1080 | 1366×768  |
- * |-------------------------------|-----------|-----------|
- * | nombre en cola                | 19,584 px | 14,720 px |
+ * | dato                           | 1920×1080 | 1366×768  |
+ * |--------------------------------|-----------|-----------|
+ * | nombre en cola                 | 19,584 px | 14,720 px |
  * | ancho de la columna de palabra | 384,00 px | 273,19 px |
- * | ancho del panel de palabra    | 384,00 px | 273,19 px |
- * | círculo de orden              | 25,59 px  | 25,59 px  |
+ * | ancho del panel de palabra     | 384,00 px | 273,19 px |
+ * | círculo de orden               | 25,59 px  | 25,59 px  |
+ *
+ * WP-097 ensanchó esa columna a 480 px y 365 px para que un nombre de 18
+ * caracteres entre completo, así que las dos filas de ancho se actualizan a la
+ * medida nueva. El cuerpo del nombre y el círculo de orden siguen siendo los que
+ * fijó WP-064 y se comprueban contra la misma baseline de WP-054.
  *
  * El factor exigido es exactamente 1,8 porque el `clamp` nuevo multiplica por
  * 1,8 sus tres términos: gane el que gane en cada resolución, la proporción se
  * conserva. Se admite una tolerancia mínima para el redondeo de subpíxel.
  */
 const BASELINES_WP064 = {
-  1920: { nombrePx: 19.584, anchoColumna: 384.0 },
-  1366: { nombrePx: 14.72, anchoColumna: 273.19 },
+  // El ancho de columna es el que dejó WP-097 al ensanchar la franja de pedidos
+  // para que un nombre de 18 caracteres entre completo; el cuerpo del nombre es
+  // el original de WP-064 y este WP no lo tocó.
+  1920: { nombrePx: 19.584, anchoColumna: 480.0 },
+  1366: { nombrePx: 14.72, anchoColumna: 365.0 },
 } as const
 
 /** Factor de crecimiento pedido por HUMAN_GATE para el nombre de la cola. */
@@ -1824,8 +1858,12 @@ for (const viewport of [
     expect(renglonUnico.circulo.ancho).toBeCloseTo(CIRCULO_ORDEN_WP064_PX, 1)
     expect(renglonUnico.circulo.alto).toBeCloseTo(CIRCULO_ORDEN_WP064_PX, 1)
 
-    // Decisión humana 2: el nombre aprovecha casi todo el ancho útil del
-    // renglón. Lo que queda fuera es sólo el círculo de orden y su separación.
+    /*
+      Decisión humana 2: el nombre aprovecha casi todo el ancho útil del renglón.
+      Desde WP-097 lo aprovecha entero, porque el círculo de orden bajó a la línea
+      de referencia y dejó de restarle ancho. El umbral histórico se conserva como
+      piso mínimo: sirve igual para detectar una regresión que vuelva a encajonarlo.
+    */
     const anchoUtil = unaEntrada.lista!.clientWidth
     expect(renglonUnico.caja.ancho / anchoUtil).toBeGreaterThanOrEqual(0.82)
     // Y aun así termina dentro de la columna: no la ensancha ni la desborda.
