@@ -1076,6 +1076,26 @@ def test_las_constantes_del_catalogo_coinciden_con_las_de_cada_servicio() -> Non
         (politica_acta.ETIQUETA_EVENTO_PRINCIPAL, apoyo_tecnico.ETIQUETA_EVENTO_PRINCIPAL),
         (politica_acta.CODIGO_MARCADOR_INICIO, apoyo_tecnico.CODIGO_MARCADOR_INICIO),
         (politica_acta.CODIGO_MARCADOR_FIN, apoyo_tecnico.CODIGO_MARCADOR_FIN),
+        # WP-096: además de los códigos, el acta repite las dos frases fijas de
+        # transmisión. Si el servicio cambiara su redacción sin actualizar el
+        # catálogo, ``_texto_fijo`` haría fallar el acta entera en una sesión
+        # real; esta comparación mueve ese fallo a CI.
+        (
+            politica_acta.CODIGO_TRANSMISION_PRINCIPAL_INICIO,
+            apoyo_tecnico.CODIGO_TRANSMISION_PRINCIPAL_INICIO,
+        ),
+        (
+            politica_acta.CODIGO_TRANSMISION_PRINCIPAL_FIN,
+            apoyo_tecnico.CODIGO_TRANSMISION_PRINCIPAL_FIN,
+        ),
+        (
+            politica_acta.MENSAJE_TRANSMISION_PRINCIPAL_INICIO,
+            apoyo_tecnico.MENSAJE_TRANSMISION_PRINCIPAL_INICIO,
+        ),
+        (
+            politica_acta.MENSAJE_TRANSMISION_PRINCIPAL_FIN,
+            apoyo_tecnico.MENSAJE_TRANSMISION_PRINCIPAL_FIN,
+        ),
     )
     for del_catalogo, del_servicio in equivalencias:
         assert del_catalogo == del_servicio

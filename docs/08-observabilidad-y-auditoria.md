@@ -306,6 +306,45 @@ escrituras tardías.
 Estos dos hechos pertenecen a L2: aparecen en los CSV L1 y L2 y en la proyección
 operativa reciente, pero no en L3 ni en el informe formal `-ACTA.txt`.
 
+Además de esa auditoría técnica, cada transición **efectiva del indicador**
+registra un evento principal L3 con etiqueta general `EVENTO`:
+
+- `TRANSMISION_EN_VIVO_INICIADA`, cuando el indicador pasa realmente de apagado
+  o cuenta regresiva a `EN_VIVO`;
+- `TRANSMISION_EN_VIVO_FINALIZADA`, cuando deja realmente de estar `EN_VIVO`.
+
+El `message` de ambos es una frase institucional fija —«Transmisión en vivo
+iniciada» y «Transmisión en vivo finalizada»— sin horas internas, causa técnica,
+banderas ni identificadores. La hora la aporta la columna `timestamp` del propio
+escritor, que es la misma fuente temporal que usan los demás eventos
+institucionales. Estos dos códigos son distintos de los técnicos homónimos y de
+los marcadores `INICIO`/`FIN` de los avisos, de modo que filtrar por `event_code`
+distingue las tres familias sin ambigüedad.
+
+La diferencia con la auditoría técnica es qué se sigue. Los hechos L2 siguen la
+vida de cada **intención** de transmisión; los eventos principales siguen la del
+**indicador** que ve el público. Por eso reemplazar una transmisión ya `EN_VIVO`
+por un inicio inmediato registra el cierre técnico de esa intención pero **no**
+produce un par principal: el indicador nunca se apagó. Reemplazarla por una
+cuenta regresiva sí lo apaga y sí cierra el período principal.
+
+La autoridad de «hay un período anunciado y todavía no cerrado» es un marcador
+del estado operativo que se instala recién después de persistir el `INICIO` y se
+retira recién después de persistir el `FIN`, igual que el de los avisos del
+Recinto. De ahí se siguen las garantías del contrato: programar, reemplazar o
+cancelar una cuenta regresiva no anuncia nada; un start repetido sobre una
+transmisión ya `EN_VIVO` no duplica el `INICIO`; un stop repetido no duplica el
+`FIN`; una carrera entre el deadline y un stop registra el par completo del
+período que sí existió; y reconstruir la proyección o reconectar SSE nunca
+reemite un hecho histórico, porque proyectar sólo lee el buffer confirmado.
+
+Como cualquier otro hecho L3, estos eventos entran en el informe `-ACTA.txt` con
+su frase institucional. Un encendido ocurrido en `SIN_PREPARAR` no crea evento y
+tampoco se reconstruye al preparar después; un período cuyo conjunto de CSV ya
+fue cerrado se descarta sin escribir su `FIN` en un conjunto distinto, porque la
+transmisión es independiente del ciclo preparación/sesión y puede seguir
+encendida cuando ese ciclo termina.
+
 ## 10. Identidad de concejales
 
 La implementación histórica usa principalmente nombre, apellido y banca en mensajes funcionales.

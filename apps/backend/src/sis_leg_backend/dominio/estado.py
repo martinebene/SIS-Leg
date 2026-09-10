@@ -23,6 +23,7 @@ from sis_leg_backend.dominio.apoyo_tecnico import (
     AvisoTecnico,
     BibliotecaMensajesTecnicos,
     MarcadorRecintoAbierto,
+    MarcadorTransmisionPrincipal,
     TransmisionTecnica,
 )
 from sis_leg_backend.dominio.preparacion import Preparacion
@@ -83,6 +84,12 @@ class EstadoOperativo:
             ejemplo si se publicó en ``SIN_PREPARAR``, donde no hay auditoría— y
             porque el período debe poder cerrarse aunque la ranura ya haya sido
             reemplazada por otro texto.
+        marcador_transmision_principal: período EN VIVO cuyo evento principal
+            ``TRANSMISION_EN_VIVO_INICIADA`` ya fue persistido y todavía no fue
+            cerrado con su ``TRANSMISION_EN_VIVO_FINALIZADA`` (WP-096). Vive acá,
+            y no dentro de ``transmision_tecnica``, porque esa intención se
+            reemplaza entera en cada orden mientras el indicador puede seguir
+            encendido sin interrupción.
         biblioteca_mensajes_tecnicos: copia en memoria del CSV de mensajes
             precargados, más su condición técnica. Se carga una sola vez al
             arrancar y se actualiza únicamente después de que una escritura
@@ -116,6 +123,9 @@ class EstadoOperativo:
     aviso_tecnico_moderacion: AvisoTecnico | None = field(default=None, init=False)
     aviso_tecnico_recinto: AvisoTecnico | None = field(default=None, init=False)
     marcador_recinto_abierto: MarcadorRecintoAbierto | None = field(default=None, init=False)
+    marcador_transmision_principal: MarcadorTransmisionPrincipal | None = field(
+        default=None, init=False
+    )
     biblioteca_mensajes_tecnicos: BibliotecaMensajesTecnicos = field(
         default_factory=BibliotecaMensajesTecnicos, init=False
     )
