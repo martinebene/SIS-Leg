@@ -206,10 +206,17 @@ jobs:
             "dist/produccion/sis-leg-${SHA}.tar.gz" \
             --checksum "dist/produccion/sis-leg-${SHA}.tar.gz.sha256" \
             --sha "${SHA}"
+      # El nombre interno del artifact identifica el SHA **y** el intento que lo
+      # produjo. Una re-ejecución conserva `run_id` y SHA, así que sin el intento
+      # dos ejecuciones distintas subirían artifacts homónimos dentro de la misma
+      # run y la búsqueda por nombre devolvería el más reciente: el publicador
+      # atribuiría en sus metadatos un intento que no construyó esos bytes.
+      # `intento` va en español por DEC-001; los nombres públicos de la release
+      # (`sis-leg-<SHA>.tar.gz` y su sidecar) no cambian.
       - name: Publicar paquete y checksum
         uses: actions/upload-artifact@v7
         with:
-          name: sis-leg-release-${{ github.event.pull_request.head.sha || github.sha }}
+          name: sis-leg-release-${{ github.event.pull_request.head.sha || github.sha }}-intento-${{ github.run_attempt }}
           path: |
             dist/produccion/sis-leg-*.tar.gz
             dist/produccion/sis-leg-*.tar.gz.sha256

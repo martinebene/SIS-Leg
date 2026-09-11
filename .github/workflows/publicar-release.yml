@@ -57,10 +57,18 @@ jobs:
       # Se reutiliza el artefacto que la CI ya construyó y validó, en lugar de
       # reconstruirlo: los bytes publicados son exactamente los que superaron el
       # job `Empaquetado · release productiva` de esa misma run.
+      #
+      # El nombre se arma con `head_sha` **y** `run_attempt` del evento, exactamente
+      # igual que lo hace `ci.yml` con `github.sha` y `github.run_attempt`. `run-id`
+      # sólo acota la run: dentro de una misma run re-ejecutada pueden convivir
+      # artifacts homónimos y `download-artifact` resuelve el más reciente por
+      # nombre. Al incluir el intento, la publicación disparada por el intento 1
+      # no puede nombrar —y por lo tanto no puede descargar— el artifact del
+      # intento 2, que es el escenario de carrera que esta identidad cierra.
       - name: Descargar el artefacto validado por la CI
         uses: actions/download-artifact@v7
         with:
-          name: sis-leg-release-${{ github.event.workflow_run.head_sha }}
+          name: sis-leg-release-${{ github.event.workflow_run.head_sha }}-intento-${{ github.event.workflow_run.run_attempt }}
           path: dist/publicacion
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -1392,6 +1392,221 @@ def test_el_workflow_le_pasa_al_publicador_el_intento_del_evento() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 19. Identidad del artifact interno por SHA + intento (WP-100 I003)
+#
+# `actions/download-artifact` sólo sabe elegir por `name` (o por `artifact-ids`)
+# dentro de una `run-id`: no existe un input de intento. Como una re-ejecución
+# conserva `run_id` y SHA, dos intentos que suban artifacts homónimos quedan
+# ambos en la misma run y la búsqueda por nombre resuelve el más reciente.
+#
+# El publicador del intento 1 podría entonces descargar los bytes del intento 2
+# mientras sus metadatos siguen atribuyendo la release al intento 1 y a su job
+# histórico. Los bytes son reproducibles y normalmente coincidirían, pero la
+# procedencia declarada dejaría de ser demostrable, que es justamente lo que el
+# canal público promete.
+#
+# La corrección es que el nombre interno identifique SHA **e** intento en los
+# dos extremos. Estas pruebas leen los workflows reales y resuelven sus
+# expresiones `${{ ... }}` contra un contexto sintético, para que cualquier
+# desincronización futura entre productor y consumidor rompa acá.
+# ---------------------------------------------------------------------------
+
+
+# Nombres exactos de los dos pasos que tienen que hablar del mismo artifact.
+PASO_SUBIDA_DEL_ARTIFACT = "Publicar paquete y checksum"
+PASO_DESCARGA_DEL_ARTIFACT = "Descargar el artefacto validado por la CI"
+
+
+def bloque_del_paso(texto_workflow: str, nombre_del_paso: str) -> str:
+    """Devuelve el texto YAML de un paso, delimitado por el paso siguiente.
+
+    No se usa un parser YAML a propósito: incorporarlo obligaría a agregar una
+    dependencia nueva, que está fuera del alcance del WP. Recortar el bloque por
+    indentación alcanza porque los pasos de estos workflows viven todos al mismo
+    nivel (seis espacios) y el corte se valida encontrando el `name:` esperado.
+    """
+
+    marca = f"      - name: {nombre_del_paso}\n"
+    inicio = texto_workflow.find(marca)
+    assert inicio != -1, f"El workflow ya no declara el paso «{nombre_del_paso}»."
+    resto = texto_workflow[inicio + len(marca) :]
+    fin = resto.find("\n      - ")
+    return resto if fin == -1 else resto[:fin]
+
+
+def plantilla_de_nombre_del_artifact(ruta: Path, nombre_del_paso: str) -> str:
+    """Extrae el `name:` que ese paso le pasa a la acción de artifacts.
+
+    Devuelve la plantilla sin resolver, es decir con sus expresiones
+    `${{ ... }}` intactas, porque la prueba necesita resolverlas después contra
+    contextos distintos para comparar intentos.
+    """
+
+    bloque = bloque_del_paso(ruta.read_text(encoding="utf-8"), nombre_del_paso)
+    coincidencia = re.search(r"^          name: (.+)$", bloque, re.MULTILINE)
+    assert coincidencia is not None, f"El paso «{nombre_del_paso}» no declara `with.name`."
+    return coincidencia.group(1).strip()
+
+
+def resolver_expresiones(plantilla: str, contexto: Mapping[str, str | None]) -> str:
+    """Sustituye cada `${{ ... }}` por su valor en un contexto sintético.
+
+    Implementa sólo lo que estos workflows usan: lectura de un campo del contexto
+    y el operador `||`, que en GitHub Actions devuelve el primer operando no
+    vacío. Un `None` representa un campo ausente —por ejemplo
+    `github.event.pull_request.head.sha` en un `push`—.
+
+    Un campo desconocido es un error deliberado: si alguien cambia el nombre del
+    artifact por una expresión que esta prueba no modela, conviene que la prueba
+    falle en lugar de aprobar una identidad que no entiende.
+    """
+
+    def resolver_una(coincidencia: re.Match[str]) -> str:
+        for operando in coincidencia.group(1).split("||"):
+            clave = operando.strip()
+            assert clave in contexto, f"Expresión no modelada por la prueba: «{clave}»."
+            valor = contexto[clave]
+            if valor:
+                return valor
+        return ""
+
+    return re.sub(r"\$\{\{(.+?)\}\}", resolver_una, plantilla)
+
+
+def contexto_de_ci(*, sha: str = SHA, intento: int) -> dict[str, str | None]:
+    """Contexto de un `push` a `main` corriendo el intento indicado."""
+
+    return {
+        "github.sha": sha,
+        # En `push` no hay pull request: el fallback del workflow debe usar `github.sha`.
+        "github.event.pull_request.head.sha": None,
+        "github.run_attempt": str(intento),
+    }
+
+
+def contexto_de_publicacion(*, sha: str = SHA, intento: int) -> dict[str, str | None]:
+    """Contexto del evento `workflow_run` que dispara la publicación."""
+
+    return {
+        "github.event.workflow_run.head_sha": sha,
+        "github.event.workflow_run.run_attempt": str(intento),
+    }
+
+
+def nombre_subido_por_ci(*, sha: str = SHA, intento: int) -> str:
+    """Nombre interno que `ci.yml` le daría al artifact en ese intento."""
+
+    plantilla = plantilla_de_nombre_del_artifact(
+        RAIZ_REPOSITORIO / ".github/workflows/ci.yml", PASO_SUBIDA_DEL_ARTIFACT
+    )
+    return resolver_expresiones(plantilla, contexto_de_ci(sha=sha, intento=intento))
+
+
+def nombre_pedido_por_el_publicador(*, sha: str = SHA, intento: int) -> str:
+    """Nombre interno que `publicar-release.yml` pediría para ese intento."""
+
+    plantilla = plantilla_de_nombre_del_artifact(
+        RAIZ_REPOSITORIO / ".github/workflows/publicar-release.yml",
+        PASO_DESCARGA_DEL_ARTIFACT,
+    )
+    return resolver_expresiones(plantilla, contexto_de_publicacion(sha=sha, intento=intento))
+
+
+def test_el_artifact_de_empaquetado_identifica_el_intento_que_lo_produjo() -> None:
+    """`ci.yml` nombra el artifact con el SHA y con `github.run_attempt`."""
+
+    plantilla = plantilla_de_nombre_del_artifact(
+        RAIZ_REPOSITORIO / ".github/workflows/ci.yml", PASO_SUBIDA_DEL_ARTIFACT
+    )
+    assert "${{ github.run_attempt }}" in plantilla
+    # El SHA sigue presente por su vía habitual: cabeza de la PR o SHA del push.
+    assert "github.event.pull_request.head.sha || github.sha" in plantilla
+
+    nombre = nombre_subido_por_ci(intento=1)
+    assert SHA in nombre
+    assert nombre.endswith("-intento-1")
+
+
+def test_el_publicador_pide_el_artifact_del_intento_que_declara() -> None:
+    """`publicar-release.yml` arma el nombre con `head_sha` y `run_attempt`."""
+
+    plantilla = plantilla_de_nombre_del_artifact(
+        RAIZ_REPOSITORIO / ".github/workflows/publicar-release.yml",
+        PASO_DESCARGA_DEL_ARTIFACT,
+    )
+    assert "${{ github.event.workflow_run.head_sha }}" in plantilla
+    assert "${{ github.event.workflow_run.run_attempt }}" in plantilla
+
+    # `run-id` acota la run y el nombre acota el intento: hacen falta los dos.
+    bloque = bloque_del_paso(
+        (RAIZ_REPOSITORIO / ".github/workflows/publicar-release.yml").read_text(encoding="utf-8"),
+        PASO_DESCARGA_DEL_ARTIFACT,
+    )
+    assert "run-id: ${{ github.event.workflow_run.id }}" in bloque
+
+
+def test_los_dos_workflows_construyen_el_mismo_nombre_para_el_mismo_intento() -> None:
+    """Productor y consumidor no pueden desincronizarse en la identidad.
+
+    Es la prueba que convierte a las dos anteriores en un contrato: da igual cómo
+    se escriba el nombre mientras ambos extremos lo escriban igual para el mismo
+    SHA y el mismo intento.
+    """
+
+    for intento in (1, 2, 7):
+        assert nombre_subido_por_ci(intento=intento) == nombre_pedido_por_el_publicador(
+            intento=intento
+        )
+
+
+def test_dos_intentos_del_mismo_sha_no_comparten_nombre_de_artifact() -> None:
+    """Una re-ejecución del mismo SHA produce un nombre interno distinto.
+
+    Sin esto, los dos intentos convivirían como artifacts homónimos dentro de la
+    misma run y la selección por nombre devolvería el más reciente.
+    """
+
+    primero = nombre_subido_por_ci(intento=1)
+    segundo = nombre_subido_por_ci(intento=2)
+    assert primero != segundo
+    # Ambos siguen declarando el mismo SHA: lo único que los separa es el intento.
+    assert SHA in primero and SHA in segundo
+
+
+def test_la_publicacion_del_intento_uno_no_puede_nombrar_el_artifact_del_intento_dos() -> None:
+    """El escenario de carrera de la auditoría queda cerrado por construcción.
+
+    El publicador disparado por el intento 1 sólo sabe pedir el nombre del
+    intento 1. Aunque el intento 2 ya haya subido su artifact a la misma run,
+    ese nombre no coincide, así que no puede ser el que se descargue y publique.
+    """
+
+    pedido_por_el_intento_uno = nombre_pedido_por_el_publicador(intento=1)
+    subido_por_el_intento_dos = nombre_subido_por_ci(intento=2)
+    assert pedido_por_el_intento_uno != subido_por_el_intento_dos
+    assert pedido_por_el_intento_uno == nombre_subido_por_ci(intento=1)
+
+
+def test_la_identidad_por_intento_no_altera_los_nombres_publicos(tmp_path: Path) -> None:
+    """Los tres assets públicos y el tag siguen dependiendo sólo del SHA.
+
+    La identidad por intento es interna al canal de CI. Un consumidor externo
+    resuelve la release por SHA y no sabe —ni tiene por qué saber— cuántos
+    intentos hubo.
+    """
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    assert set(publicador.contenidos) == {
+        nombre_paquete(SHA),
+        nombre_sidecar(SHA),
+        nombre_metadatos(SHA),
+    }
+    assert tag_publicacion(SHA) in publicador.releases
+    for nombre_publico in publicador.contenidos:
+        assert "intento" not in nombre_publico
+
+
+# ---------------------------------------------------------------------------
 # 11 a 14. Contrato de configuración local
 # ---------------------------------------------------------------------------
 
