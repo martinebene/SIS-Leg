@@ -16,6 +16,7 @@ import pytest
 
 import deploy.herramienta_despliegue as modulo_despliegue
 import scripts.verificar_reproducibilidad_produccion as modulo_reproducibilidad
+from deploy.configuracion_local import RUTA_CONTRATO_EN_RELEASE, ErrorConfiguracionLocal
 from deploy.herramienta_despliegue import (
     DIRECTORIO_SONDAS_RUNTIME,
     EjecutorSubprocess,
@@ -33,6 +34,7 @@ from scripts.verificar_reproducibilidad_produccion import ErrorReproducibilidad
 
 SHA_A = "a" * 40
 SHA_B = "b" * 40
+RAIZ_REPOSITORIO = Path(__file__).resolve().parents[1]
 
 
 def crear_checkout_minimo(raiz: Path) -> None:
@@ -62,6 +64,8 @@ def crear_checkout_minimo(raiz: Path) -> None:
         "deploy/__init__.py": "",
         "deploy/herramienta_despliegue.py": "# herramienta",
         "deploy/validar_configuracion.py": "# validador",
+        "deploy/configuracion_local.py": "# contrato de configuracion",
+        "deploy/actualizador_publico.py": "# canal publico",
         "deploy/systemd/sis-leg-backend.service": "[Service]\n",
         "deploy/systemd/sis-leg-device-bridge.service": "[Service]\n",
         "deploy/nginx/sis-leg.conf": "server {}\n",
@@ -70,6 +74,17 @@ def crear_checkout_minimo(raiz: Path) -> None:
         ruta = raiz / relativa
         ruta.parent.mkdir(parents=True, exist_ok=True)
         ruta.write_text(contenido, encoding="utf-8")
+
+    # El contrato de configuración local (WP-100) se copia tal cual desde el
+    # repositorio en lugar de inventar uno de fantasía: así el empaquetado y la
+    # validación del manifest se ejercitan contra el contrato real que viajará
+    # dentro de cada release productiva.
+    contrato = raiz / RUTA_CONTRATO_EN_RELEASE
+    contrato.parent.mkdir(parents=True, exist_ok=True)
+    contrato.write_text(
+        (RAIZ_REPOSITORIO / RUTA_CONTRATO_EN_RELEASE).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
 
 
 def test_paquete_es_reproducible_trazable_y_excluye_configuracion(tmp_path: Path) -> None:
@@ -463,6 +478,14 @@ def crear_release_preparada(gestor: GestorDespliegue, sha: str) -> Path:
         ruta.parent.mkdir(parents=True, exist_ok=True)
         contenido = "<!doctype html>" if ruta.name == "index.html" else "archivo"
         ruta.write_text(contenido, encoding="utf-8")
+    # Toda release preparada debe traer su contrato de configuración (WP-100):
+    # sin él la activación no puede decidir si hace falta una migración.
+    contrato = release / RUTA_CONTRATO_EN_RELEASE
+    contrato.parent.mkdir(parents=True, exist_ok=True)
+    contrato.write_text(
+        (RAIZ_REPOSITORIO / RUTA_CONTRATO_EN_RELEASE).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
     (release / modulo_despliegue.MARCADOR_PREPARADA).write_text(
         json.dumps({"commit_sha": sha}), encoding="utf-8"
     )
@@ -1293,3 +1316,153 @@ def test_configuracion_nginx_restringe_simulador_a_loopback() -> None:
     assert "allow ::1;" in nginx
     assert "deny all;" in nginx
     assert "try_files $uri $uri/ /simulador/index.html;" in nginx
+
+
+def escribir_contrato_en_release(release: Path, recursos: list[dict[str, Any]]) -> None:
+    """Reemplaza el contrato de configuración de una release preparada.
+
+    Las pruebas del gate de WP-100 necesitan contratos sintéticos: el contrato
+    real todavía no declara ningún bootstrap, justamente porque hoy todos los
+    recursos institucionales los provisiona el operador.
+    """
+
+    ruta = release / RUTA_CONTRATO_EN_RELEASE
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text(
+        json.dumps(
+            {"formato": "sis-leg-configuracion", "version_contrato": 1, "recursos": recursos},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_activar_preserva_byte_a_byte_la_configuracion_declarada(tmp_path: Path) -> None:
+    """El contrato real sólo preserva: activar no reescribe ningún archivo local."""
+
+    gestor = crear_gestor(tmp_path)
+    crear_release_preparada(gestor, SHA_A)
+    crear_config_externa(gestor)
+    antes = {
+        relativa: (gestor.config / relativa).read_bytes()
+        for relativa in ("system.toml", "concejales.csv", "bridge/devices.json")
+    }
+
+    gestor.activar(SHA_A)
+
+    assert all(
+        (gestor.config / relativa).read_bytes() == datos for relativa, datos in antes.items()
+    )
+    plan = gestor.planificar_configuracion_local(gestor.releases / SHA_A)
+    assert {entrada.accion for entrada in plan} == {"PRESERVAR"}
+
+
+def test_activar_incorpora_add_only_un_recurso_nuevo_ausente(tmp_path: Path) -> None:
+    """Una release que declara un recurso nuevo lo crea sin tocar lo existente."""
+
+    gestor = crear_gestor(tmp_path)
+    release = crear_release_preparada(gestor, SHA_A)
+    crear_config_externa(gestor)
+    predeterminado = release / "deploy/defaults/nuevo.json"
+    predeterminado.parent.mkdir(parents=True, exist_ok=True)
+    predeterminado.write_text('{"origen": "release"}', encoding="utf-8")
+    escribir_contrato_en_release(
+        release,
+        [
+            {
+                "ruta_local": "config/system.toml",
+                "tipo": "archivo",
+                "schema": "system-toml-v1",
+                "bootstrap": None,
+                "descripcion": "configuracion funcional",
+            },
+            {
+                "ruta_local": "config/nuevo.json",
+                "tipo": "archivo",
+                "schema": "nuevo-v1",
+                "bootstrap": "deploy/defaults/nuevo.json",
+                "usuario": "root",
+                "grupo": "sis-leg-backend",
+                "modo": "0640",
+                "descripcion": "recurso incorporado por la release",
+            },
+        ],
+    )
+    system_antes = (gestor.config / "system.toml").read_bytes()
+
+    gestor.activar(SHA_A)
+
+    creado = gestor.config / "nuevo.json"
+    assert creado.read_text(encoding="utf-8") == '{"origen": "release"}'
+    assert creado.stat().st_mode & 0o777 == 0o640
+    assert (gestor.config / "system.toml").read_bytes() == system_antes
+
+
+def test_activar_aborta_sin_mutar_si_la_release_exige_una_migracion(tmp_path: Path) -> None:
+    """Un cambio de schema sobre un archivo existente detiene la activación."""
+
+    gestor = crear_gestor(tmp_path)
+    release_a = crear_release_preparada(gestor, SHA_A)
+    release_b = crear_release_preparada(gestor, SHA_B)
+    crear_config_externa(gestor)
+    escribir_contrato_en_release(
+        release_a,
+        [
+            {
+                "ruta_local": "config/system.toml",
+                "tipo": "archivo",
+                "schema": "system-toml-v1",
+                "bootstrap": None,
+                "descripcion": "configuracion funcional",
+            }
+        ],
+    )
+    predeterminado = release_b / "deploy/defaults/nuevo.json"
+    predeterminado.parent.mkdir(parents=True, exist_ok=True)
+    predeterminado.write_text("{}", encoding="utf-8")
+    escribir_contrato_en_release(
+        release_b,
+        [
+            {
+                "ruta_local": "config/system.toml",
+                "tipo": "archivo",
+                "schema": "system-toml-v2",
+                "bootstrap": None,
+                "descripcion": "configuracion funcional migrada",
+            },
+            {
+                "ruta_local": "config/nuevo.json",
+                "tipo": "archivo",
+                "schema": "nuevo-v1",
+                "bootstrap": "deploy/defaults/nuevo.json",
+                "usuario": "root",
+                "grupo": "sis-leg-backend",
+                "modo": "0640",
+                "descripcion": "recurso que no debe llegar a crearse",
+            },
+        ],
+    )
+    gestor.activar(SHA_A)
+    system_antes = (gestor.config / "system.toml").read_bytes()
+
+    with pytest.raises(ErrorConfiguracionLocal, match="HUMAN_GATE"):
+        gestor.activar(SHA_B)
+
+    # Nada mutó: ni el enlace activo, ni el archivo existente, ni el recurso que
+    # la release nueva iba a incorporar después de la migración.
+    assert resolver_enlace_release(gestor.current, gestor.releases) == release_a
+    assert (gestor.config / "system.toml").read_bytes() == system_antes
+    assert not (gestor.config / "nuevo.json").exists()
+
+
+def test_una_release_sin_contrato_de_configuracion_no_se_activa(tmp_path: Path) -> None:
+    """Sin contrato no hay forma de decidir compatibilidad: la release no sirve."""
+
+    gestor = crear_gestor(tmp_path)
+    release = crear_release_preparada(gestor, SHA_A)
+    crear_config_externa(gestor)
+    (release / RUTA_CONTRATO_EN_RELEASE).unlink()
+
+    with pytest.raises(ErrorDespliegue, match="incompleta"):
+        gestor.activar(SHA_A)
+    assert resolver_enlace_release(gestor.current, gestor.releases) is None

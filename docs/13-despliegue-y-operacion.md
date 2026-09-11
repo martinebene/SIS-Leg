@@ -162,6 +162,98 @@ volátiles sin quitar funcionalidad. El job productivo ejecuta dos veces
 `pnpm empaquetar:produccion` y compara tar y sidecar byte a byte antes del smoke;
 por eso la reproducibilidad cubre también `pnpm build`, no sólo el tar final.
 
+### Canal público de releases por SHA (WP-100)
+
+Desde WP-100 cada `push` a `main` cuya **CI completa** termine en `success` publica
+automáticamente una GitHub Release pública e inmutable con tag determinista
+`sis-leg-<sha-completo>` y tres assets de nombre exacto:
+
+| Asset | Contenido |
+| --- | --- |
+| `sis-leg-<sha>.tar.gz` | el paquete productivo reproducible |
+| `sis-leg-<sha>.tar.gz.sha256` | el sidecar canónico |
+| `sis-leg-<sha>.metadatos.json` | el vínculo entre publicación, commit, tree y CI |
+
+La publicación la ejecuta `.github/workflows/publicar-release.yml`, que se dispara con
+`workflow_run` al completarse el workflow `CI`. Esperar ese evento es lo que permite exigir
+la conclusión de la CI **entera** y no sólo la del job de empaquetado: un job no puede
+observar el resultado del workflow que lo contiene. El script versionado
+`scripts/publicar_release_publica.py` vuelve a verificar contra la API que la run sea del
+evento `push`, de la rama `main`, del SHA exacto, `completed` y `success`, y que el job
+`Empaquetado · release productiva` de esa misma run haya sido exitoso.
+
+La publicación es idempotente: si el tag ya existe, compara byte a byte los tres assets
+contra los locales y termina sin escribir cuando coinciden. Si difieren o falta alguno,
+aborta y exige intervención humana. Una release publicada nunca se reemplaza.
+
+Un push exento por `paths-ignore` (DEC-019) no genera run de CI y por lo tanto tampoco
+genera publicación. Esa ausencia es esperada: no hay release productiva nueva porque no
+hubo cambio material.
+
+#### Consumo sin credenciales
+
+`deploy/actualizador_publico.py` obtiene esa release **sin ninguna credencial del host**:
+no usa `gh`, PAT, `.github_token`, keyring ni variables de entorno con secretos. Sólo
+realiza consultas y descargas públicas HTTPS.
+
+```bash
+python3.14 /opt/sis-leg/current/deploy/actualizador_publico.py obtener --destino /var/tmp/sis-leg
+```
+
+El flujo es rígido y siempre en este orden:
+
+1. resolver el SHA completo de `main` por recurso público;
+2. exigir una run de CI de `push` sobre `main` para ese SHA, `completed` y `success`;
+3. exigir el job exacto `Empaquetado · release productiva` exitoso y del mismo `head_sha`;
+4. resolver la publicación por tag, nunca un asset `latest`;
+5. exigir los tres nombres de asset derivados del SHA, sin faltantes ni duplicados;
+6. descargar a temporales dentro del destino;
+7. verificar el sidecar SHA-256 con la función canónica;
+8. validar los metadatos y contrastar su `tree_sha` con el de `release.json`;
+9. validar `release.json`, commit, tree e inventario con el motor canónico.
+
+Sólo entonces promueve los tres archivos a su nombre definitivo. La preparación y la
+activación siguen siendo responsabilidad de `deploy/herramienta_despliegue.py`: el
+actualizador se ocupa de transporte y selección, no de decidir la validez de una release.
+
+Restricciones de transporte: HTTPS únicamente, redirecciones sólo hacia HTTPS y hacia
+hosts de GitHub declarados, timeout explícito, tamaño máximo por respuesta y descarga
+siempre a temporal. El cliente se construye sin manejo de proxy para hablar directo con
+GitHub; si alguna instalación futura necesitara proxy, es una decisión de WP-101 con su
+compuerta humana y no un comportamiento implícito. Ante cualquier falla —red, límite de
+tasa, JSON inválido, asset ausente, checksum incorrecto, tree incongruente o paquete
+truncado— no queda ningún artefacto parcial en el destino.
+
+### Contrato de configuración local (WP-100)
+
+`deploy/contrato_configuracion.json` viaja dentro de cada release, queda inventariado con
+checksum en `release.json` y declara qué recursos locales existen, con qué `schema` y si la
+release trae para ellos un bootstrap seguro.
+
+`activar` aplica ese contrato **antes** de tocar enlaces, archivos de sistema o servicios:
+
+- un recurso que ya existe se preserva byte a byte y nunca se reescribe;
+- un recurso ausente se incorpora sólo si la release declara explícitamente su bootstrap,
+  con creación atómica y el modo previsto, y jamás reemplaza uno existente;
+- si la release nueva declara para un recurso existente un `schema` distinto del que
+  declaraba la release activa, la activación **aborta antes de mutar** e informa que se
+  requiere una migración aprobada por HUMAN_GATE.
+
+No hay migraciones automáticas, ni completado de claves, ni restauración de configuración
+desde Git, ni sustitución de un archivo por su ejemplo actualizado.
+
+Hoy el contrato declara los cinco recursos institucionales —`config/system.toml`,
+`config/concejales.csv`, `config/apoyo-tecnico/mensajes.csv`, `config/bridge/devices.json`
+y `config/assets/bancas`— todos sin bootstrap, porque los provisiona el operador. El
+mecanismo existe para el caso futuro en que una release necesite un recurso que antes no
+existía.
+
+Diagnóstico de solo lectura del plan, sin ejecutar nada:
+
+```bash
+python3.14 /opt/sis-leg/current/deploy/herramienta_despliegue.py plan-configuracion <sha>
+```
+
 ### Prerequisitos administrativos
 
 - Linux Mint 22.3 x86_64 con systemd y Nginx;
@@ -260,7 +352,8 @@ instalar archivos de sistema, reiniciar servicios ni cambiar `current`.
 
 ### Actualización
 
-1. Obtener el artefacto del SHA con CI y revisión aprobadas.
+1. Obtener el artefacto del SHA con CI y revisión aprobadas, preferentemente desde el
+   canal público descrito arriba.
 2. Ejecutar `preparar`; crea la venv en su ruta final y no reinicia servicios
    ni cambia `current`.
 3. Verificar explícitamente que el sistema esté `SIN_PREPARAR`.

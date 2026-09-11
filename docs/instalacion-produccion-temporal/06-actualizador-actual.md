@@ -131,5 +131,19 @@ en un paquete sin validar. El actualizador deberá descubrir esa release públic
 credenciales, verificar identidad y checksums, y mantener intactos los guards institucionales, el
 lock global y la preservación de la configuración local.
 
-Hasta que WP-100 esté integrado, **el mecanismo descrito en este documento es el vigente** y
+## Estado con WP-100 implementado
+
+WP-100 ya construyó ese canal público. Desde su integración el repositorio publica, para cada
+`push` a `main` con CI completa verde, una GitHub Release inmutable `sis-leg-<SHA>` con paquete,
+sidecar y metadatos, y el Producto incluye `deploy/actualizador_publico.py`, que la consume sin
+ninguna credencial del host. El diseño completo está en
+[13 - Despliegue y operación](../13-despliegue-y-operacion.md), sección «Canal público de
+releases por SHA».
+
+**El wrapper instalado en el host sigue siendo el descrito en este documento.** WP-100 es
+desarrollo únicamente: no instaló ni reemplazó `/home/concejo/.local/bin/actualizar-sisleg.sh`,
+no tocó `/opt/sis-leg`, no modificó launchers `.desktop` y no ejecutó ninguna actualización real.
+Adaptar el wrapper productivo al canal público corresponde a WP-101 y a su compuerta humana.
+
+Hasta que eso ocurra, **el mecanismo descrito en este documento es el vigente en producción** y
 cualquier documentación que lo presente como definitivo es incorrecta.
