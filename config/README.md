@@ -23,6 +23,42 @@ Las plantillas `*.example.*` sí se versionan: son el contenido de referencia qu
 la revisión ve en cada Pull Request. Un cambio real en una plantilla aparece en
 Git como cualquier otro archivo.
 
+## Recursos por directorio: las fotografías de banca
+
+Desde WP-098 hay además un recurso de configuración que no es un archivo sino un
+**conjunto**:
+
+| Plantilla versionada           | Directorio operativo local | Quién lo escribe                |
+| ------------------------------ | -------------------------- | ------------------------------- |
+| `config/assets.example/bancas` | `config/assets/bancas`     | la persona que opera el sistema |
+
+`config/assets/bancas/` es la **única** ubicación física de las fotografías de
+los concejales. El padrón las referencia con `ruta_imagen` —por ejemplo
+`assets/bancas/banca-01.png`— y el backend las publica en
+`GET /api/v1/recursos/imagenes-concejales/<archivo>`, que es de donde las piden
+Moderación y la Pantalla del Recinto.
+
+Consecuencias prácticas:
+
+- reemplazar una foto en este directorio se ve en todas las pantallas **sin
+  reconstruir el frontend y sin reiniciar el backend**: el archivo se lee en cada
+  pedido y la respuesta declara `Cache-Control: no-cache`;
+- ya no existen copias por aplicación. Antes de WP-098 la misma foto estaba
+  duplicada en `apps/moderacion/public/assets/bancas/` y en
+  `apps/recinto/public/assets/bancas/`;
+- `ruta_imagen` debe empezar por `assets/bancas/`, nombrar un único archivo sin
+  subdirectorios y terminar en `.png`, `.jpg`, `.jpeg` o `.webp`. Se rechazan
+  URLs, rutas absolutas, barras invertidas y segmentos `..`, porque ese texto lo
+  escribe una persona y termina resolviendo a una ruta del servidor;
+- si falta la foto de una banca, esa tarjeta muestra las iniciales del concejal y
+  el resto del sistema sigue funcionando.
+
+El bootstrap trata este directorio con la misma regla de oro que los cuatro
+archivos, aplicada archivo por archivo: copia los que faltan, preserva byte a
+byte los que ya existen y **nunca borra** uno que la plantilla no tenga. Es
+decir, cargar la foto de un concejal nuevo es seguro: ninguna ejecución posterior
+la pisa ni la elimina.
+
 ## Preparar un clon nuevo
 
 ```bash
@@ -35,7 +71,8 @@ El comando copia cada plantilla a su ruta operativa **sólo si esa ruta no
 existe**, crea los directorios que falten, informa qué creó y qué preservó, y
 termina con código distinto de cero ante un fallo real de E/S. Repetirlo es
 idempotente y **nunca sobrescribe** un archivo existente: `mensajes.csv` y
-`devices.json` contienen trabajo operativo que no está en ningún commit.
+`devices.json` contienen trabajo operativo que no está en ningún commit, y las
+fotografías de `assets/bancas/` pueden ser las reales de la institución.
 
 `pnpm dev:stack`, `pnpm dev:stack:hot` y `pnpm test:e2e:integrado` lo ejecutan
 solos antes de arrancar, de modo que un clon nuevo funciona sin pasos manuales.

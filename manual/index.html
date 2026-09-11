@@ -1718,6 +1718,13 @@
                   </td>
                 </tr>
                 <tr>
+                  <td>Fotografías de las bancas</td>
+                  <td><code>/opt/sis-leg/config/assets/bancas/</code></td>
+                  <td>
+                    <code class="ruta" data-archivo="config/assets.example/bancas">config/assets.example/bancas</code>
+                  </td>
+                </tr>
+                <tr>
                   <td>Registros de sesión</td>
                   <td><code>/opt/sis-leg/logs/</code></td>
                   <td>No se versionan: los genera el sistema.</td>
@@ -1898,8 +1905,12 @@ volumen = 90</code></pre>
                 <tr>
                   <td><code>ruta_imagen</code></td>
                   <td>
-                    Ruta interna de la fotografía que se muestra en la banca. Obligatoria; no puede
-                    ser una dirección de Internet.
+                    Fotografía que se muestra en la banca. Obligatoria. Se escribe siempre como
+                    <code>assets/bancas/</code> seguido del nombre del archivo, por ejemplo
+                    <code>assets/bancas/banca-01.png</code>. Sólo se admiten archivos
+                    <code>.png</code>, <code>.jpg</code>, <code>.jpeg</code> o <code>.webp</code>.
+                    No puede ser una dirección de Internet, una ruta del disco que empiece con
+                    <code>/</code>, ni contener carpetas ni <code>..</code>.
                   </td>
                 </tr>
               </tbody>
@@ -1916,6 +1927,36 @@ volumen = 90</code></pre>
             La presencia <strong>no</strong> forma parte del padrón: es un dato del momento y toda
             preparación empieza con todas las bancas ausentes.
           </p>
+
+          <h4>Cambiar la fotografía de una banca</h4>
+
+          <p>
+            Todas las fotografías viven en un solo lugar:
+            <code>/opt/sis-leg/config/assets/bancas/</code>. Moderación y la pantalla del recinto
+            muestran ese mismo archivo, así que no hay que copiarlo en ningún otro sitio.
+          </p>
+
+          <p>
+            Para reemplazar una fotografía alcanza con dejar el archivo nuevo en esa carpeta, con
+            el mismo nombre que declara <code>ruta_imagen</code> en el padrón. El cambio se ve al
+            recargar las pantallas: no hay que reinstalar el sistema, ni reconstruir nada, ni
+            reiniciar el servidor.
+          </p>
+
+          <div class="nota">
+            <strong>Si falta una fotografía</strong>
+            La banca muestra las iniciales del concejal sobre fondo claro y todo lo demás sigue
+            funcionando con normalidad: presencia, votaciones y pedidos de palabra no se ven
+            afectados. Conviene revisar que el nombre del archivo coincida exactamente con el que
+            figura en <code>ruta_imagen</code>, incluidas mayúsculas y extensión.
+          </div>
+
+          <div class="nota">
+            <strong>Las fotografías no se pierden al actualizar</strong>
+            La carpeta de configuración vive fuera de las versiones instaladas. Una actualización
+            puede agregar fotografías de ejemplo que falten, pero nunca reemplaza ni borra las que
+            ya están cargadas.
+          </div>
 
           <h3>10.4 Mapa físico de botoneras</h3>
 

@@ -18,6 +18,14 @@ export {
   type EstadoSincronizable,
 } from './sincronizador'
 export { EstrategiaBackoff, temporizadorPredeterminado } from './backoff'
+
+// Fuente única de recursos de configuración publicados por el backend (WP-098)
+export {
+  PREFIJO_RUTA_IMAGEN_CONCEJAL,
+  RUTA_ENDPOINT_IMAGENES_CONCEJALES,
+  nombreArchivoImagenConcejal,
+  resolverUrlImagenConcejal,
+} from './recursos_configuracion'
 export { crearFabricaEventSourcePredeterminada } from './event_source'
 
 // Errores discriminados

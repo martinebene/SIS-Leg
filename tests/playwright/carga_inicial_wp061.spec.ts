@@ -35,6 +35,7 @@ import {
   URL_RECINTO,
   URL_TECNICO,
 } from './soporte/apoyo_tecnico'
+import { instalarFotosConcejales } from './soporte/fotos_concejales'
 
 const URL_SIMULADOR = 'http://localhost:3002/simulador/'
 
@@ -113,6 +114,11 @@ async function demorarScripts(page: Page, milisegundos: number): Promise<void> {
  * conserva `estado === null`, que es exactamente la ventana que se quiere observar.
  */
 async function instalarBackendSinRespuesta(page: Page): Promise<void> {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   await page.route('**/api/v1/**', (ruta: Route) =>
     ruta.fulfill({
       status: 503,

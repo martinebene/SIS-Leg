@@ -443,6 +443,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/recursos/imagenes-concejales/{nombre_archivo}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Obtener Imagen Concejal
+         * @description Devuelve la fotografía de banca guardada en la configuración local.
+         *
+         *     Entradas:
+         *         nombre_archivo: último segmento de la ``ruta_imagen`` declarada en el
+         *             padrón, por ejemplo ``banca-01.png``. Es el **único** dato que el
+         *             cliente controla: el directorio no es parametrizable desde la
+         *             petición, igual que ``system.toml`` o el padrón, para que nadie
+         *             pueda pedir la lectura de otra carpeta del servidor.
+         *
+         *     Resultado:
+         *         El archivo tal cual está en disco, con el ``Content-Type`` que
+         *         corresponde a su extensión.
+         *
+         *     Errores:
+         *         ``ErrorImagenConcejalNoDisponible`` (HTTP 404) tanto si el nombre incumple el
+         *         contrato como si el archivo no existe. La respuesta es deliberadamente
+         *         la misma en los dos casos: distinguirlas permitiría averiguar qué
+         *         archivos existen en el servidor probando nombres.
+         *
+         *     Nota sobre caché: se responde ``no-cache`` para que el navegador revalide
+         *     siempre. Es justamente lo que exige el criterio «sustituir el archivo se ve
+         *     sin rebuild»: con una caché larga, la pantalla del recinto seguiría
+         *     mostrando la foto anterior durante horas después de reemplazarla.
+         */
+        get: operations["obtener_imagen_concejal_api_v1_recursos_imagenes_concejales__nombre_archivo__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/apoyo-tecnico/transmision": {
         parameters: {
             query?: never;
@@ -3143,6 +3185,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorRespuesta"];
+                };
+            };
+        };
+    };
+    obtener_imagen_concejal_api_v1_recursos_imagenes_concejales__nombre_archivo__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                nombre_archivo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fotografía de banca tal como está en la configuración local. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                    "image/webp": unknown;
+                };
+            };
+            /** @description La fotografía no está configurada o su nombre es inválido. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

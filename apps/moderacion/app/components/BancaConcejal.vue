@@ -24,7 +24,7 @@
 import { computed, ref, watch } from 'vue'
 import type { ConcejalModeracion } from '@sis-leg/api-client'
 import { calcularPresentacionBanca, estilosBanca } from '@sis-leg/frontend-shared'
-import { resolverRutaAsset } from '../utils/rutas'
+import { resolverUrlFotoConcejal } from '../utils/rutas'
 
 const props = defineProps<{
   /** Datos completos de la banca y concejal proyectados por el backend. */
@@ -46,7 +46,10 @@ const props = defineProps<{
 }>()
 
 const errorCargaImagen = ref(false)
-const urlImagen = computed(() => resolverRutaAsset(props.concejal.ruta_imagen))
+// WP-098: la foto sale de la fuente única bajo `config/`, publicada por el
+// backend, exactamente la misma que dibuja la Pantalla del Recinto. Una ruta
+// inválida devuelve cadena vacía y la tarjeta cae en las iniciales.
+const urlImagen = computed(() => resolverUrlFotoConcejal(props.concejal.ruta_imagen))
 
 /**
  * Identifica la fotografía que corresponde a la baseline vigente.

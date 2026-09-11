@@ -1,7 +1,7 @@
 """Pruebas unitarias de carga y validación de ``config/concejales.csv`` (WP-003).
 
 Cubren el padrón válido, cada condición bloqueante de CA-003 (campos vacíos,
-duplicados, bancas inválidas, ``ruta_imagen`` externa), el rechazo del
+duplicados, bancas inválidas, ``ruta_imagen`` insegura), el rechazo del
 encabezado histórico con ``presente``, la correspondencia exacta
 padrón/disposición (RN-CON-04) y el congelamiento del snapshot.
 """
@@ -120,10 +120,23 @@ def test_rechaza_fila_con_cantidad_incorrecta_de_columnas(tmp_path: Path) -> Non
         (4, "-2", "entero positivo"),
         (5, "", "dispositivo"),
         (6, "", "ruta_imagen"),
-        (6, "https://servidor-ejemplo.com/logo.png", "ruta interna"),
-        (6, "http://servidor-ejemplo.com/logo.png", "ruta interna"),
-        (6, "ftp://servidor-ejemplo.com/logo.png", "ruta interna"),
-        (6, "//servidor-ejemplo.com/logo.png", "ruta interna"),
+        # URLs externas de todos los esquemas (WP-003, endurecido por WP-098).
+        (6, "https://servidor-ejemplo.com/logo.png", "URL externa"),
+        (6, "http://servidor-ejemplo.com/logo.png", "URL externa"),
+        (6, "ftp://servidor-ejemplo.com/logo.png", "URL externa"),
+        (6, "//servidor-ejemplo.com/logo.png", "URL externa"),
+        (6, "data:image/png;base64,AAAA", "URL externa"),
+        # Rutas absolutas: apuntarían fuera de la configuración de la instalación.
+        (6, "/etc/passwd", "absoluta"),
+        (6, "/assets/bancas/banca-01.png", "absoluta"),
+        # Path traversal en sus formas POSIX y de Windows.
+        (6, "assets/bancas/../../../etc/passwd", "sin subdirectorios"),
+        (6, "assets/bancas/..", "directorio relativo"),
+        (6, "..\\..\\secreto.png", "barras invertidas"),
+        # Fuera del único directorio admitido, o sin extensión de imagen.
+        (6, "assets/sonidos/sesion-abierta.wav", "assets/bancas/"),
+        (6, "banca-01.png", "assets/bancas/"),
+        (6, "assets/bancas/banca-01.svg", "extensión"),
     ],
     ids=[
         "dni-vacio",
@@ -139,6 +152,15 @@ def test_rechaza_fila_con_cantidad_incorrecta_de_columnas(tmp_path: Path) -> Non
         "ruta-http",
         "ruta-ftp",
         "ruta-protocolo-relativo",
+        "ruta-data-uri",
+        "ruta-absoluta-sistema",
+        "ruta-absoluta-interna",
+        "ruta-traversal",
+        "ruta-directorio-relativo",
+        "ruta-barra-invertida",
+        "ruta-fuera-del-directorio",
+        "ruta-sin-prefijo",
+        "ruta-extension-no-admitida",
     ],
 )
 def test_rechaza_fila_con_campo_bloqueante(
@@ -398,22 +420,32 @@ def test_los_archivos_canonicos_del_repositorio_cargan_juntos() -> None:
     ]
 
 
-def test_las_imagenes_del_padron_existen_en_ambos_frontends() -> None:
-    """Cada ruta interna del padrón tiene su PNG en Moderación y Recinto.
+def test_las_imagenes_del_padron_existen_en_la_plantilla_de_configuracion() -> None:
+    """Cada ruta del padrón de ejemplo tiene su PNG en la única fuente versionada.
 
     ``ruta_imagen`` es autoritativa: el test usa literalmente el valor del
     CSV en vez de reconstruir un nombre de archivo a partir de la banca.
+
+    Hasta WP-097 este test miraba `apps/moderacion/public` y `apps/recinto/public`
+    porque cada aplicación llevaba su propia copia. WP-098 eliminó esas copias:
+    la plantilla versionada es ahora `config/assets.example/bancas/`, y de ahí
+    sale —sin sobrescribir nada— el directorio runtime `config/assets/bancas/`
+    que el backend publica para las cuatro superficies.
     """
     from sis_leg_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
+    from sis_leg_backend.configuracion.imagenes_concejales import (
+        DIRECTORIO_IMAGENES_CONCEJALES_EJEMPLO,
+        validar_ruta_imagen_concejal,
+    )
 
     configuracion = cargar_configuracion_sistema(RUTA_TOML_REPO)
     padron = cargar_padron_concejales(RUTA_PADRON_REPO, configuracion)
+    plantilla = RAIZ_REPOSITORIO / DIRECTORIO_IMAGENES_CONCEJALES_EJEMPLO
 
     for concejal in padron.concejales:
-        ruta_relativa = Path(concejal.ruta_imagen)
-        for aplicacion in ("moderacion", "recinto"):
-            ruta_publica = RAIZ_REPOSITORIO / "apps" / aplicacion / "public" / ruta_relativa
-            assert ruta_publica.is_file(), f"Falta el asset declarado: {ruta_publica}"
+        nombre_archivo = validar_ruta_imagen_concejal(concejal.ruta_imagen)
+        ruta_plantilla = plantilla / nombre_archivo
+        assert ruta_plantilla.is_file(), f"Falta la foto de referencia: {ruta_plantilla}"
 
 
 def test_los_dispositivos_logicos_del_padron_coinciden_con_el_bridge() -> None:

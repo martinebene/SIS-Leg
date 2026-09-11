@@ -21,6 +21,8 @@
 
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
+import { instalarFotosConcejales } from './soporte/fotos_concejales'
+
 const RESOLUCIONES = [
   { nombre: '1366x768', width: 1366, height: 768 },
   { nombre: '1920x1080', width: 1920, height: 1080 },
@@ -247,6 +249,11 @@ function crearEstadoRecinto(votacion: Record<string, unknown> | null) {
  * ninguna de las dos superficies puede aplicar una política propia.
  */
 async function instalarBackend(page: Page, estado: Record<string, unknown>): Promise<void> {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   await page.addInitScript((jsonEstado) => {
     class FuenteMock {
       listeners: Record<string, ((evento: unknown) => void)[]> = {}

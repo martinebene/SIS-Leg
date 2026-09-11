@@ -54,3 +54,20 @@ class ErrorMensajesTecnicosInvalido(ErrorConfiguracion):
     A diferencia del padrón, este archivo lo escribe el propio backend: por eso
     un archivo inválido nunca se sobrescribe, solamente se rechaza.
     """
+
+
+class ErrorImagenConcejalNoDisponible(ErrorConfiguracion):
+    """La fotografía pedida no existe en la configuración local (WP-098).
+
+    Se usa únicamente en la publicación HTTP de ``config/assets/bancas/``.
+    Representa dos situaciones que el cliente no puede distinguir a propósito:
+    un nombre de archivo que incumple el contrato seguro y un archivo que
+    simplemente no está. Diferenciarlas permitiría averiguar qué archivos
+    existen en el servidor probando nombres, así que ambas responden 404 con el
+    mismo mensaje.
+
+    No hereda de ``ErrorPadronInvalido`` deliberadamente: aquel significa «no se
+    puede preparar el recinto» y se traduce a 503, mientras que esto es
+    solamente un recurso ausente y no impide operar. Una banca sin foto muestra
+    sus iniciales y todo lo demás sigue funcionando.
+    """

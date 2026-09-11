@@ -35,6 +35,25 @@ es la biblioteca de mensajes que el propio backend administra por REST, y
 botoneras. Sobrescribir cualquiera de los dos destruiría trabajo operativo que
 no está en ningún commit.
 
+Recursos por directorio (WP-098)
+--------------------------------
+
+Las fotografías de banca no son un archivo sino un **conjunto**: el padrón
+declara una ``ruta_imagen`` por concejal y todas resuelven bajo
+``config/assets/bancas/``. Por eso existe una segunda tabla, la de directorios,
+con exactamente la misma regla de oro: se copia desde la plantilla versionada
+``config/assets.example/bancas/`` **cada archivo que falte**, y jamás se toca
+uno que ya exista.
+
+La diferencia con la tabla de archivos es sólo la unidad de trabajo. La
+comparación se hace archivo por archivo, no directorio contra directorio: si el
+operador ya reemplazó ocho fotos por las reales y faltan cuatro, se crean
+únicamente esas cuatro y las ocho propias quedan intactas.
+
+Éste es el modelo que WP-100 debe reutilizar para incorporar recursos nuevos de
+configuración durante una actualización: agregar lo que falta, nunca sobrescribir
+lo que la instalación ya tiene.
+
 Uso
 ---
 
@@ -109,6 +128,39 @@ ARCHIVOS_CONFIGURACION_LOCAL: tuple[ArchivoConfiguracionLocal, ...] = (
         plantilla=Path("services/device-bridge/config/devices.example.json"),
         destino=Path("services/device-bridge/config/devices.json"),
         descripcion="mapeo físico del device bridge",
+    ),
+)
+
+
+@dataclass(frozen=True)
+class DirectorioConfiguracionLocal:
+    """Describe un conjunto de recursos operativos y su plantilla versionada.
+
+    Atributos:
+        plantilla: directorio versionado con los archivos de referencia.
+        destino: directorio operativo ignorado por Git que el sistema lee en
+            ejecución.
+        descripcion: texto corto para la salida del comando.
+
+    Es la versión «muchos archivos» de :class:`ArchivoConfiguracionLocal`. Se
+    modela aparte y no como una variante con bandera porque las dos operaciones
+    son distintas: una copia un archivo, la otra recorre un directorio y decide
+    archivo por archivo.
+    """
+
+    plantilla: Path
+    destino: Path
+    descripcion: str
+
+
+# Tabla canónica de los recursos de configuración que son un directorio
+# completo (WP-098). Hoy hay uno solo; la tabla existe igual porque es el punto
+# de extensión que WP-100 debe usar para incorporar recursos nuevos.
+DIRECTORIOS_CONFIGURACION_LOCAL: tuple[DirectorioConfiguracionLocal, ...] = (
+    DirectorioConfiguracionLocal(
+        plantilla=Path("config/assets.example/bancas"),
+        destino=Path("config/assets/bancas"),
+        descripcion="fotografías de banca de los concejales",
     ),
 )
 
@@ -218,16 +270,122 @@ def preparar_configuracion_local(
     return [materializar_archivo(archivo, raiz) for archivo in archivos]
 
 
-def describir_resultados(resultados: Sequence[ResultadoArchivo]) -> str:
+@dataclass(frozen=True)
+class ResultadoDirectorio:
+    """Resultado de procesar un directorio: qué archivos se crearon y cuáles no.
+
+    Atributos:
+        directorio: entrada de la tabla canónica que se acaba de procesar.
+        creados: nombres de los archivos que faltaban y se copiaron.
+        preservados: nombres de los archivos que ya existían y no se tocaron.
+
+    Se guardan los nombres y no sólo las cantidades porque la salida del
+    comando es también una auditoría: quien la lee tiene que poder ver
+    exactamente qué apareció en su checkout.
+    """
+
+    directorio: DirectorioConfiguracionLocal
+    creados: tuple[str, ...]
+    preservados: tuple[str, ...]
+
+
+def materializar_directorio(
+    directorio: DirectorioConfiguracionLocal, raiz: Path = RAIZ_REPOSITORIO
+) -> ResultadoDirectorio:
+    """Copia desde la plantilla únicamente los archivos que falten en el destino.
+
+    Entradas:
+        directorio: entrada de la tabla canónica de directorios.
+        raiz: raíz sobre la que se resuelven ambas rutas relativas.
+
+    Resultado:
+        Un ``ResultadoDirectorio`` con los nombres creados y preservados, en
+        orden alfabético para que la salida sea determinista.
+
+    Efectos laterales:
+        Crea el directorio de destino si falta y escribe los archivos ausentes.
+        **Nunca** sobrescribe ni borra un archivo existente, y tampoco elimina
+        del destino un archivo que la plantilla ya no tenga: si el operador
+        agregó la foto de un concejal nuevo, ese archivo le pertenece.
+
+    Errores:
+        ErrorPreparacionConfigLocal: si falta el directorio plantilla o si
+            crear el destino o copiar un archivo falla por E/S.
+
+    Esta es la pieza que WP-100 necesita: «agregar lo que falta, respetar lo que
+    ya está» es exactamente la semántica que debe tener una actualización frente
+    a la configuración local de una instalación en producción.
+    """
+
+    ruta_plantilla = raiz / directorio.plantilla
+    if not ruta_plantilla.is_dir():
+        raise ErrorPreparacionConfigLocal(
+            f"Falta el directorio plantilla versionado {directorio.plantilla}. "
+            "El checkout está incompleto: no se pueden crear los recursos de "
+            f"{directorio.destino} sin sus archivos de ejemplo."
+        )
+
+    ruta_destino = raiz / directorio.destino
+    creados: list[str] = []
+    preservados: list[str] = []
+
+    try:
+        ruta_destino.mkdir(parents=True, exist_ok=True)
+        # ``sorted`` fija el orden del informe; ``is_file`` descarta
+        # subdirectorios, que esta tabla no contempla todavía.
+        for archivo_plantilla in sorted(ruta_plantilla.iterdir()):
+            if not archivo_plantilla.is_file():
+                continue
+            destino_archivo = ruta_destino / archivo_plantilla.name
+            if destino_archivo.exists():
+                preservados.append(archivo_plantilla.name)
+                continue
+            shutil.copyfile(archivo_plantilla, destino_archivo)
+            creados.append(archivo_plantilla.name)
+    except OSError as error:
+        raise ErrorPreparacionConfigLocal(
+            f"No se pudo preparar {directorio.destino} desde {directorio.plantilla}: {error}"
+        ) from error
+
+    return ResultadoDirectorio(
+        directorio=directorio,
+        creados=tuple(creados),
+        preservados=tuple(preservados),
+    )
+
+
+def preparar_directorios_configuracion_local(
+    raiz: Path = RAIZ_REPOSITORIO,
+    directorios: Sequence[DirectorioConfiguracionLocal] = DIRECTORIOS_CONFIGURACION_LOCAL,
+) -> list[ResultadoDirectorio]:
+    """Materializa los recursos faltantes de todos los directorios de la tabla.
+
+    Se detiene en el primero que falle, por el mismo motivo que la versión de
+    archivos: si el disco o los permisos están mal, seguir sólo enmascara el
+    problema real.
+    """
+
+    return [materializar_directorio(directorio, raiz) for directorio in directorios]
+
+
+def describir_resultados(
+    resultados: Sequence[ResultadoArchivo],
+    resultados_directorios: Sequence[ResultadoDirectorio] = (),
+) -> str:
     """Arma el informe legible que el comando imprime al terminar.
 
     Entradas:
         resultados: lo devuelto por ``preparar_configuracion_local``.
+        resultados_directorios: lo devuelto por
+            ``preparar_directorios_configuracion_local``. Es opcional para que
+            quien sólo procesa archivos no tenga que pasar una lista vacía.
 
     Resultado:
         Texto de varias líneas: una por archivo indicando ``creado`` o
-        ``preservado``, más un resumen final. Se separa de ``main`` para que las
-        pruebas puedan verificar el mensaje sin capturar la salida estándar.
+        ``preservado``, el resumen de WP-073 y, cuando hay recursos por
+        directorio, una sección propia con su propio resumen. Se separa de
+        ``main`` para que las pruebas puedan verificar el mensaje sin capturar
+        la salida estándar.
     """
 
     lineas = ["Configuración operativa local (WP-073):"]
@@ -240,6 +398,25 @@ def describir_resultados(resultados: Sequence[ResultadoArchivo]) -> str:
     creados = sum(1 for resultado in resultados if resultado.creado)
     preservados = len(resultados) - creados
     lineas.append(f"Resumen: {creados} creado(s), {preservados} preservado(s).")
+
+    if resultados_directorios:
+        lineas.append("Recursos de configuración por directorio (WP-098):")
+        creados_directorios = 0
+        preservados_directorios = 0
+        for resultado in resultados_directorios:
+            creados_directorios += len(resultado.creados)
+            preservados_directorios += len(resultado.preservados)
+            lineas.append(
+                f"  - {resultado.directorio.destino}: "
+                f"{len(resultado.creados)} creado(s), "
+                f"{len(resultado.preservados)} preservado(s) "
+                f"({resultado.directorio.descripcion})"
+            )
+        lineas.append(
+            f"Resumen por directorio: {creados_directorios} archivo(s) creado(s), "
+            f"{preservados_directorios} preservado(s)."
+        )
+
     return "\n".join(lineas)
 
 
@@ -249,8 +426,8 @@ def crear_analizador_argumentos() -> argparse.ArgumentParser:
     analizador = argparse.ArgumentParser(
         prog="preparar_config_local",
         description=(
-            "Crea los archivos de configuración operativa local que falten, copiándolos "
-            "desde sus plantillas versionadas. Nunca sobrescribe un archivo existente."
+            "Crea los archivos y recursos de configuración operativa local que falten, "
+            "copiándolos desde sus plantillas versionadas. Nunca sobrescribe uno existente."
         ),
     )
     analizador.add_argument(
@@ -269,19 +446,21 @@ def main(argumentos: Sequence[str] | None = None) -> int:
     """Punto de entrada del comando.
 
     Resultado:
-        ``0`` si los cuatro archivos quedaron disponibles; ``1`` si algún fallo
-        real de E/S o una plantilla ausente impidió dejarlos listos.
+        ``0`` si los cuatro archivos y los recursos por directorio quedaron
+        disponibles; ``1`` si algún fallo real de E/S o una plantilla ausente
+        impidió dejarlos listos.
     """
 
     opciones = crear_analizador_argumentos().parse_args(argumentos)
 
     try:
         resultados = preparar_configuracion_local(opciones.raiz)
+        resultados_directorios = preparar_directorios_configuracion_local(opciones.raiz)
     except ErrorPreparacionConfigLocal as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
 
-    print(describir_resultados(resultados))
+    print(describir_resultados(resultados, resultados_directorios))
     return 0
 
 

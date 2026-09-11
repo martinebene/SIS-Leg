@@ -16,7 +16,7 @@
 import { computed, ref, watch } from 'vue'
 import type { ConcejalPublico } from '@sis-leg/api-client'
 import { calcularPresentacionBanca, estilosBanca } from '@sis-leg/frontend-shared'
-import { resolverRutaAsset } from '../utils/rutas'
+import { resolverUrlFotoConcejal } from '../utils/rutas'
 
 const props = defineProps<{
   concejal: ConcejalPublico
@@ -31,7 +31,11 @@ const props = defineProps<{
 }>()
 
 const imagenFallida = ref(false)
-const urlImagen = computed(() => resolverRutaAsset(props.concejal.ruta_imagen))
+// WP-098: la foto sale de la fuente única bajo `config/`, publicada por el
+// backend. Si la `ruta_imagen` declarada no cumple el contrato seguro, la
+// función devuelve cadena vacía y la tarjeta dibuja directamente el fallback de
+// iniciales, sin pedir ninguna URL.
+const urlImagen = computed(() => resolverUrlFotoConcejal(props.concejal.ruta_imagen))
 const claveImagen = computed(
   () =>
     `${props.concejal.nombre}|${props.concejal.apellido}|${props.concejal.banca}|${props.concejal.ruta_imagen}`,

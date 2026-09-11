@@ -69,7 +69,7 @@ El operador no puede marcar presencia manualmente.
 Cada banca debe reflejar:
 
 - identidad del concejal;
-- imagen indicada por `ruta_imagen` en el padrón, sin hardcodear una imagen por número de banca;
+- imagen indicada por `ruta_imagen` en el padrón, sin hardcodear una imagen por número de banca. Desde WP-098 se resuelve contra la fuente única `config/assets/bancas/` que publica el backend, la misma que usa la Pantalla del Recinto, y ante ruta inválida o archivo ausente se muestran las iniciales;
 - presente/ausente;
 - test visual temporal;
 - dispositivo lógico cuando resulte útil para diagnóstico.

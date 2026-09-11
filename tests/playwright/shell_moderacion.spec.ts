@@ -29,6 +29,8 @@
 
 import { test, expect, type Page } from '@playwright/test'
 
+import { instalarFotosConcejales } from './soporte/fotos_concejales'
+
 function crearConcejalesFixture(cantidad = 12) {
   return Array.from({ length: cantidad }, (_, i) => {
     const banca = i + 1
@@ -107,6 +109,11 @@ function crearEstadoFixture(parcial: Record<string, unknown> = {}) {
 }
 
 async function configurarRutasMock(page: Page, estado: Record<string, unknown>) {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   const estadoJson = JSON.stringify(estado)
 
   await page.addInitScript((jsonStr) => {
@@ -171,6 +178,11 @@ async function configurarRutasMock(page: Page, estado: Record<string, unknown>) 
  * en el frontend ni depender de un backend real dentro del test de interfaz.
  */
 async function configurarCicloVotacionMock(page: Page, estadoInicial: Record<string, unknown>) {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   await page.addInitScript((inicial) => {
     type EstadoPrueba = Record<string, unknown> & {
       revision: number
@@ -385,6 +397,11 @@ async function configurarCicloVotacionMock(page: Page, estadoInicial: Record<str
  * su cuenta: la prueba reproduce la misma autoridad backend que existe en producción.
  */
 async function configurarOrdenDelDiaMock(page: Page, estadoInicial: Record<string, unknown>) {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   await page.addInitScript((inicial) => {
     type PuntoOrdenPrueba = {
       nro_votacion: number
@@ -524,6 +541,11 @@ async function configurarCicloPalabraRemapeoMock(
   page: Page,
   estadoInicial: Record<string, unknown>,
 ) {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   await page.addInitScript((inicial) => {
     type CapacidadPrueba = { habilitada: boolean; motivos: string[] }
     type PersonaPalabra = {
@@ -2358,6 +2380,11 @@ test.describe('WP-041 - Eventos con selector fijo y evento más nuevo primero', 
    * sin depender de tiempos ni de un backend real.
    */
   async function configurarBackendEventosMock(page: Page, estadoInicial: Record<string, unknown>) {
+    // WP-098: la fotografía de banca ya no es un asset del build; la publica
+    // el backend desde la configuración local. Sin backend real, se responde
+    // desde la plantilla versionada, que es el mismo archivo de siempre.
+    await instalarFotosConcejales(page)
+
     await page.addInitScript((inicial) => {
       type EstadoPrueba = Record<string, unknown> & {
         revision: number

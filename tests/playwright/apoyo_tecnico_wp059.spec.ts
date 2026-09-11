@@ -33,6 +33,8 @@
 
 import { expect, test, type Page } from '@playwright/test'
 
+import { instalarFotosConcejales } from './soporte/fotos_concejales'
+
 const URL_TECNICO = 'http://localhost:3003/tecnico/'
 
 const RESOLUCIONES = [
@@ -165,6 +167,11 @@ const REMAPEO_CAPTURANDO = {
 
 /** Instala el mismo doble de SSE + REST que usa la suite de WP-056. */
 async function instalarBackend(page: Page, estados: Record<string, unknown>): Promise<void> {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   await page.addInitScript((iniciales) => {
     type Escucha = (evento: { type: string; data?: string }) => void
     const mapa = iniciales as Record<string, unknown>

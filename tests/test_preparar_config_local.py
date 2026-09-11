@@ -12,7 +12,11 @@ Qué se demuestra acá
    de E/S o ante una plantilla ausente;
 6. la separación quedó bien declarada en Git: en un repositorio de prueba que
    usa el `.gitignore` real del proyecto, los cuatro archivos operativos quedan
-   **ignorados** y las cuatro plantillas siguen siendo **trackeables**.
+   **ignorados** y las cuatro plantillas siguen siendo **trackeables**;
+7. desde WP-098 existe además una tabla de **recursos por directorio**: copia
+   sólo los archivos que faltan, preserva los que el operador ya reemplazó y no
+   borra los que agregó. Ése es el modelo que WP-100 debe reutilizar para
+   incorporar recursos nuevos sin pisar la configuración de una instalación.
 
 El punto 2 es el que protege el trabajo operativo real: `mensajes.csv` lo
 administra el backend por REST y `devices.json` lo reescribe el device bridge al
@@ -28,12 +32,16 @@ import pytest
 
 from scripts.preparar_config_local import (
     ARCHIVOS_CONFIGURACION_LOCAL,
+    DIRECTORIOS_CONFIGURACION_LOCAL,
     ArchivoConfiguracionLocal,
+    DirectorioConfiguracionLocal,
     ErrorPreparacionConfigLocal,
     describir_resultados,
     main,
     materializar_archivo,
+    materializar_directorio,
     preparar_configuracion_local,
+    preparar_directorios_configuracion_local,
 )
 
 RAIZ_REPOSITORIO = Path(__file__).resolve().parents[1]
@@ -53,6 +61,16 @@ def crear_checkout_con_plantillas(raiz: Path) -> None:
         ruta_plantilla = raiz / archivo.plantilla
         ruta_plantilla.parent.mkdir(parents=True, exist_ok=True)
         ruta_plantilla.write_text(f"# plantilla de {archivo.destino.name}\n", encoding="utf-8")
+
+    # Desde WP-098 un checkout completo incluye también los directorios
+    # plantilla. Se siembran con tres archivos por directorio: alcanza para
+    # distinguir «creado», «preservado» y «agregado por el operador».
+    for directorio in DIRECTORIOS_CONFIGURACION_LOCAL:
+        ruta_plantilla = raiz / directorio.plantilla
+        ruta_plantilla.mkdir(parents=True, exist_ok=True)
+        for indice in range(1, 4):
+            nombre = f"recurso-{indice:02d}.png"
+            (ruta_plantilla / nombre).write_bytes(f"plantilla {nombre}".encode())
 
 
 # =============================================================================
@@ -236,6 +254,142 @@ def test_el_informe_distingue_creados_de_preservados(tmp_path: Path) -> None:
 
 
 # =============================================================================
+# 3 bis. Recursos por directorio (WP-098)
+# =============================================================================
+
+
+def test_crea_los_recursos_de_directorio_que_falten(tmp_path: Path) -> None:
+    """En un clon nuevo aparecen todas las fotos de referencia bajo la ruta runtime."""
+
+    crear_checkout_con_plantillas(tmp_path)
+
+    resultados = preparar_directorios_configuracion_local(tmp_path)
+
+    assert len(resultados) == len(DIRECTORIOS_CONFIGURACION_LOCAL)
+    for resultado in resultados:
+        origen = tmp_path / resultado.directorio.plantilla
+        destino = tmp_path / resultado.directorio.destino
+        esperados = sorted(archivo.name for archivo in origen.iterdir())
+        assert list(resultado.creados) == esperados
+        assert resultado.preservados == ()
+        for nombre in esperados:
+            assert (destino / nombre).read_bytes() == (origen / nombre).read_bytes()
+
+
+def test_preserva_los_recursos_que_el_operador_ya_reemplazo(tmp_path: Path) -> None:
+    """El corazón del modelo que hereda WP-100: agregar lo que falta, nunca pisar.
+
+    Se simula una instalación donde ya se cargó la foto real de un concejal: ese
+    archivo debe quedar byte a byte intacto mientras los que faltan se crean.
+    """
+
+    crear_checkout_con_plantillas(tmp_path)
+    directorio = DIRECTORIOS_CONFIGURACION_LOCAL[0]
+    destino = tmp_path / directorio.destino
+    destino.mkdir(parents=True)
+    foto_real = destino / "recurso-02.png"
+    contenido_real = b"foto real cargada por el operador"
+    foto_real.write_bytes(contenido_real)
+
+    resultado = materializar_directorio(directorio, tmp_path)
+
+    assert "recurso-02.png" in resultado.preservados
+    assert "recurso-02.png" not in resultado.creados
+    assert foto_real.read_bytes() == contenido_real
+    assert sorted(resultado.creados) == ["recurso-01.png", "recurso-03.png"]
+
+
+def test_no_borra_un_recurso_que_la_plantilla_no_tiene(tmp_path: Path) -> None:
+    """Una foto agregada por el operador le pertenece: nadie la elimina.
+
+    Es el caso de un concejal nuevo cuya foto no existe en el repositorio. El
+    bootstrap sólo agrega; sincronizar en el otro sentido borraría trabajo real.
+    """
+
+    crear_checkout_con_plantillas(tmp_path)
+    directorio = DIRECTORIOS_CONFIGURACION_LOCAL[0]
+    destino = tmp_path / directorio.destino
+    destino.mkdir(parents=True)
+    propia = destino / "concejal-nuevo.png"
+    propia.write_bytes(b"foto que solo existe en esta instalacion")
+
+    materializar_directorio(directorio, tmp_path)
+
+    assert propia.read_bytes() == b"foto que solo existe en esta instalacion"
+
+
+def test_repetir_la_preparacion_de_directorios_es_idempotente(tmp_path: Path) -> None:
+    """La segunda ejecución no crea ni reescribe: mismo contenido y misma mtime."""
+
+    crear_checkout_con_plantillas(tmp_path)
+    preparar_directorios_configuracion_local(tmp_path)
+    destino = tmp_path / DIRECTORIOS_CONFIGURACION_LOCAL[0].destino
+    huellas = {
+        archivo.name: (archivo.read_bytes(), archivo.stat().st_mtime_ns)
+        for archivo in destino.iterdir()
+    }
+
+    resultados = preparar_directorios_configuracion_local(tmp_path)
+
+    assert all(resultado.creados == () for resultado in resultados)
+    for archivo in destino.iterdir():
+        contenido, mtime = huellas[archivo.name]
+        assert archivo.read_bytes() == contenido
+        assert archivo.stat().st_mtime_ns == mtime
+
+
+def test_falla_si_falta_el_directorio_plantilla_versionado(tmp_path: Path) -> None:
+    """Un checkout incompleto se denuncia en vez de dejar bancas sin fotografía."""
+
+    directorio = DirectorioConfiguracionLocal(
+        plantilla=Path("config/inexistente.example/recursos"),
+        destino=Path("config/inexistente/recursos"),
+        descripcion="entrada de prueba sin plantilla",
+    )
+
+    with pytest.raises(ErrorPreparacionConfigLocal) as excepcion:
+        materializar_directorio(directorio, tmp_path)
+
+    assert "Falta el directorio plantilla versionado" in str(excepcion.value)
+
+
+def test_el_informe_resume_los_recursos_por_directorio(tmp_path: Path) -> None:
+    """La salida tiene que permitir auditar también lo que pasó con las fotos."""
+
+    crear_checkout_con_plantillas(tmp_path)
+    archivos = preparar_configuracion_local(tmp_path)
+    directorios = preparar_directorios_configuracion_local(tmp_path)
+
+    informe = describir_resultados(archivos, directorios)
+
+    assert "Recursos de configuración por directorio (WP-098)" in informe
+    assert "Resumen por directorio: 3 archivo(s) creado(s), 0 preservado(s)." in informe
+
+    # Sin recursos por directorio, el informe conserva exactamente su forma previa.
+    assert "por directorio" not in describir_resultados(archivos)
+
+
+def test_el_comando_completo_prepara_archivos_y_directorios(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`pnpm preparar:config` deja listo todo lo que el backend lee en ejecución."""
+
+    crear_checkout_con_plantillas(tmp_path)
+
+    assert main(["--raiz", str(tmp_path)]) == 0
+
+    salida = capsys.readouterr().out
+    assert "4 creado(s), 0 preservado(s)" in salida
+    assert "Resumen por directorio: 3 archivo(s) creado(s), 0 preservado(s)." in salida
+    destino = tmp_path / DIRECTORIOS_CONFIGURACION_LOCAL[0].destino
+    assert sorted(archivo.name for archivo in destino.iterdir()) == [
+        "recurso-01.png",
+        "recurso-02.png",
+        "recurso-03.png",
+    ]
+
+
+# =============================================================================
 # 4. Evidencia Git de la separación
 # =============================================================================
 
@@ -271,6 +425,7 @@ def test_git_ignora_los_operativos_y_conserva_trackeables_las_plantillas(tmp_pat
     (repositorio / ".gitignore").write_bytes(RUTA_GITIGNORE.read_bytes())
     crear_checkout_con_plantillas(repositorio)
     preparar_configuracion_local(repositorio)
+    preparar_directorios_configuracion_local(repositorio)
 
     assert ejecutar_git(repositorio, "add", "-A").returncode == 0
     trackeados = set(ejecutar_git(repositorio, "ls-files").stdout.split())
@@ -301,10 +456,26 @@ def test_git_ignora_los_operativos_y_conserva_trackeables_las_plantillas(tmp_pat
             f"El archivo operativo {archivo.destino} no debe versionarse."
         )
 
+    # WP-098: la misma separación rige para los recursos por directorio. Las
+    # fotos de referencia se revisan en la PR; las de la instalación no existen
+    # para Git, así que cargar la foto real de un concejal no ensucia el checkout.
+    for directorio in DIRECTORIOS_CONFIGURACION_LOCAL:
+        origen = repositorio / directorio.plantilla
+        for archivo_plantilla in origen.iterdir():
+            ruta_relativa = (directorio.plantilla / archivo_plantilla.name).as_posix()
+            assert ruta_relativa in trackeados, (
+                f"La plantilla {ruta_relativa} debe seguir siendo revisable en Git."
+            )
+            ruta_operativa = (directorio.destino / archivo_plantilla.name).as_posix()
+            assert ruta_operativa not in trackeados, (
+                f"El recurso operativo {ruta_operativa} no debe versionarse."
+            )
+
     # Modificar la configuración local no ensucia el checkout: ésta es la razón
     # por la que `scripts/iniciar_wp_orca.py` dejaba de poder iniciar un WP.
     (repositorio / "config/system.toml").write_text("quorum = 999\n", encoding="utf-8")
     (repositorio / "config/.system.toml.swp").write_bytes(b"temporal de vim")
+    (repositorio / "config/assets/bancas/recurso-01.png").write_bytes(b"foto real")
     assert ejecutar_git(repositorio, "status", "--short").stdout.strip() == ""
 
     # Un cambio real en una plantilla sí tiene que aparecer y seguir siendo revisable.
