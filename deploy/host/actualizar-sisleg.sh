@@ -26,7 +26,13 @@ echo
 if [ "${estado_final}" -eq 0 ]; then
 	echo "Operación terminada correctamente."
 else
-	echo "La operación NO se completó (código ${estado_final}). No se cambió el sistema en uso."
+	# No se afirma que el sistema haya quedado sin cambios: una actualización en
+	# caliente puede fallar después de haber tocado el host, e incluso puede
+	# fallar su propio rollback. El wrapper no sabe en cuál de esos casos está,
+	# así que remite al diagnóstico real en lugar de tranquilizar de más.
+	echo "La operación NO se completó (código ${estado_final})."
+	echo "No se puede dar por sentado que el sistema en uso haya quedado sin cambios."
+	echo "Leé el diagnóstico de arriba y el historial antes de reintentar o de operar el recinto."
 fi
 echo "Historial: ${REGISTRO}"
 echo

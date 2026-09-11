@@ -74,7 +74,11 @@ resolución del SHA público de `main`, idempotencia, descarga verificada, prefl
   por el sistema que estaba;
 - con SIS-Leg activo: actualiza en caliente de release a release, sin pasar por el sistema anterior,
   con health completo; si falla, el motor canónico revierte a la release previa y se conserva el
-  `target-release` anterior;
+  `target-release` anterior. El desenlace del rollback se clasifica por lo que se observa en el host
+  y contra la release que estaba realmente en `current`, no contra `target-release`: son cosas
+  distintas, y un host sano sin objetivo declarado tiene rollbacks perfectamente válidos. Si la
+  restauración no se puede demostrar, el mensaje lo dice y exige intervención en lugar de afirmar
+  que se volvió a la versión anterior;
 - si `target-release` ya es la versión pública y la release está preparada, no descarga, no prepara y
   no reinicia nada;
 - si `current` y `target-release` divergen de forma no resoluble, aborta sin mutar.
@@ -94,8 +98,27 @@ ni respaldo.
 **Cambiar a SIS-Leg**: lee y valida `target-release` con las ocho comprobaciones —incluida la
 identidad de árbol—, aplica el guard, retira el sistema anterior con *disable-first* verificado,
 activa la release con la herramienta canónica, habilita las unidades sólo después del health y
-verifica el estado final. Ante cualquier falla posterior al inicio de la retirada ejecuta el rollback
+verifica el estado final. Ante cualquier falla posterior a la primera mutación ejecuta el rollback
 externo completo. No borra releases, configuración ni registros.
+
+### Dónde empieza el rollback
+
+Las retiradas son multietapa y la frontera entre «todavía no toqué nada» y «ya estoy a mitad de
+camino» decide qué corresponde hacer ante una falla:
+
+- el *disable-first* se ejecuta **antes** del bloque protegido, porque es la única etapa que se
+  deshace sola: si no se puede demostrar, se restaura la habilitación previa y se aborta sin
+  rollback, con el host entero y sin un solo servicio detenido;
+- desde la primera detención, **toda** falla entra en la ruta de restauración, incluidas las que
+  ocurren dentro de la propia retirada. Haber detenido el bridge y no poder detener el backend deja
+  el host en un estado que no es ni el de origen ni el de destino, y es justamente el que estas
+  operaciones existen para no producir.
+
+Legacy → SIS-Leg restaura el snapshot Legacy completo y exige `ESTABLE_LEGACY`; SIS-Leg → Legacy
+restaura el snapshot SIS-Leg completo —la release que estaba realmente en `current`— y exige
+`ESTABLE_SISLEG`. Los snapshots se toman antes de la primera mutación: después ya no habría de dónde
+leerlos. Si el rollback tampoco funciona se informan los dos errores, se registra `ROLLBACK_FALLIDO`
+y el estado **observado**, y se exige intervención humana sin declarar ningún sistema activo.
 
 **Cambiar a Legacy**: idempotente e independiente de versión, y además la operación de **salida
 segura** del host. Eso gobierna dos propiedades:
@@ -179,9 +202,20 @@ Pasos previstos, en orden:
    **contenido y metadata**: un destino sólo se declara sin cambio cuando los bytes, el modo y el
    propietario son los declarados. Un archivo con el contenido correcto pero con permisos o dueño
    equivocados aparece como corrección de metadata, que se aplica sin reescribir el archivo y sin
-   generar un respaldo redundante;
+   generar un respaldo redundante.
+
+   El plan es además un preflight real: **falla** si alguno de los usuarios o grupos declarados no
+   existe en la máquina, y lo hace para los cuatro componentes, existan o no todavía en el destino.
+   Un `--usuario-operador` mal escrito se descubre ahí y no con el archivo ya instalado. `aplicar`
+   repite esa comprobación justo antes de la primera escritura, porque entre planificar y aplicar
+   puede haber pasado tiempo;
 3. sólo entonces, con autorización explícita, `aplicar --confirmar`, que respalda cada wrapper
-   reemplazado antes de escribirlo;
+   reemplazado antes de escribirlo. Al crear o reemplazar, el contenido, el modo y el propietario se
+   fijan sobre un temporal y recién después se publica con `os.replace`: el destino final aparece de
+   una sola vez y ya correcto, y nunca existe el instante en que la entrada privilegiada está en su
+   lugar con el dueño equivocado. Corregir la metadata de un archivo que ya existe, en cambio, son
+   dos llamadas al sistema y no es atómico: si la segunda falla se restaura el modo previo y se
+   informa exactamente cómo quedó el archivo, sin fingir una atomicidad que ese camino no tiene;
 4. verificar los componentes instalados **sin** ejecutar ninguna conmutación ni actualización: WP-101B
    puede detenerse acá;
 5. cualquier operación real posterior —una actualización o una conmutación— es una decisión separada,
@@ -218,12 +252,18 @@ los componentes, quien opera el sistema sigue usando exactamente los mismos tres
 mismo comportamiento visible. Lo que cambió es interno —de dónde sale el código que ejecutan— y eso
 no es información útil para el uso ni para el soporte.
 
-La evaluación se repitió al corregir la auditoría previa a la integración, con el mismo resultado.
-Las correcciones —idempotencia por metadata del aplicador, historial completo con evidencia,
+La evaluación se repitió en cada corrección previa a la integración, con el mismo resultado. La
+última alcanzó las rutas de falla de las conmutaciones, la clasificación del rollback en caliente, el
+texto que muestra el wrapper de actualización cuando algo sale mal y el preflight del aplicador:
+todo eso ocurre dentro de un mecanismo que todavía no está instalado, y el wrapper cuyo texto cambió
+no está en el host. Cuando WP-101B lo instale habrá que explicar en el manual qué significa ese
+mensaje para quien opera.
+
+La evaluación anterior, con el mismo resultado, alcanzó las siete correcciones de la primera
+auditoría: idempotencia por metadata del aplicador, historial completo con evidencia,
 revalidación de `main`, independencia de la vuelta a Legacy respecto de un target corrupto, rollback
-a SIS-Leg, *disable-first* verificable e identidad de árbol— endurecen un mecanismo que todavía no
-está instalado en ninguna máquina. Ninguna de ellas cambia lo que ve o hace hoy quien opera el
-sistema, así que el manual sigue sin requerir actualización.
+a SIS-Leg, *disable-first* verificable e identidad de árbol. Ninguna de ellas cambia lo que ve o hace
+hoy quien opera el sistema, así que el manual sigue sin requerir actualización.
 
 Cuando WP-101B instale el mecanismo nuevo habrá que volver a evaluar el manual: ahí sí cambia qué ve
 la persona en pantalla durante una actualización, y esa evaluación corresponde a ese trabajo.

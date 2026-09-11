@@ -227,6 +227,11 @@ class HostSimulado:
         # Unidades cuyo ``disable`` se acepta pero no surte efecto. Reproduce el
         # caso peligroso: systemd responde sin error y la unidad sigue habilitada.
         self.disable_inefectivo: frozenset[str] = frozenset()
+        # Unidades que no logran arrancar: el ``start``/``restart`` falla **y** la
+        # unidad queda inactiva. Es lo que ocurre de verdad cuando un servicio
+        # revienta al iniciar, y la única forma de que un rollback fallido se
+        # note en el estado observado en lugar de quedar disimulado.
+        self.arranque_roto: frozenset[str] = frozenset()
 
     def _registrar_bridges(self) -> None:
         self.historia_bridges.append(
@@ -262,18 +267,27 @@ class HostSimulado:
                 (venv / "bin" / nombre).write_text("ejecutable", encoding="utf-8")
             return ResultadoComando(0)
         if args[:1] == ["systemctl"]:
-            return self._systemctl(args[1:])
+            return self._systemctl(args[1:], comprobar=comprobar)
         if args == ["id", "--groups", "--name", "sis-leg-backend"]:
             return ResultadoComando(0, "sis-leg-backend\n")
         if args == ["id", "--groups", "--name", "sis-leg-bridge"]:
             return ResultadoComando(0, "sis-leg-bridge input\n")
         return ResultadoComando(0)
 
-    def _systemctl(self, args: list[str]) -> ResultadoComando:
+    def _systemctl(self, args: list[str], *, comprobar: bool = True) -> ResultadoComando:
         """Aplica la acción sobre el estado simulado y responde como systemd."""
 
         accion = args[0]
         unidades = [unidad for unidad in args[1:] if unidad.endswith(".service")]
+        if accion in {"start", "restart"}:
+            rotas = [unidad for unidad in unidades if unidad in self.arranque_roto]
+            if rotas:
+                for unidad in rotas:
+                    self.activas.discard(unidad)
+                self._registrar_bridges()
+                if comprobar:
+                    raise ErrorDespliegue(f"El servicio {rotas[0]} no logró arrancar")
+                return ResultadoComando(1, "", "no arrancó")
         if accion == "is-active":
             activa = unidades[0] in self.activas
             self._registrar_bridges()
@@ -1271,6 +1285,171 @@ def test_una_doble_falla_reporta_ambos_errores_y_exige_intervencion_humana(
 
 
 # ---------------------------------------------------------------------------
+# Fallas durante la retirada, ya iniciada la mutación
+# ---------------------------------------------------------------------------
+
+
+def test_cambiar_a_sisleg_restaura_legacy_si_la_retirada_falla_tras_detener_el_bridge(
+    tmp_path: Path,
+) -> None:
+    """Una retirada a medio camino no puede quedar fuera del rollback.
+
+    El bridge del sistema anterior ya se detuvo y su backend no se puede
+    detener: el host quedó en un estado que no es ni el de origen ni el de
+    destino, y es exactamente el que la conmutación existe para no producir.
+    """
+
+    escenario = escenario_legacy(tmp_path)
+    operador = escenario.operador()
+    escenario.host.fallas = (f"stop {SERVICIO_BACKEND_LEGACY}",)
+
+    with pytest.raises(ErrorOperacionHost, match="se restauró el sistema anterior"):
+        operador.cambiar_a_sis_leg()
+
+    assert escenario.inspector.clasificar() == ESTABLE_LEGACY
+    assert SERVICIO_BACKEND_LEGACY in escenario.host.activas
+    assert SERVICIO_BRIDGE_LEGACY in escenario.host.activas
+    assert escenario.ruta_vhost_legacy.is_symlink()
+    assert not escenario.gestor.current.exists()
+    assert escenario.config_intacta()
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "EXITOSO"
+    assert operador.ultimo_resultado.muto is True
+
+
+def test_cambiar_a_legacy_restaura_sisleg_si_la_retirada_falla_tras_detener_el_bridge(
+    tmp_path: Path,
+) -> None:
+    """La misma garantía, en la dirección inversa y sobre la release realmente activa."""
+
+    escenario = escenario_sisleg(tmp_path)
+    operador = escenario.operador()
+    escenario.host.fallas = (f"stop {SERVICIO_BACKEND}",)
+
+    with pytest.raises(ErrorOperacionHost, match="se restauró SIS-Leg"):
+        operador.cambiar_a_legacy()
+
+    assert escenario.inspector.clasificar() == ESTABLE_SISLEG
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert SERVICIO_BACKEND in escenario.host.activas
+    assert SERVICIO_BRIDGE in escenario.host.activas
+    assert SERVICIO_BACKEND_LEGACY not in escenario.host.activas
+    assert escenario.config_intacta()
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "EXITOSO"
+
+
+def test_una_retirada_fallida_con_rollback_fallido_registra_ambos_errores(
+    tmp_path: Path,
+) -> None:
+    """Doble falla: se nombran los dos errores y no se inventa ningún estado bueno."""
+
+    escenario = escenario_legacy(tmp_path)
+    operador = escenario.operador()
+    escenario.host.fallas = (f"stop {SERVICIO_BACKEND_LEGACY}",)
+    escenario.host.arranque_roto = frozenset({SERVICIO_BACKEND_LEGACY})
+
+    with pytest.raises(ErrorOperacionHost, match="también el rollback") as excepcion:
+        operador.cambiar_a_sis_leg()
+
+    mensaje = str(excepcion.value)
+    assert "intervención humana" in mensaje
+    assert "observado en" in mensaje
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "FALLIDO"
+    # El estado registrado es el que se observó, no una etiqueta optimista.
+    assert operador.ultimo_resultado.estado_final == escenario.inspector.clasificar()
+    assert operador.ultimo_resultado.estado_final != ESTABLE_LEGACY
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+
+
+def test_una_falla_antes_de_mutar_no_dispara_ningun_rollback(tmp_path: Path) -> None:
+    """El disable-first que no surte efecto aborta con el host entero, sin revertir.
+
+    Es la contracara de las pruebas anteriores: distinguir «todavía no toqué
+    nada» de «ya estoy a mitad de camino» es lo que permite que una ruta aborte
+    y la otra restaure.
+    """
+
+    escenario = escenario_legacy(tmp_path)
+    escenario.host.disable_inefectivo = frozenset({SERVICIO_BRIDGE_LEGACY})
+    operador = escenario.operador()
+
+    with pytest.raises(ErrorOperacionHost, match="disable-first"):
+        operador.cambiar_a_sis_leg()
+
+    assert escenario.inspector.clasificar() == ESTABLE_LEGACY
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.muto is False
+    assert operador.ultimo_resultado.rollback == "NO_APLICA"
+
+
+# ---------------------------------------------------------------------------
+# Clasificación honesta del rollback en caliente
+# ---------------------------------------------------------------------------
+
+
+def test_el_rollback_en_caliente_se_mide_contra_current_y_no_contra_el_target(
+    tmp_path: Path,
+) -> None:
+    """SIS-Leg estable sin target declarado: el rollback correcto no puede leerse mal.
+
+    Antes se comparaba la release restaurada contra ``target-release``. Con un
+    host sano pero sin objetivo declarado, esa comparación daba ``None`` y
+    marcaba como fallido un rollback que había funcionado perfectamente.
+    """
+
+    escenario = escenario_sisleg(tmp_path)
+    (escenario.raiz / "target-release").unlink()
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        sha_publico=SHA_NUEVO, release=release_descargada(paquete, sidecar, SHA_NUEVO)
+    )
+    escenario.host.fallas = (f"restart {SERVICIO_BRIDGE}",)
+
+    with pytest.raises(ErrorOperacionHost, match="restauró la release anterior") as excepcion:
+        operador.actualizar()
+
+    assert SHA_VIEJO in str(excepcion.value)
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert leer_target_release(escenario.raiz) is None
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "EXITOSO"
+    assert operador.ultimo_resultado.estado_final == ESTABLE_SISLEG
+
+
+def test_una_doble_falla_en_caliente_no_afirma_que_se_restauro_la_release_anterior(
+    tmp_path: Path,
+) -> None:
+    """Si el rollback del motor canónico tampoco funcionó, hay que decirlo.
+
+    El motor usa el mismo tipo de excepción para «fallé y revertí» y para «fallé
+    y tampoco pude revertir». Afirmar siempre lo primero sería mentir justo
+    cuando el host puede haber quedado sin ningún sistema en servicio.
+    """
+
+    escenario = escenario_sisleg(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        sha_publico=SHA_NUEVO, release=release_descargada(paquete, sidecar, SHA_NUEVO)
+    )
+    escenario.host.arranque_roto = frozenset({SERVICIO_BACKEND})
+
+    with pytest.raises(ErrorOperacionHost) as excepcion:
+        operador.actualizar()
+
+    mensaje = str(excepcion.value)
+    assert "no se pudo demostrar la restauración" in mensaje
+    assert "intervención humana" in mensaje
+    assert "restauró la release anterior" not in mensaje
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "FALLIDO"
+    assert operador.ultimo_resultado.estado_final != ESTABLE_SISLEG
+
+
+# ---------------------------------------------------------------------------
 # Historial operativo
 # ---------------------------------------------------------------------------
 
@@ -1405,6 +1584,22 @@ def test_un_historial_que_no_se_puede_escribir_no_falsea_la_operacion(
     assert "no se pudo anexar el historial" in capturado.err
     assert resultado.estado == "EXITO"
     assert resultado.exit_code == 0
+
+
+def test_el_wrapper_de_actualizacion_no_afirma_que_el_sistema_quedo_sin_cambios() -> None:
+    """Ante un error, el wrapper no puede tranquilizar de más.
+
+    Una actualización en caliente puede fallar **después** de haber tocado el
+    host, y hasta puede fallar su propio rollback. El wrapper no distingue esos
+    casos, así que lo único honesto es remitir al diagnóstico y al historial.
+    """
+
+    texto = (RAIZ_REPOSITORIO / "deploy/host/actualizar-sisleg.sh").read_text(encoding="utf-8")
+
+    assert "No se cambió el sistema en uso" not in texto
+    assert "No se puede dar por sentado que el sistema en uso haya quedado sin cambios." in texto
+    assert "Leé el diagnóstico de arriba y el historial" in texto
+    assert 'echo "Historial: ${REGISTRO}"' in texto
 
 
 PATRONES_CREDENCIALES = (

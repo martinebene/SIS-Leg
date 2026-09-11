@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from deploy.herramienta_despliegue import ResultadoComando
+from deploy.herramienta_despliegue import ErrorDespliegue, ResultadoComando
 from deploy.instalador_host import (
     ACCION_AJUSTAR_METADATA,
     ACCION_CREAR,
@@ -47,10 +47,16 @@ COMPONENTES_EN_RELEASE = (
 
 
 class EjecutorChownFalso:
-    """Registra los ``chown`` sin ejecutarlos: la suite no corre como root."""
+    """Registra los ``chown`` sin ejecutarlos: la suite no corre como root.
 
-    def __init__(self) -> None:
+    ``fallar_para`` hace fallar el ``chown`` cuyo destino contenga ese fragmento,
+    que es la única forma de reproducir sin privilegios una corrección de
+    propietario que no se puede completar.
+    """
+
+    def __init__(self, *, fallar_para: str | None = None) -> None:
         self.llamadas: list[list[str]] = []
+        self.fallar_para = fallar_para
 
     def ejecutar(
         self,
@@ -61,7 +67,10 @@ class EjecutorChownFalso:
         comprobar: bool = True,
     ) -> ResultadoComando:
         del directorio, entorno, comprobar
-        self.llamadas.append([str(valor) for valor in argumentos])
+        args = [str(valor) for valor in argumentos]
+        self.llamadas.append(args)
+        if self.fallar_para is not None and self.fallar_para in args[-1]:
+            raise ErrorDespliegue(f"chown simulado fallido sobre {args[-1]}")
         return ResultadoComando(0)
 
 
@@ -85,6 +94,7 @@ def crear_instalador(
     *,
     uids: dict[str, int] | None = None,
     gids: dict[str, int] | None = None,
+    fallar_chown_para: str | None = None,
 ) -> tuple[InstaladorHost, EjecutorChownFalso, Path]:
     """Arma el aplicador sobre un host simulado y devuelve sus piezas.
 
@@ -97,7 +107,7 @@ def crear_instalador(
     """
 
     release = crear_release(tmp_path)
-    ejecutor = EjecutorChownFalso()
+    ejecutor = EjecutorChownFalso(fallar_para=fallar_chown_para)
     home = tmp_path / "home/operador"
     tabla_uid = uids if uids is not None else {"root": os.getuid(), "operador": os.getuid()}
     tabla_gid = gids if gids is not None else {"root": os.getgid(), "operador": os.getgid()}
@@ -280,18 +290,95 @@ def test_bytes_iguales_con_propietario_distinto_no_se_declaran_sin_cambio(
         assert (home / ".local/bin" / nombre).is_file()
 
 
-def test_un_propietario_que_no_se_puede_resolver_no_se_da_por_bueno(tmp_path: Path) -> None:
-    """Sin poder demostrar el dueño declarado, el aplicador corrige en vez de suponer."""
+def test_una_identidad_inexistente_bloquea_el_plan_sobre_un_host_vacio(tmp_path: Path) -> None:
+    """El preflight tiene que detectar el usuario equivocado antes de escribir nada.
 
-    instalador, _, _ = crear_instalador(tmp_path)
+    Es el caso realista: un ``--usuario-operador`` mal escrito sobre un host
+    donde los wrappers todavía no existen. Si la identidad se resolviera recién
+    al comparar metadata, el error aparecería con el archivo ya instalado y el
+    ``chown`` a medio camino.
+    """
+
+    instalador, ejecutor, home = crear_instalador(tmp_path, uids={}, gids={})
+
+    with pytest.raises(ErrorInstaladorHost, match="No se pueden resolver estas identidades"):
+        instalador.planificar()
+    with pytest.raises(ErrorInstaladorHost, match="No se pueden resolver estas identidades"):
+        instalador.aplicar(confirmado=True)
+
+    assert ejecutor.llamadas == []
+    assert not home.exists()
+    assert not (tmp_path / "usr/local/bin").exists()
+
+
+def test_aplicar_vuelve_a_exigir_las_identidades_antes_de_escribir(tmp_path: Path) -> None:
+    """Un plan viejo no autoriza a escribir: la cuenta pudo borrarse mientras tanto."""
+
+    identidades = {"root": os.getuid(), "operador": os.getuid()}
+    grupos = {"root": os.getgid(), "operador": os.getgid()}
+    instalador, ejecutor, home = crear_instalador(tmp_path, uids=identidades, gids=grupos)
+
+    assert [entrada.accion for entrada in instalador.planificar()] == [ACCION_CREAR] * 4
+
+    identidades.pop("operador")
+
+    with pytest.raises(ErrorInstaladorHost, match="usuario operador"):
+        instalador.aplicar(confirmado=True)
+
+    assert ejecutor.llamadas == []
+    assert not home.exists()
+
+
+def test_un_chown_fallido_en_un_reemplazo_conserva_el_destino_anterior(tmp_path: Path) -> None:
+    """El propietario se fija sobre el temporal: si falla, el destino no se tocó.
+
+    Ésta es la razón de preparar contenido, modo y dueño antes del
+    ``os.replace``: el wrapper nunca llega a existir con el propietario
+    equivocado, y una falla deja el archivo anterior exactamente como estaba.
+    """
+
+    instalador, _, home = crear_instalador(tmp_path)
     instalador.aplicar(confirmado=True)
 
-    instalador, _, _ = crear_instalador(tmp_path, uids={}, gids={})
+    destino = home / ".local/bin/actualizar-sisleg.sh"
+    destino.write_text("#!/bin/sh\n# version escrita a mano en el host\n", encoding="utf-8")
+    contenido_previo = destino.read_bytes()
 
-    plan = instalador.planificar()
+    instalador, _, _ = crear_instalador(tmp_path, fallar_chown_para="actualizar-sisleg.sh")
 
-    assert [entrada.accion for entrada in plan] == [ACCION_AJUSTAR_METADATA] * 4
-    assert all("no se pudo resolver" in entrada.motivo for entrada in plan)
+    with pytest.raises(ErrorInstaladorHost, match="No se pudo fijar el propietario"):
+        instalador.aplicar(confirmado=True)
+
+    assert destino.read_bytes() == contenido_previo
+    # El temporal se borra siempre: no queda basura junto al destino.
+    assert [ruta.name for ruta in destino.parent.iterdir() if ruta.name.startswith(".")] == []
+    # El respaldo previo al intento conserva el archivo que había.
+    respaldos = list((tmp_path / "respaldos").rglob("actualizar-sisleg.sh"))
+    assert [ruta.read_bytes() for ruta in respaldos] == [contenido_previo]
+
+
+def test_una_falla_de_chown_en_un_ajuste_restaura_el_modo_previo(tmp_path: Path) -> None:
+    """Corregir metadata sobre un archivo existente no es atómico, y no se finge que lo sea.
+
+    Son dos llamadas al sistema. Si la segunda falla, el destino quedaría con el
+    modo nuevo y el dueño viejo, así que se vuelve al modo previo y se dice
+    exactamente qué pasó.
+    """
+
+    instalador, _, home = crear_instalador(tmp_path)
+    instalador.aplicar(confirmado=True)
+
+    destino = home / ".local/bin/control-cambiar-legacy.sh"
+    os.chmod(destino, 0o777)
+    contenido_previo = destino.read_bytes()
+
+    instalador, _, _ = crear_instalador(tmp_path, fallar_chown_para="control-cambiar-legacy.sh")
+
+    with pytest.raises(ErrorInstaladorHost, match="Se restauraron los permisos previos 0777"):
+        instalador.aplicar(confirmado=True)
+
+    assert oct(destino.stat().st_mode & 0o777) == "0o777"
+    assert destino.read_bytes() == contenido_previo
 
 
 def test_un_destino_que_es_enlace_simbolico_se_rechaza(tmp_path: Path) -> None:

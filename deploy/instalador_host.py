@@ -313,19 +313,58 @@ class InstaladorHost:
             )
         return origen
 
+    def exigir_identidades_resolubles(self) -> dict[str, tuple[int, int]]:
+        """Compuerta de preflight: todo usuario y grupo declarado debe existir acá.
+
+        Resultado: por cada componente, el par ``(uid, gid)`` ya resuelto, para
+        no volver a consultar el sistema en cada comparación.
+
+        Efectos laterales: ninguno. Sólo consulta ``pwd`` y ``grp``.
+
+        Errores:
+            ErrorInstaladorHost si alguna identidad declarada no existe en esta
+            máquina, nombrando todas las que faltan de una sola vez.
+
+        Se comprueba para **todos** los componentes y no sólo para los que ya
+        existen en el destino. La razón es concreta: si se resolviera recién al
+        comparar metadata, un ``--usuario-operador`` equivocado no aparecería en
+        el plan mientras los wrappers todavía no estuvieran instalados, y la
+        falla se descubriría con el archivo ya escrito y el ``chown`` a medio
+        camino. El plan existe justamente para que eso no pase.
+        """
+
+        identidades: dict[str, tuple[int, int]] = {}
+        faltantes: list[str] = []
+        for componente in self.componentes():
+            uid = self.resolutor_uid(componente.usuario)
+            gid = self.resolutor_gid(componente.grupo)
+            if uid is None:
+                faltantes.append(f"usuario {componente.usuario} ({componente.destino})")
+            if gid is None:
+                faltantes.append(f"grupo {componente.grupo} ({componente.destino})")
+            if uid is not None and gid is not None:
+                identidades[componente.origen_en_release] = (uid, gid)
+        if faltantes:
+            raise ErrorInstaladorHost(
+                "No se pueden resolver estas identidades declaradas en esta máquina: "
+                f"{'; '.join(faltantes)}. No se planifica ni se escribe nada hasta que existan."
+            )
+        return identidades
+
+    @staticmethod
     def _diferencias_de_metadata(
-        self, componente: ComponenteInstalable, inventario: EntradaInventario
+        componente: ComponenteInstalable,
+        inventario: EntradaInventario,
+        identidad: tuple[int, int],
     ) -> list[str]:
         """Enumera en castellano qué parte de la metadata no es la declarada.
 
         Resultado: lista vacía cuando modo, usuario y grupo son demostrablemente
         los correctos; en cualquier otro caso, una descripción por diferencia.
 
-        Un propietario que no se puede resolver cuenta como diferencia y no como
-        coincidencia. La razón es la de siempre en este módulo: no se declara
-        correcto lo que no se pudo demostrar. Aplicar ``chown`` y ``chmod`` de
-        más es inocuo; dar por bueno un binario privilegiado con el dueño
-        equivocado, no.
+        Las identidades llegan ya resueltas por la compuerta de preflight, así
+        que acá no puede quedar ninguna duda pendiente: o coinciden, o hay que
+        corregirlas.
         """
 
         diferencias: list[str] = []
@@ -333,24 +372,12 @@ class InstaladorHost:
         if inventario.modo != modo_declarado:
             diferencias.append(f"modo {inventario.modo} en lugar de {modo_declarado}")
 
-        uid_declarado = self.resolutor_uid(componente.usuario)
-        if uid_declarado is None:
-            diferencias.append(
-                f"no se pudo resolver el usuario declarado {componente.usuario} para comprobar "
-                "el propietario"
-            )
-        elif inventario.usuario_uid != uid_declarado:
+        uid_declarado, gid_declarado = identidad
+        if inventario.usuario_uid != uid_declarado:
             diferencias.append(
                 f"UID {inventario.usuario_uid} en lugar de {uid_declarado} ({componente.usuario})"
             )
-
-        gid_declarado = self.resolutor_gid(componente.grupo)
-        if gid_declarado is None:
-            diferencias.append(
-                f"no se pudo resolver el grupo declarado {componente.grupo} para comprobar el "
-                "grupo propietario"
-            )
-        elif inventario.grupo_gid != gid_declarado:
+        if inventario.grupo_gid != gid_declarado:
             diferencias.append(
                 f"GID {inventario.grupo_gid} en lugar de {gid_declarado} ({componente.grupo})"
             )
@@ -370,8 +397,16 @@ class InstaladorHost:
         cosas: el contenido y la metadata declarada. Que los bytes sean los
         correctos no alcanza, porque el permiso y el propietario son parte de lo
         que hace segura a la entrada privilegiada del host.
+
+        Errores:
+            ErrorInstaladorHost si la release no trae algún componente o si
+            alguna identidad declarada no existe en esta máquina. Un plan que no
+            puede demostrar a quién pertenecerán los archivos no es un plan
+            aplicable, y decirlo acá es más barato que descubrirlo con el
+            archivo ya escrito.
         """
 
+        identidades = self.exigir_identidades_resolubles()
         marca = self._marca_temporal()
         plan: list[EntradaPlanInstalacion] = []
         for componente in self.componentes():
@@ -393,7 +428,9 @@ class InstaladorHost:
                     "reemplazarlo."
                 )
             else:
-                diferencias = self._diferencias_de_metadata(componente, inventario)
+                diferencias = self._diferencias_de_metadata(
+                    componente, inventario, identidades[componente.origen_en_release]
+                )
                 if diferencias:
                     accion = ACCION_AJUSTAR_METADATA
                     motivo = (
@@ -445,17 +482,23 @@ class InstaladorHost:
         lo que sólo necesitó corrección de metadata y lo que ya estaba igual.
 
         Efectos laterales: crea el directorio de respaldos, copia los archivos
-        de forma atómica y fija modo y propietario declarados. Sobre un destino
-        cuyo contenido ya era el de la release pero cuya metadata no lo era,
-        corrige permisos y propietario sin reescribir el archivo.
+        con contenido, modo y propietario ya fijados en el temporal, y recién
+        entonces los publica con ``os.replace``. Sobre un destino cuyo contenido
+        ya era el de la release pero cuya metadata no lo era, corrige permisos y
+        propietario sin reescribir el archivo.
 
         Errores:
-            ErrorInstaladorHost si falta confirmación, si algún destino es un
-            enlace simbólico —en cuyo caso no se escribe ninguno— o si una
-            escritura falla.
+            ErrorInstaladorHost si falta confirmación, si alguna identidad
+            declarada no existe, si algún destino es un enlace simbólico —en
+            cuyo caso no se escribe ninguno— o si una escritura falla.
+
+        La compuerta de identidades se **vuelve a ejecutar** acá y no se confía
+        en el plan: entre planificar y aplicar puede pasar tiempo y puede haberse
+        borrado una cuenta. Un preflight sólo sirve si se comprueba justo antes
+        de mutar.
 
         No hay rollback automático de una instalación parcial, y es deliberado:
-        cada archivo se escribe con ``os.replace`` después de respaldar el
+        cada archivo se publica con ``os.replace`` después de respaldar el
         anterior, así que restaurar es copiar de vuelta un archivo concreto del
         directorio de respaldos, una operación que una persona puede verificar.
         Un rollback automático agregaría un mecanismo nuevo que también podría
@@ -467,6 +510,8 @@ class InstaladorHost:
                 "Aplicar requiere confirmación explícita. Ejecutá primero el plan y revisalo."
             )
         plan = self.planificar()
+        # Preflight repetido inmediatamente antes de la primera escritura.
+        self.exigir_identidades_resolubles()
         marca = self._marca_temporal()
         directorio_respaldos = self.raiz_respaldos / marca
         instalados: list[str] = []
@@ -491,7 +536,7 @@ class InstaladorHost:
             if entrada.accion == ACCION_AJUSTAR_METADATA:
                 # No se respalda: el contenido ya es el de la release, así que la
                 # copia de seguridad sería idéntica al archivo que va a quedar.
-                self._aplicar_metadata(componente)
+                self._ajustar_metadata_existente(componente, entrada.inventario)
                 metadata_ajustada.append(str(componente.destino))
                 continue
             if entrada.accion == ACCION_REEMPLAZAR:
@@ -510,37 +555,105 @@ class InstaladorHost:
             metadata_ajustada=tuple(metadata_ajustada),
         )
 
-    def _aplicar_metadata(self, componente: ComponenteInstalable) -> None:
-        """Fija modo y propietario declarados sobre un destino que ya existe.
+    def _fijar_metadata(self, ruta: Path, componente: ComponenteInstalable) -> None:
+        """Fija modo y propietario declarados sobre una ruta concreta.
 
-        Se usa tanto al terminar una instalación como para corregir un archivo
-        cuyo contenido ya era correcto. El ``chown`` pasa por el ejecutor
-        auditable con ``--no-dereference`` para que nunca pueda aplicar
-        privilegios a través de un enlace.
+        Se usa tanto sobre el temporal, antes de publicarlo, como sobre un
+        destino que ya existe y sólo necesita corrección. El ``chown`` pasa por
+        el ejecutor auditable con ``--no-dereference`` para que nunca pueda
+        aplicar privilegios a través de un enlace.
+        """
+
+        try:
+            os.chmod(ruta, componente.modo)
+        except OSError as error:
+            raise ErrorInstaladorHost(
+                f"No se pudieron fijar los permisos de {ruta}: {error}"
+            ) from error
+        try:
+            self.ejecutor.ejecutar(
+                ["chown", "--no-dereference", f"{componente.usuario}:{componente.grupo}", str(ruta)]
+            )
+        except Exception as error:  # noqa: BLE001 - la frontera traduce a su propio error
+            raise ErrorInstaladorHost(
+                f"No se pudo fijar el propietario {componente.usuario}:{componente.grupo} "
+                f"sobre {ruta}: {error}"
+            ) from error
+
+    def _ajustar_metadata_existente(
+        self, componente: ComponenteInstalable, inventario: EntradaInventario
+    ) -> None:
+        """Corrige permisos y propietario de un destino sin reescribir su contenido.
+
+        Entradas:
+            componente: qué modo y qué propietario deben quedar.
+            inventario: lo observado antes de tocarlo, que es de donde sale el
+                modo al que hay que volver si la corrección queda a medias.
+
+        Errores:
+            ErrorInstaladorHost si no se puede fijar el modo o el propietario.
+
+        Acá no existe el temporal que hace atómica una instalación: el archivo ya
+        está en su lugar y hay que cambiarle dos atributos con dos llamadas al
+        sistema. Si la segunda falla, el destino queda con el modo nuevo y el
+        dueño viejo, que es precisamente la mezcla que no hay que dejar en
+        silencio. Por eso se restaura el modo previo y, si tampoco eso se puede,
+        se dice exactamente en qué quedó el archivo en lugar de afirmar una
+        atomicidad que este camino no tiene.
         """
 
         destino = componente.destino
+        modo_previo = int(inventario.modo, 8) if inventario.modo is not None else None
         try:
             os.chmod(destino, componente.modo)
         except OSError as error:
             raise ErrorInstaladorHost(
-                f"No se pudieron fijar los permisos de {destino}: {error}"
+                f"No se pudieron fijar los permisos de {destino} y no se modificó nada: {error}"
             ) from error
-        self.ejecutor.ejecutar(
-            [
-                "chown",
-                "--no-dereference",
-                f"{componente.usuario}:{componente.grupo}",
-                str(destino),
-            ]
-        )
+        try:
+            self.ejecutor.ejecutar(
+                [
+                    "chown",
+                    "--no-dereference",
+                    f"{componente.usuario}:{componente.grupo}",
+                    str(destino),
+                ]
+            )
+        except Exception as error:  # noqa: BLE001 - se restaura y se rediagnostica
+            detalle = self._restaurar_modo(destino, modo_previo)
+            raise ErrorInstaladorHost(
+                f"No se pudo fijar el propietario de {destino} ({error}). {detalle} "
+                "El contenido del archivo no fue modificado."
+            ) from error
+
+    @staticmethod
+    def _restaurar_modo(destino: Path, modo_previo: int | None) -> str:
+        """Devuelve el modo anterior y describe en castellano cómo quedó el destino."""
+
+        if modo_previo is None:
+            return f"No se conocía el modo previo de {destino}, así que no se pudo restaurar."
+        try:
+            os.chmod(destino, modo_previo)
+        except OSError as error_restauracion:
+            return (
+                f"Además falló la restauración del modo {modo_previo:04o} ({error_restauracion}): "
+                "el destino quedó con permisos nuevos y propietario anterior, y exige "
+                "intervención humana."
+            )
+        return f"Se restauraron los permisos previos {modo_previo:04o}."
 
     def _instalar_atomico(self, origen: Path, componente: ComponenteInstalable) -> None:
-        """Escribe el destino mediante temporal en el mismo directorio y ``os.replace``.
+        """Publica el destino ya completo mediante temporal y ``os.replace``.
 
         El temporal vive junto al destino a propósito: ``os.replace`` sólo es
-        atómico dentro del mismo sistema de archivos. Así nadie puede llegar a
-        ejecutar un wrapper a medio escribir.
+        atómico dentro del mismo sistema de archivos.
+
+        Lo importante del orden es que **contenido, modo y propietario se fijan
+        sobre el temporal antes de publicarlo**. Así el destino final aparece de
+        una sola vez y ya correcto: nunca existe el instante en que el wrapper
+        está en su lugar con el dueño equivocado. Si el ``chown`` falla, falla
+        sobre el temporal, el destino anterior sigue intacto y el temporal se
+        borra en el ``finally``.
         """
 
         destino = componente.destino
@@ -548,17 +661,21 @@ class InstaladorHost:
         temporal = destino.with_name(f".{destino.name}.nuevo-{os.getpid()}")
         temporal.unlink(missing_ok=True)
         try:
-            temporal.write_bytes(origen.read_bytes())
-            os.chmod(temporal, componente.modo)
-            os.replace(temporal, destino)
-        except OSError as error:
-            raise ErrorInstaladorHost(f"No se pudo instalar {destino}: {error}") from error
+            try:
+                temporal.write_bytes(origen.read_bytes())
+            except OSError as error:
+                raise ErrorInstaladorHost(
+                    f"No se pudo preparar el contenido de {destino}: {error}"
+                ) from error
+            self._fijar_metadata(temporal, componente)
+            try:
+                os.replace(temporal, destino)
+            except OSError as error:
+                raise ErrorInstaladorHost(
+                    f"No se pudo publicar {destino}; el destino anterior quedó intacto: {error}"
+                ) from error
         finally:
             temporal.unlink(missing_ok=True)
-        # Se vuelve a fijar la metadata sobre el destino final y no sólo sobre el
-        # temporal: así queda un único camino que deja modo y propietario
-        # exactos, compartido con la corrección de metadata.
-        self._aplicar_metadata(componente)
 
 
 def plan_como_json(plan: Sequence[EntradaPlanInstalacion]) -> list[dict[str, object]]:

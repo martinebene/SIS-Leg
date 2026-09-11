@@ -108,6 +108,17 @@ OPERACION_ACTUALIZAR = "actualizar"
 OPERACION_CAMBIAR_A_SISLEG = "cambiar-a-sis-leg"
 OPERACION_CAMBIAR_A_LEGACY = "cambiar-a-legacy"
 
+# Orden de retirada de cada sistema: el bridge primero, porque es el que tiene
+# tomado el hardware con ``EVIOCGRAB``. Se declaran como tuplas para que el
+# *disable-first* y la detención recorran exactamente la misma secuencia.
+UNIDADES_RETIRO_LEGACY = (SERVICIO_BRIDGE_LEGACY, SERVICIO_BACKEND_LEGACY)
+UNIDADES_RETIRO_SISLEG = (SERVICIO_BRIDGE, SERVICIO_BACKEND)
+
+# Etiqueta para el historial cuando ni siquiera se pudo observar el host. No es
+# un estado formal: es la confesión de que no se sabe, que vale más que una
+# etiqueta optimista inventada.
+ESTADO_DESCONOCIDO = "DESCONOCIDO"
+
 # Desenlaces posibles de una operación. El historial del host los registra
 # siempre: «no hice nada porque la persona canceló» y «fallé y revertí» son tan
 # relevantes para el soporte como un éxito.
@@ -512,18 +523,25 @@ class OperadorHost:
     # Manejo de vhosts
     # ------------------------------------------------------------------
 
-    def _retirar_vhost_legacy(self) -> str | None:
-        """Quita el vhost del sistema anterior conservando su destino literal."""
+    def _destino_vhost_legacy(self) -> str | None:
+        """Lee el destino literal del vhost anterior **sin** tocarlo.
+
+        Se separa de la retirada porque el snapshot tiene que existir antes de la
+        primera mutación: si se leyera recién al desenlazar, una falla previa
+        dejaría al rollback sin saber qué vhost republicar.
+        """
 
         if not self.ruta_vhost_legacy.exists() and not self.ruta_vhost_legacy.is_symlink():
             return None
-        destino = (
-            os.readlink(self.ruta_vhost_legacy)
-            if self.ruta_vhost_legacy.is_symlink()
-            else str(self.ruta_vhost_legacy_disponible)
-        )
-        self.ruta_vhost_legacy.unlink()
-        return destino
+        if self.ruta_vhost_legacy.is_symlink():
+            return os.readlink(self.ruta_vhost_legacy)
+        return str(self.ruta_vhost_legacy_disponible)
+
+    def _retirar_vhost_legacy(self) -> None:
+        """Quita el vhost del sistema anterior, cuyo destino ya fue fotografiado."""
+
+        if self.ruta_vhost_legacy.exists() or self.ruta_vhost_legacy.is_symlink():
+            self.ruta_vhost_legacy.unlink()
 
     def _restaurar_vhost_legacy(self, destino: str | None) -> None:
         """Vuelve a publicar exactamente el vhost anterior, si lo había."""
@@ -573,29 +591,80 @@ class OperadorHost:
     # Retiradas ordenadas
     # ------------------------------------------------------------------
 
-    def _retirar_legacy(self, resultado: ResultadoOperacion) -> SnapshotLegacy:
-        """Retira el sistema anterior en el único orden seguro conocido.
+    def _capturar_snapshot_legacy(self) -> SnapshotLegacy:
+        """Fotografía el sistema anterior **antes** de tocarlo.
 
-        1. ``disable`` de las dos unidades **antes** de detenerlas, comprobando
-           que realmente quedaron deshabilitadas, para que un reinicio no las
-           devuelva a la vida;
-        2. detener el bridge y comprobar que quedó inactivo;
-        3. detener el backend y comprobar que liberó ``:8000``;
+        Resultado: el destino literal de su vhost y la habilitación de sus dos
+        unidades, que es todo lo que hace falta para devolverlo exactamente a
+        donde estaba.
+
+        Se captura antes de la primera mutación, no durante la retirada: si una
+        etapa intermedia falla, el rollback necesita este dato y para entonces ya
+        no se podría leer del host.
+        """
+
+        return SnapshotLegacy(
+            destino_symlink=self._destino_vhost_legacy(),
+            backend_habilitado=self.inspector.esta_habilitada(SERVICIO_BACKEND_LEGACY),
+            bridge_habilitado=self.inspector.esta_habilitada(SERVICIO_BRIDGE_LEGACY),
+        )
+
+    def _capturar_snapshot_sisleg(self) -> SnapshotSisLeg:
+        """Fotografía SIS-Leg antes de tocarlo, con la release realmente activa.
+
+        La release se lee de ``current`` y no de ``target-release``: lo que hay
+        que poder restaurar es lo que estaba **en servicio**, que puede no
+        coincidir con lo que el host declara como objetivo futuro.
+        """
+
+        return SnapshotSisLeg(
+            release=self._release_actual(),
+            backend_habilitado=self.inspector.esta_habilitada(SERVICIO_BACKEND),
+            bridge_habilitado=self.inspector.esta_habilitada(SERVICIO_BRIDGE),
+        )
+
+    def _estado_observado(self) -> str:
+        """Clasifica el host sin dejar que la propia observación tire la operación.
+
+        Se usa en las rutas de falla, donde el host puede estar en cualquier
+        forma y lo único que interesa es dejar registrado **qué se vio**. Si ni
+        siquiera se puede observar, se devuelve ``DESCONOCIDO``: es más honesto
+        que arriesgar una etiqueta.
+        """
+
+        try:
+            return self.inspector.clasificar()
+        except (ErrorEstadoHost, ErrorDespliegue, OSError):
+            return ESTADO_DESCONOCIDO
+
+    def _detener_y_retirar_legacy(
+        self, resultado: ResultadoOperacion, *, exigir_puerto_libre: bool = True
+    ) -> None:
+        """Detiene y retira el sistema anterior, ya deshabilitado, en orden seguro.
+
+        1. detener el bridge y comprobar que quedó inactivo;
+        2. detener el backend y comprobar que quedó inactivo;
+        3. comprobar que ``:8000`` quedó libre, si corresponde;
         4. retirar el vhost publicado.
+
+        ``exigir_puerto_libre`` se desactiva sólo al restaurar SIS-Leg: en esa
+        ruta el puerto puede seguir ocupado legítimamente por el backend de
+        SIS-Leg que nunca llegó a detenerse, y exigir que quede libre condenaría
+        al rollback a fallar por una condición que no corresponde a esa
+        dirección. La comprobación de que las unidades del sistema anterior
+        quedaron inactivas se mantiene siempre.
 
         El bridge se detiene primero porque es el que tiene tomado el hardware:
         dejarlo vivo mientras arranca otro backend es justamente la mezcla que
         la invariante de exclusión prohíbe.
+
+        El *disable-first* ocurre **antes** de este método, y por una razón que
+        importa: deshabilitar se puede deshacer solo y por eso una falla ahí
+        aborta sin rollback, mientras que desde la primera detención el host ya
+        quedó a medio camino y cualquier falla obliga a restaurar.
         """
 
-        backend_habilitado = self.inspector.esta_habilitada(SERVICIO_BACKEND_LEGACY)
-        bridge_habilitado = self.inspector.esta_habilitada(SERVICIO_BRIDGE_LEGACY)
-        self._deshabilitar_verificando(
-            (SERVICIO_BRIDGE_LEGACY, SERVICIO_BACKEND_LEGACY),
-            resultado,
-            "las unidades del sistema anterior",
-        )
-
+        resultado.muto = True
         self._systemctl("stop", SERVICIO_BRIDGE_LEGACY)
         self._esperar(
             f"{SERVICIO_BRIDGE_LEGACY} debía quedar inactivo",
@@ -609,22 +678,18 @@ class OperadorHost:
             f"{SERVICIO_BACKEND_LEGACY} debía quedar inactivo",
             lambda: self._unidad_inactiva(SERVICIO_BACKEND_LEGACY),
         )
-        self._esperar(
-            f"el puerto {PUERTO_BACKEND} debía quedar libre",
-            lambda: not self.inspector.sonda_puerto(PUERTO_BACKEND),
-        )
-        resultado.acciones.append("backend del sistema anterior detenido y puerto liberado")
+        if exigir_puerto_libre:
+            self._esperar(
+                f"el puerto {PUERTO_BACKEND} debía quedar libre",
+                lambda: not self.inspector.sonda_puerto(PUERTO_BACKEND),
+            )
+        resultado.acciones.append("backend del sistema anterior detenido")
 
-        destino = self._retirar_vhost_legacy()
+        self._retirar_vhost_legacy()
         resultado.acciones.append("vhost del sistema anterior retirado")
-        return SnapshotLegacy(
-            destino_symlink=destino,
-            backend_habilitado=backend_habilitado,
-            bridge_habilitado=bridge_habilitado,
-        )
 
-    def _retirar_sisleg(self, resultado: ResultadoOperacion) -> None:
-        """Retira SIS-Leg con el mismo criterio *disable-first*.
+    def _detener_y_retirar_sisleg(self, resultado: ResultadoOperacion) -> None:
+        """Detiene y retira SIS-Leg, ya deshabilitado, con el mismo criterio.
 
         ``current`` se deja sin apuntar a nada a propósito: si quedara apuntando
         al mismo SHA con las unidades y el vhost ya retirados, la próxima llamada
@@ -632,10 +697,7 @@ class OperadorHost:
         una reactivación futura fallaría en silencio.
         """
 
-        self._deshabilitar_verificando(
-            (SERVICIO_BRIDGE, SERVICIO_BACKEND), resultado, "las unidades de SIS-Leg"
-        )
-
+        resultado.muto = True
         self._systemctl("stop", SERVICIO_BRIDGE, comprobar=False)
         self._esperar(
             f"{SERVICIO_BRIDGE} debía quedar inactivo",
@@ -777,7 +839,12 @@ class OperadorHost:
                     "el sistema anterior sigue operativo."
                 )
             else:
-                self._actualizar_sisleg_en_caliente(sha_objetivo, target_previo, resultado)
+                # ``release_actual`` se leyó de ``current`` al principio de la
+                # operación: es la release que está atendiendo el recinto, y es
+                # contra ella que después se demuestra el rollback.
+                self._actualizar_sisleg_en_caliente(
+                    sha_objetivo, target_previo, release_actual, resultado
+                )
 
             resultado.estado_final = self.inspector.clasificar()
             if resultado.estado_final != estado:
@@ -987,9 +1054,23 @@ class OperadorHost:
         )
 
     def _actualizar_sisleg_en_caliente(
-        self, sha_objetivo: str, target_previo: str | None, resultado: ResultadoOperacion
+        self,
+        sha_objetivo: str,
+        target_previo: str | None,
+        release_previa: str | None,
+        resultado: ResultadoOperacion,
     ) -> None:
         """Actualiza SIS-Leg -> SIS-Leg sin pasar por el sistema anterior.
+
+        Entradas:
+            sha_objetivo: release nueva a activar.
+            target_previo: valor de ``target-release`` antes de la operación, que
+                se restaura si la activación falla.
+            release_previa: la release que estaba **realmente en servicio**,
+                leída de ``current``. Es contra esto —y no contra el target— que
+                se demuestra si el rollback del motor canónico funcionó: un host
+                sano puede tener SIS-Leg activo sin ningún target declarado.
+            resultado: se anotan acciones, desenlace y estado observado.
 
         La activación es version-agnóstica: no hay ningún SHA escrito en el
         código, sólo el que resolvió el canal público. El motor canónico ya
@@ -1010,11 +1091,10 @@ class OperadorHost:
                 escribir_target_release(self.raiz, target_previo)
                 resultado.acciones.append("target-release anterior restaurado")
             resultado.target_final = target_previo
-            resultado.rollback = self._desenlace_rollback_en_caliente(target_previo)
-            resultado.estado_final = self.inspector.clasificar()
+            resultado.rollback = self._desenlace_rollback_en_caliente(release_previa)
+            resultado.estado_final = self._estado_observado()
             raise ErrorOperacionHost(
-                "Falló la actualización en caliente de SIS-Leg; el motor canónico restauró la "
-                f"release anterior y se conservó el target previo: {error}"
+                self._diagnostico_actualizacion_fallida(release_previa, resultado, error)
             ) from error
         escribir_target_release(self.raiz, sha_objetivo)
         resultado.target_final = sha_objetivo
@@ -1023,22 +1103,64 @@ class OperadorHost:
         )
         resultado.mensaje = f"SIS-Leg actualizado y en servicio en la release {sha_objetivo}."
 
-    def _desenlace_rollback_en_caliente(self, target_previo: str | None) -> str:
-        """Observa si el motor canónico realmente devolvió la release anterior.
+    def _desenlace_rollback_en_caliente(self, release_previa: str | None) -> str:
+        """Clasifica el rollback del motor canónico por lo que se observa en el host.
 
-        No se confía en que el rollback haya funcionado sólo porque se ejecutó:
-        se mira el host. Queda ``EXITOSO`` si SIS-Leg volvió a quedar estable en
-        la release previa, y ``FALLIDO`` en cualquier otro caso, incluido el de
-        no poder observarlo. El historial guarda ese dato porque es lo primero
-        que necesita saber quien atiende el host después de una falla.
+        Entradas:
+            release_previa: la release que estaba en ``current`` antes de
+                actualizar, o ``None`` si no había ninguna.
+
+        Resultado:
+            ``NO_APLICA`` cuando no había release previa que restaurar —no hubo
+            rollback posible, y llamarlo fallido sería confundir a quien lea el
+            historial—; ``EXITOSO`` cuando SIS-Leg volvió a quedar estable
+            exactamente en esa release previa; ``FALLIDO`` en cualquier otro
+            caso, incluido el de no poder observar el host.
+
+        Se compara contra la release realmente activa y no contra
+        ``target-release``: son cosas distintas. Un host con SIS-Leg estable y
+        sin target declarado tiene un rollback perfectamente válido que, medido
+        contra el target, se habría clasificado como fallido.
         """
 
+        if release_previa is None:
+            return ROLLBACK_NO_APLICA
         try:
             estable = self.inspector.clasificar() == ESTABLE_SISLEG
-            volvio = self._release_actual() == target_previo
+            volvio = self._release_actual() == release_previa
         except (ErrorEstadoHost, ErrorDespliegue, OSError):
             return ROLLBACK_FALLIDO
         return ROLLBACK_EXITOSO if estable and volvio else ROLLBACK_FALLIDO
+
+    def _diagnostico_actualizacion_fallida(
+        self, release_previa: str | None, resultado: ResultadoOperacion, error: Exception
+    ) -> str:
+        """Redacta la falla diciendo exactamente lo que se pudo demostrar.
+
+        El motor canónico usa el mismo tipo de excepción cuando la activación
+        falla y su rollback funciona que cuando fallan las dos cosas. Afirmar
+        siempre «se restauró la release anterior» sería, en el segundo caso, una
+        mentira dicha justo cuando más importa la verdad: el host podría haber
+        quedado sin ningún sistema en servicio.
+        """
+
+        if resultado.rollback == ROLLBACK_EXITOSO:
+            return (
+                "Falló la actualización en caliente de SIS-Leg; el motor canónico restauró la "
+                f"release anterior {release_previa} y se conservó el target previo: {error}"
+            )
+        if resultado.rollback == ROLLBACK_NO_APLICA:
+            return (
+                "Falló la actualización en caliente de SIS-Leg y no había release anterior que "
+                f"restaurar. El host quedó observado en {resultado.estado_final}; se requiere "
+                f"diagnóstico humano antes de reintentar: {error}"
+            )
+        return (
+            "Falló la actualización en caliente de SIS-Leg y no se pudo demostrar la "
+            f"restauración de la release anterior {release_previa}. El host quedó observado en "
+            f"{resultado.estado_final} con current={self._release_actual()}: se requiere "
+            f"intervención humana inmediata y no se afirma ningún estado bueno: {error}"
+        )
 
     # ------------------------------------------------------------------
     # Operación 2: cambiar a SIS-Leg
@@ -1051,9 +1173,12 @@ class OperadorHost:
         se valida con las ocho comprobaciones antes de tocar nada. Si ya está
         activo SIS-Leg, la operación es idempotente y no muta.
 
-        Ante cualquier falla posterior al inicio de la retirada del sistema
-        anterior se ejecuta el rollback externo completo, que lo devuelve a
-        servicio y no borra releases, configuración ni registros.
+        Ante cualquier falla posterior a la primera mutación —incluida una
+        ocurrida a mitad de la propia retirada del sistema anterior— se ejecuta
+        el rollback externo completo, que lo devuelve a servicio y no borra
+        releases, configuración ni registros. Las fallas anteriores a esa primera
+        mutación, como un *disable-first* que no surte efecto, abortan sin
+        rollback porque el host todavía está entero.
         """
 
         with lock_operacion_global(self.ruta_lock):
@@ -1099,9 +1224,17 @@ class OperadorHost:
                 resultado.mensaje = "Conmutación cancelada por la persona operadora."
                 return resultado
 
-            snapshot = self._retirar_legacy(resultado)
-            resultado.muto = True
+            # El snapshot se toma antes de cualquier mutación y el disable-first
+            # queda fuera del bloque protegido: es la única etapa que se deshace
+            # sola, así que una falla ahí aborta sin rollback y con el host
+            # entero. Desde la primera detención, en cambio, toda falla entra en
+            # la ruta de restauración.
+            snapshot = self._capturar_snapshot_legacy()
+            self._deshabilitar_verificando(
+                UNIDADES_RETIRO_LEGACY, resultado, "las unidades del sistema anterior"
+            )
             try:
+                self._detener_y_retirar_legacy(resultado)
                 self.gestor.activar(objetivo)
                 self.inspector.exigir_maximo_un_bridge()
                 self._systemctl("enable", SERVICIO_BACKEND, comprobar=False)
@@ -1123,15 +1256,24 @@ class OperadorHost:
     ) -> None:
         """Rollback externo: devuelve el sistema anterior a servicio y falla.
 
-        Tiene que tolerar que el motor canónico haya fallado en cualquier punto,
-        incluso a mitad de su propio rollback. Por eso retira SIS-Leg de forma
-        defensiva antes de restaurar, y nunca borra releases, configuración ni
-        registros: un rollback destructivo sería peor que la falla que intenta
+        Cubre **cualquier** falla posterior a la primera mutación, incluidas las
+        que ocurren a mitad de la propia retirada del sistema anterior: haber
+        detenido su bridge y no poder detener su backend deja el host a medio
+        camino, y ese es exactamente el estado que esta ruta existe para
+        deshacer.
+
+        Tiene que tolerar además que el motor canónico haya fallado en cualquier
+        punto, incluso dentro de su propio rollback. Por eso retira SIS-Leg de
+        forma defensiva antes de restaurar, y nunca borra releases, configuración
+        ni registros: un rollback destructivo sería peor que la falla que intenta
         contener.
         """
 
         try:
-            self._retirar_sisleg(resultado)
+            self._deshabilitar_verificando(
+                UNIDADES_RETIRO_SISLEG, resultado, "las unidades de SIS-Leg"
+            )
+            self._detener_y_retirar_sisleg(resultado)
             self._levantar_legacy(snapshot, resultado)
             estado = self.inspector.clasificar()
             if estado != ESTABLE_LEGACY:
@@ -1140,9 +1282,12 @@ class OperadorHost:
                 )
         except Exception as error_rollback:  # noqa: BLE001 - se reportan ambos errores
             resultado.rollback = ROLLBACK_FALLIDO
+            resultado.estado_final = self._estado_observado()
             raise ErrorOperacionHost(
                 f"Falló la conmutación ({error_original}) y también el rollback al sistema "
-                f"anterior ({error_rollback}). Se requiere intervención humana."
+                f"anterior ({error_rollback}). El host quedó observado en "
+                f"{resultado.estado_final}: ningún sistema puede darse por activo y se requiere "
+                "intervención humana."
             ) from error_rollback
         resultado.rollback = ROLLBACK_EXITOSO
         resultado.estado_final = ESTABLE_LEGACY
@@ -1168,9 +1313,11 @@ class OperadorHost:
         - no depende de ``target-release``. Volver al sistema anterior es
           version-agnóstico, así que un objetivo corrupto se diagnostica y se
           informa, pero no puede bloquear la vuelta atrás;
-        - si el sistema anterior no logra volver a servicio después de haber
-          retirado SIS-Leg, se intenta restaurar el SIS-Leg que estaba sano en
-          lugar de dejar el host inerte.
+        - ante cualquier falla posterior a la primera mutación —tanto a mitad de
+          la retirada de SIS-Leg como al levantar el sistema anterior— se intenta
+          restaurar el SIS-Leg que estaba sano, con la release que tenía
+          realmente en servicio, en lugar de dejar el host inerte. Las fallas
+          anteriores a esa primera mutación abortan sin rollback.
         """
 
         with lock_operacion_global(self.ruta_lock):
@@ -1223,20 +1370,16 @@ class OperadorHost:
             # Se captura la identidad restaurable de SIS-Leg **antes** de tocarlo:
             # después de retirarlo ya no hay de dónde leer qué release estaba en
             # servicio ni si sus unidades arrancaban solas.
-            snapshot_sisleg = SnapshotSisLeg(
-                release=resultado.sha_objetivo,
-                backend_habilitado=self.inspector.esta_habilitada(SERVICIO_BACKEND),
-                bridge_habilitado=self.inspector.esta_habilitada(SERVICIO_BRIDGE),
+            snapshot_sisleg = self._capturar_snapshot_sisleg()
+            # Igual que en la conmutación inversa: el disable-first queda fuera
+            # del bloque protegido porque se deshace solo, y desde la primera
+            # detención toda falla —incluida una a mitad de la propia retirada—
+            # entra en la ruta que restaura SIS-Leg.
+            self._deshabilitar_verificando(
+                UNIDADES_RETIRO_SISLEG, resultado, "las unidades de SIS-Leg"
             )
-            # La retirada de SIS-Leg queda fuera del bloque protegido a
-            # propósito: su propio disable-first aborta antes de detener nada, y
-            # si fallara más adelante el host quedaría a medio retirar, que es un
-            # estado que exige diagnóstico humano y no una restauración a ciegas.
-            # Lo que sí se protege es la vuelta del sistema anterior, porque ahí
-            # SIS-Leg ya salió de servicio y hay algo concreto que restaurar.
-            self._retirar_sisleg(resultado)
-            resultado.muto = True
             try:
+                self._detener_y_retirar_sisleg(resultado)
                 self._levantar_legacy(snapshot, resultado)
                 estado_final = self.inspector.clasificar()
                 if estado_final != ESTABLE_LEGACY:
@@ -1276,19 +1419,35 @@ class OperadorHost:
         El orden respeta la invariante de exclusión: primero se retira el sistema
         anterior a medio levantar —con su disable-first verificado— y recién
         entonces se reactiva SIS-Leg, de modo que nunca haya dos bridges vivos.
+
+        Cubre también las fallas ocurridas **durante** la retirada de SIS-Leg,
+        cuando el bridge ya se detuvo pero el resto quedó a medias: ahí todavía
+        hay un sistema concreto al que volver, y dejarlo a medio camino sería el
+        peor desenlace posible.
         """
 
         if snapshot.release is None:
             resultado.rollback = ROLLBACK_FALLIDO
+            resultado.estado_final = self._estado_observado()
             raise ErrorOperacionHost(
                 f"Falló la vuelta al sistema anterior ({error_original}) y no había una "
-                "release de SIS-Leg identificable para restaurar. Se requiere intervención "
-                "humana; no se ejecuta ninguna recuperación automática a ciegas."
+                "release de SIS-Leg identificable para restaurar. El host quedó observado en "
+                f"{resultado.estado_final}; se requiere intervención humana y no se ejecuta "
+                "ninguna recuperación automática a ciegas."
             ) from error_original
 
         try:
-            self._retirar_legacy(resultado)
+            self._deshabilitar_verificando(
+                UNIDADES_RETIRO_LEGACY, resultado, "las unidades del sistema anterior"
+            )
+            self._detener_y_retirar_legacy(resultado, exigir_puerto_libre=False)
             self._rehabilitar_vhost_sisleg()
+            # ``current`` se libera antes de reactivar para forzar una activación
+            # completa: si siguiera apuntando a la misma release —porque la
+            # retirada falló antes de liberarlo— el motor canónico retornaría
+            # temprano creyendo que no hay nada que hacer, y los servicios
+            # quedarían detenidos con el host declarándose activo.
+            cambiar_enlace_atomico(self.gestor.current, None)
             self.gestor.activar(snapshot.release)
             self.inspector.exigir_maximo_un_bridge()
             if snapshot.backend_habilitado:
@@ -1303,11 +1462,13 @@ class OperadorHost:
                 )
         except Exception as error_rollback:  # noqa: BLE001 - se reportan ambos errores
             resultado.rollback = ROLLBACK_FALLIDO
+            resultado.estado_final = self._estado_observado()
             raise ErrorOperacionHost(
                 f"Falló la vuelta al sistema anterior ({error_original}) y también la "
-                f"restauración de SIS-Leg ({error_rollback}). El host quedó en un estado que "
-                "exige intervención humana inmediata: ningún sistema puede darse por activo "
-                "y no se intenta ninguna recuperación automática adicional."
+                f"restauración de SIS-Leg ({error_rollback}). El host quedó observado en "
+                f"{resultado.estado_final}: exige intervención humana inmediata, ningún sistema "
+                "puede darse por activo y no se intenta ninguna recuperación automática "
+                "adicional."
             ) from error_rollback
         resultado.rollback = ROLLBACK_EXITOSO
         resultado.estado_final = ESTABLE_SISLEG
