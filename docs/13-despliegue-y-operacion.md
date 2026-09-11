@@ -178,13 +178,28 @@ La publicación la ejecuta `.github/workflows/publicar-release.yml`, que se disp
 `workflow_run` al completarse el workflow `CI`. Esperar ese evento es lo que permite exigir
 la conclusión de la CI **entera** y no sólo la del job de empaquetado: un job no puede
 observar el resultado del workflow que lo contiene. El script versionado
-`scripts/publicar_release_publica.py` vuelve a verificar contra la API que la run sea del
-evento `push`, de la rama `main`, del SHA exacto, `completed` y `success`, y que el job
-`Empaquetado · release productiva` de esa misma run haya sido exitoso.
+`scripts/publicar_release_publica.py` vuelve a verificar contra la API que el **intento
+exacto** de esa run —el par `run_id` + `run_attempt` que recibe del evento— sea del evento
+`push`, de la rama `main`, del SHA exacto, `completed` y `success`, y que el job
+`Empaquetado · release productiva` de ese mismo intento haya sido exitoso.
 
-La publicación es idempotente: si el tag ya existe, compara byte a byte los tres assets
-contra los locales y termina sin escribir cuando coinciden. Si difieren o falta alguno,
-aborta y exige intervención humana. Una release publicada nunca se reemplaza.
+Se trabaja siempre sobre el intento exacto porque GitHub permite re-ejecutar una run
+conservando su `run_id` y su SHA: la consulta genérica `/actions/runs/<id>/jobs` responde
+con los jobs del intento más reciente y por lo tanto no sirve como prueba de cuál produjo
+un paquete ya publicado. Los metadatos de la release guardan ese par junto con el
+identificador del job de empaquetado, y tanto el publicador como el consumidor lo verifican
+contra `/actions/runs/<id>/attempts/<intento>` y su listado de jobs.
+
+La publicación es idempotente: si el tag ya existe, exige que el paquete y el sidecar
+publicados sean exactamente los mismos bytes que los locales y que los metadatos publicados
+sigan siendo coherentes —mismo commit, tag, árbol Git y checksum— y sigan apoyándose en un
+intento de CI históricamente válido de ese mismo SHA. Si eso se cumple, termina sin escribir
+nada. Si algo difiere o falta un asset, aborta y exige intervención humana. Una release
+publicada nunca se reemplaza.
+
+Los metadatos no se comparan byte a byte justamente por esto: una re-ejecución legítima
+vuelve a invocar el publicador con otro intento y otro `job_id`, y esa diferencia no puede
+convertir una release válida en una colisión divergente.
 
 Un push exento por `paths-ignore` (DEC-019) no genera run de CI y por lo tanto tampoco
 genera publicación. Esa ausencia es esperada: no hay release productiva nueva porque no
@@ -203,14 +218,24 @@ python3.14 /opt/sis-leg/current/deploy/actualizador_publico.py obtener --destino
 El flujo es rígido y siempre en este orden:
 
 1. resolver el SHA completo de `main` por recurso público;
-2. exigir una run de CI de `push` sobre `main` para ese SHA, `completed` y `success`;
-3. exigir el job exacto `Empaquetado · release productiva` exitoso y del mismo `head_sha`;
-4. resolver la publicación por tag, nunca un asset `latest`;
-5. exigir los tres nombres de asset derivados del SHA, sin faltantes ni duplicados;
-6. descargar a temporales dentro del destino;
-7. verificar el sidecar SHA-256 con la función canónica;
-8. validar los metadatos y contrastar su `tree_sha` con el de `release.json`;
-9. validar `release.json`, commit, tree e inventario con el motor canónico.
+2. resolver la publicación por tag, nunca un asset `latest`;
+3. exigir los tres nombres de asset derivados del SHA, sin faltantes ni duplicados;
+4. descargar primero el asset de metadatos, que es chico y declara qué intento de CI
+   habilitó esta release;
+5. exigir ese intento histórico exacto en `/actions/runs/<id>/attempts/<intento>`: mismo
+   workflow, evento `push`, rama `main`, mismo SHA, `completed` y `success`;
+6. exigir dentro de ese intento el job `Empaquetado · release productiva`, exitoso, del
+   mismo `head_sha` y de esa misma ejecución;
+7. validar los metadatos completos contra esa evidencia;
+8. recién entonces descargar paquete y sidecar a temporales dentro del destino;
+9. verificar el sidecar SHA-256 con la función canónica;
+10. contrastar el `tree_sha` de los metadatos con el de `release.json`;
+11. validar `release.json`, commit, tree e inventario con el motor canónico.
+
+Los pasos 4 a 7 son los que hacen que una re-ejecución de CI no rompa nada: la release es
+inmutable y nombra el intento que la publicó, así que se demuestra ese intento y no el más
+reciente de la run. Una re-ejecución posterior, exitosa o fallida, no cambia la identidad de
+una release ya publicada ni impide consumirla.
 
 Sólo entonces promueve los tres archivos a su nombre definitivo. La preparación y la
 activación siguen siendo responsabilidad de `deploy/herramienta_despliegue.py`: el

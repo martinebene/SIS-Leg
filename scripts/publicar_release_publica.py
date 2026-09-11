@@ -12,21 +12,34 @@ autenticación. Ver ``deploy/actualizador_publico.py``.
 Qué exige antes de publicar
 ---------------------------
 
-1. la run indicada existe, es del workflow ``CI``, del evento ``push``, sobre
-   ``main``, para el SHA exacto, ``completed`` y ``success``;
-2. dentro de esa run, el job ``Empaquetado · release productiva`` terminó en
+1. el **intento exacto** de CI indicado por ``--run-id`` y ``--run-attempt``
+   existe, es del workflow ``CI``, del evento ``push``, sobre ``main``, para el
+   SHA exacto, ``completed`` y ``success``;
+2. dentro de ese intento, el job ``Empaquetado · release productiva`` terminó en
    ``success`` y declara el mismo ``head_sha``;
 3. el paquete local se llama ``sis-leg-<SHA>.tar.gz``, su sidecar valida y su
    ``release.json`` supera la validación canónica de la herramienta de
    despliegue.
 
+Se trabaja siempre sobre el intento exacto y nunca sobre «la run» a secas,
+porque GitHub permite re-ejecutar una run conservando ``run_id`` y SHA: la
+consulta genérica devolvería entonces los jobs del intento más reciente y no los
+del que realmente produjo este paquete.
+
 Idempotencia y colisiones
 -------------------------
 
-Si el tag ya existe, el script **no** reemplaza nada. Compara byte a byte los
-tres assets publicados contra los locales: si son idénticos, la publicación ya
-estaba hecha y termina con éxito sin escribir; si difieren o falta alguno,
+Si el tag ya existe, el script **no** reemplaza nada. Exige que el paquete y el
+sidecar publicados sean exactamente los mismos bytes que los locales, y que los
+metadatos publicados sigan siendo coherentes y sigan apoyándose en un intento de
+CI históricamente válido de este mismo SHA. Si eso se cumple, la publicación ya
+estaba hecha y el script termina con éxito sin escribir nada; si algo difiere,
 aborta y exige intervención humana. Una release publicada es inmutable.
+
+Por eso los metadatos **no** se comparan byte a byte: una re-ejecución legítima
+de la misma run vuelve a invocar este script con otro ``run_attempt`` y otro
+``job_id``, y esa diferencia no puede convertir una release válida en una
+colisión divergente.
 """
 
 from __future__ import annotations
@@ -39,7 +52,8 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -58,11 +72,18 @@ from deploy.actualizador_publico import (  # noqa: E402 - raíz preparada arriba
     NOMBRE_WORKFLOW_CI,
     RAMA_PUBLICACION,
     VERSION_METADATOS,
+    ErrorActualizadorPublico,
+    JobCi,
+    RunCi,
+    assets_esperados,
+    leer_intento_declarado,
     nombre_metadatos,
     nombre_paquete,
     nombre_sidecar,
     tag_publicacion,
+    validar_metadatos,
     validar_url_publica,
+    verificar_intento_historico,
 )
 from deploy.herramienta_despliegue import (  # noqa: E402 - raíz preparada arriba
     ErrorDespliegue,
@@ -80,6 +101,23 @@ VARIABLE_TOKEN = "GITHUB_TOKEN"
 
 class ErrorPublicacion(RuntimeError):
     """Impide publicar una release que no está inequívocamente habilitada."""
+
+
+@contextmanager
+def _como_error_publicacion() -> Generator[None]:
+    """Traduce las fallas del módulo compartido al vocabulario del publicador.
+
+    Las comprobaciones de intento, job y metadatos viven una sola vez, en
+    ``deploy/actualizador_publico.py``, y levantan ``ErrorActualizadorPublico``.
+    Este publicador expone ``ErrorPublicacion`` en toda su superficie, así que la
+    frontera se traduce acá en lugar de duplicar la lógica o de obligar a cada
+    llamador a conocer los dos tipos.
+    """
+
+    try:
+        yield
+    except ErrorActualizadorPublico as error:
+        raise ErrorPublicacion(str(error)) from error
 
 
 class ClienteApiGitHub(Protocol):
@@ -198,64 +236,6 @@ def _objeto(datos: Any, contexto: str) -> dict[str, Any]:
     return cast(dict[str, Any], datos)
 
 
-def verificar_run_habilitante(
-    cliente: ClienteApiGitHub, repositorio: str, run_id: int, sha: str
-) -> dict[str, Any]:
-    """Exige que la run indicada sea la CI completa y verde del push a ``main``.
-
-    No alcanza con que el job de empaquetado esté verde: se comprueba la
-    conclusión de la **run entera**, que es lo que el WP exige para que nunca se
-    publique una release candidata parcial o fallida.
-    """
-
-    url = f"https://{HOST_API}/repos/{repositorio}/actions/runs/{run_id}"
-    datos = _objeto(cliente.obtener(url), url)
-    if _texto(datos, "name", url) != NOMBRE_WORKFLOW_CI:
-        raise ErrorPublicacion(f"La run {run_id} no pertenece al workflow {NOMBRE_WORKFLOW_CI}.")
-    if _texto(datos, "event", url) != EVENTO_PUBLICABLE:
-        raise ErrorPublicacion(f"La run {run_id} no corresponde a un evento {EVENTO_PUBLICABLE}.")
-    if _texto(datos, "head_branch", url) != RAMA_PUBLICACION:
-        raise ErrorPublicacion(f"La run {run_id} no corresponde a {RAMA_PUBLICACION}.")
-    if _texto(datos, "head_sha", url) != sha:
-        raise ErrorPublicacion(f"La run {run_id} no corresponde al SHA {sha}.")
-    if _texto(datos, "status", url) != "completed":
-        raise ErrorPublicacion(f"La run {run_id} todavía no terminó.")
-    if _texto(datos, "conclusion", url) != "success":
-        raise ErrorPublicacion(f"La run {run_id} no terminó en success; no se publica nada.")
-    return datos
-
-
-def verificar_job_empaquetado(
-    cliente: ClienteApiGitHub, repositorio: str, run_id: int, sha: str
-) -> dict[str, Any]:
-    """Exige el job exacto de empaquetado, exitoso y del mismo ``head_sha``."""
-
-    url = f"https://{HOST_API}/repos/{repositorio}/actions/runs/{run_id}/jobs?per_page=100"
-    datos = _objeto(cliente.obtener(url), url)
-    crudos = datos.get("jobs")
-    total = datos.get("total_count")
-    if not isinstance(crudos, list) or not isinstance(total, int) or isinstance(total, bool):
-        raise ErrorPublicacion(f"{url} no devolvió una lista de jobs utilizable.")
-    jobs: list[Any] = cast(list[Any], crudos)
-    if total > len(jobs):
-        raise ErrorPublicacion(f"{url} vino paginado; no se puede demostrar unicidad del job.")
-
-    coincidencias: list[dict[str, Any]] = [
-        _objeto(job, url) for job in jobs if _objeto(job, url).get("name") == NOMBRE_JOB_EMPAQUETADO
-    ]
-    if len(coincidencias) != 1:
-        raise ErrorPublicacion(
-            f"Se esperaba exactamente un job {NOMBRE_JOB_EMPAQUETADO} en la run {run_id} y se "
-            f"encontraron {len(coincidencias)}."
-        )
-    job = coincidencias[0]
-    if _texto(job, "conclusion", url) != "success":
-        raise ErrorPublicacion(f"El job {NOMBRE_JOB_EMPAQUETADO} no terminó en success.")
-    if _texto(job, "head_sha", url) != sha:
-        raise ErrorPublicacion(f"El job {NOMBRE_JOB_EMPAQUETADO} no corresponde al SHA {sha}.")
-    return job
-
-
 def localizar_artefactos(directorio: Path, sha: str) -> tuple[Path, Path]:
     """Encuentra el paquete y el sidecar exactos del SHA dentro del directorio.
 
@@ -287,8 +267,8 @@ def construir_metadatos(
     tree_sha: str,
     checksum: str,
     tamano: int,
-    run: Mapping[str, Any],
-    job: Mapping[str, Any],
+    run: RunCi,
+    job: JobCi,
 ) -> dict[str, Any]:
     """Arma el documento que ata publicación, commit, árbol Git y CI.
 
@@ -296,6 +276,12 @@ def construir_metadatos(
     campo y compara su ``tree_sha`` con el de ``release.json``: esa doble
     verificación es lo que impide combinar los metadatos de un SHA con el tar de
     otro.
+
+    El bloque ``ci`` guarda el par ``run_id`` + ``run_attempt`` **del intento que
+    está publicando**, junto con el identificador de su job de empaquetado. Ese
+    par es la identidad estable de la evidencia: una re-ejecución posterior de la
+    misma run creará otro intento con otros jobs, y el consumidor debe seguir
+    verificando el que figura acá.
     """
 
     return {
@@ -309,11 +295,11 @@ def construir_metadatos(
             "workflow": NOMBRE_WORKFLOW_CI,
             "evento": EVENTO_PUBLICABLE,
             "rama": RAMA_PUBLICACION,
-            "run_id": run["id"],
-            "run_number": run["run_number"],
-            "run_attempt": run["run_attempt"],
+            "run_id": run.identificador,
+            "run_number": run.numero,
+            "run_attempt": run.intento,
             "job": NOMBRE_JOB_EMPAQUETADO,
-            "job_id": job["id"],
+            "job_id": job.identificador,
         },
         "paquete": {"nombre": nombre_paquete(sha), "sha256": checksum, "tamano": tamano},
         "sidecar": {"nombre": nombre_sidecar(sha)},
@@ -326,23 +312,13 @@ def _sha256_bytes(datos: bytes) -> str:
     return hashlib.sha256(datos).hexdigest()
 
 
-def _comparar_publicacion_existente(
-    cliente: ClienteApiGitHub,
-    release: Mapping[str, Any],
-    esperados: Mapping[str, bytes],
-    directorio_temporal: Path,
-) -> None:
-    """Confirma idempotencia o aborta: nunca reemplaza bytes ya publicados.
-
-    Entradas:
-        release: objeto de la release existente devuelto por el API.
-        esperados: contenido local de cada asset, indexado por nombre.
-        directorio_temporal: dónde bajar los assets publicados para compararlos.
+def _inventario_publicado(release: Mapping[str, Any], sha: str) -> dict[str, str]:
+    """Mapea nombre de asset a URL de descarga exigiendo los tres exactos.
 
     Errores:
-        ErrorPublicacion si falta un asset, sobra uno o difiere el contenido.
-        Cualquiera de esos casos exige intervención humana, porque una release
-        publicada es inmutable y divergir de ella indica un problema real.
+        ErrorPublicacion si la release existente duplica un asset o si su
+        conjunto no es exactamente el de :func:`assets_esperados`. Una release
+        publicada a medias no se completa: se aborta y decide una persona.
     """
 
     assets = release.get("assets")
@@ -357,21 +333,106 @@ def _comparar_publicacion_existente(
             raise ErrorPublicacion(f"La release existente duplica el asset {nombre}.")
         publicados[nombre] = _texto(asset, "browser_download_url", "asset publicado")
 
-    if set(publicados) != set(esperados):
+    esperados = set(assets_esperados(sha))
+    if set(publicados) != esperados:
         raise ErrorPublicacion(
             "La release ya existe con un conjunto de assets distinto "
             f"({sorted(publicados)} frente a {sorted(esperados)}). No se reemplaza nada; "
             "se requiere intervención humana."
         )
+    return publicados
 
-    for nombre, contenido in esperados.items():
-        destino = directorio_temporal / f"publicado-{nombre}"
-        cliente.descargar(publicados[nombre], destino)
-        if _sha256_bytes(destino.read_bytes()) != _sha256_bytes(contenido):
+
+def confirmar_idempotencia(
+    cliente: ClienteApiGitHub,
+    release: Mapping[str, Any],
+    *,
+    repositorio: str,
+    sha: str,
+    paquete: Path,
+    sidecar: Path,
+    tree_sha: str,
+    checksum: str,
+    directorio_temporal: Path,
+) -> RunCi:
+    """Acepta una publicación ya existente sin tocarla, o aborta fail-safe.
+
+    ¿Por qué no se comparan los tres assets byte a byte?
+    ----------------------------------------------------
+
+    Porque el asset de metadatos nombra el intento de CI que publicó la release,
+    y ese intento es historia: si la misma run se re-ejecuta, este publicador
+    vuelve a correr con un ``run_attempt`` y un ``job_id`` nuevos. Comparar los
+    metadatos byte a byte interpretaría esa re-ejecución legítima como una
+    colisión divergente y dejaría inutilizable una release válida e inmutable.
+
+    Lo que sí se exige, y es más fuerte que una comparación de bytes:
+
+    - el paquete y el sidecar publicados son **exactamente** los mismos bytes
+      que los locales;
+    - los metadatos publicados son coherentes con este mismo commit, tag,
+      repositorio, árbol Git y checksum;
+    - el intento de CI que declaran existió de verdad, fue del mismo SHA, del
+      workflow y evento correctos y terminó en ``success``, igual que su job de
+      empaquetado.
+
+    Resultado: la :class:`RunCi` del intento que publicó originalmente la
+    release, para poder informarlo.
+
+    Errores:
+        ErrorPublicacion ante cualquier divergencia. Nunca se reemplaza un asset
+        ni se reescriben los metadatos de una release publicada.
+    """
+
+    publicados = _inventario_publicado(release, sha)
+
+    # 1. Los bytes del paquete y del sidecar deben ser idénticos. Acá sí la
+    #    comparación es byte a byte: son el contenido inmutable de la release.
+    for ruta in (paquete, sidecar):
+        destino = directorio_temporal / f"publicado-{ruta.name}"
+        cliente.descargar(publicados[ruta.name], destino)
+        if _sha256_bytes(destino.read_bytes()) != _sha256_bytes(ruta.read_bytes()):
             raise ErrorPublicacion(
-                f"El asset {nombre} ya publicado difiere byte a byte del local. Una release "
+                f"El asset {ruta.name} ya publicado difiere byte a byte del local. Una release "
                 "publicada es inmutable: se aborta sin reemplazarla."
             )
+
+    # 2. Los metadatos publicados se validan por significado, no por bytes.
+    nombre = nombre_metadatos(sha)
+    destino_metadatos = directorio_temporal / f"publicado-{nombre}"
+    cliente.descargar(publicados[nombre], destino_metadatos)
+    try:
+        crudos = json.loads(destino_metadatos.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ErrorPublicacion(
+            f"Los metadatos ya publicados no son JSON válido: {error}"
+        ) from error
+    metadatos = _objeto(crudos, nombre)
+
+    with _como_error_publicacion():
+        run_declarada, intento_declarado = leer_intento_declarado(metadatos, sha)
+        run, job = verificar_intento_historico(
+            cliente.obtener,
+            repositorio=repositorio,
+            run_id=run_declarada,
+            intento=intento_declarado,
+            sha=sha,
+        )
+        tree_publicado = validar_metadatos(
+            metadatos, sha, repositorio=repositorio, run=run, job=job
+        )
+
+    if tree_publicado != tree_sha:
+        raise ErrorPublicacion(
+            "Los metadatos ya publicados declaran otro árbol Git que el paquete local; se aborta "
+            "sin reemplazar nada."
+        )
+    if _texto(_objeto(metadatos.get("paquete"), f"{nombre}.paquete"), "sha256", nombre) != checksum:
+        raise ErrorPublicacion(
+            "Los metadatos ya publicados declaran otro SHA-256 que el paquete local; se aborta "
+            "sin reemplazar nada."
+        )
+    return run
 
 
 def publicar_release(
@@ -380,25 +441,59 @@ def publicar_release(
     repositorio: str,
     sha: str,
     run_id: int,
+    run_attempt: int,
     directorio: Path,
 ) -> dict[str, Any]:
     """Ejecuta la publicación completa y devuelve un resumen serializable.
 
+    Entradas:
+        run_id, run_attempt: el intento exacto de CI que está habilitando esta
+            publicación. Los provee el evento ``workflow_run`` y se vuelven a
+            demostrar contra la API antes de escribir nada.
+
     Resultado: diccionario con el tag, el estado (``creada`` o ``idempotente``),
-    el commit, el árbol y la run de CI habilitante.
+    el commit, el árbol y el intento de CI habilitante.
 
     Efectos laterales: crea la GitHub Release y sube tres assets, o no escribe
-    nada si ya estaba publicada de forma idéntica.
+    nada si ya estaba publicada de forma válida.
     """
 
     sha = validar_sha(sha)
-    run = verificar_run_habilitante(cliente, repositorio, run_id, sha)
-    job = verificar_job_empaquetado(cliente, repositorio, run_id, sha)
+    with _como_error_publicacion():
+        run, job = verificar_intento_historico(
+            cliente.obtener, repositorio=repositorio, run_id=run_id, intento=run_attempt, sha=sha
+        )
 
     paquete, sidecar = localizar_artefactos(directorio, sha)
     checksum = verificar_checksum(paquete, sidecar)
     manifest = inspeccionar_manifest_paquete(paquete, sha)
     tree_sha = validar_sha(str(manifest["tree_sha"]))
+
+    tag = tag_publicacion(sha)
+    url_tag = (
+        f"https://{HOST_API}/repos/{repositorio}/releases/tags/{urllib.parse.quote(tag, safe='')}"
+    )
+    existente = cliente.obtener(url_tag)
+    if existente is not None:
+        publicante = confirmar_idempotencia(
+            cliente,
+            _objeto(existente, url_tag),
+            repositorio=repositorio,
+            sha=sha,
+            paquete=paquete,
+            sidecar=sidecar,
+            tree_sha=tree_sha,
+            checksum=checksum,
+            directorio_temporal=directorio,
+        )
+        return {
+            "tag": tag,
+            "estado": "idempotente",
+            "commit_sha": sha,
+            "tree_sha": tree_sha,
+            "ci_run_id": publicante.identificador,
+            "ci_run_attempt": publicante.intento,
+        }
 
     metadatos = construir_metadatos(
         repositorio=repositorio,
@@ -415,27 +510,6 @@ def publicar_release(
     ruta_metadatos = directorio / nombre_metadatos(sha)
     ruta_metadatos.write_bytes(contenido_metadatos)
 
-    esperados: dict[str, bytes] = {
-        paquete.name: paquete.read_bytes(),
-        sidecar.name: sidecar.read_bytes(),
-        ruta_metadatos.name: contenido_metadatos,
-    }
-
-    tag = tag_publicacion(sha)
-    url_tag = (
-        f"https://{HOST_API}/repos/{repositorio}/releases/tags/{urllib.parse.quote(tag, safe='')}"
-    )
-    existente = cliente.obtener(url_tag)
-    if existente is not None:
-        _comparar_publicacion_existente(cliente, _objeto(existente, url_tag), esperados, directorio)
-        return {
-            "tag": tag,
-            "estado": "idempotente",
-            "commit_sha": sha,
-            "tree_sha": tree_sha,
-            "ci_run_id": run_id,
-        }
-
     creada = _objeto(
         cliente.crear(
             f"https://{HOST_API}/repos/{repositorio}/releases",
@@ -446,8 +520,8 @@ def publicar_release(
                 "body": (
                     f"Release productiva de SIS-Leg para el commit `{sha}`.\n\n"
                     f"- Árbol Git: `{tree_sha}`\n"
-                    f"- CI habilitante: run `{run_id}` del workflow `{NOMBRE_WORKFLOW_CI}` "
-                    f"sobre `{RAMA_PUBLICACION}`\n"
+                    f"- CI habilitante: run `{run.identificador}` intento `{run.intento}` del "
+                    f"workflow `{NOMBRE_WORKFLOW_CI}` sobre `{RAMA_PUBLICACION}`\n"
                     f"- SHA-256 del paquete: `{checksum}`\n\n"
                     "Los tres assets se consumen sin credenciales mediante "
                     "`deploy/actualizador_publico.py`."
@@ -475,7 +549,8 @@ def publicar_release(
         "estado": "creada",
         "commit_sha": sha,
         "tree_sha": tree_sha,
-        "ci_run_id": run_id,
+        "ci_run_id": run.identificador,
+        "ci_run_attempt": run.intento,
     }
 
 
@@ -488,6 +563,10 @@ def crear_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repositorio", required=True)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--run-id", required=True, type=int)
+    # El intento es obligatorio y no se deduce releyendo la run: la API
+    # devolvería el intento más reciente, que ante una re-ejecución ya no es el
+    # que está publicando.
+    parser.add_argument("--run-attempt", required=True, type=int)
     parser.add_argument("--directorio", required=True, type=Path)
     return parser
 
@@ -503,6 +582,7 @@ def main(argumentos: Sequence[str] | None = None) -> int:
             repositorio=opciones.repositorio,
             sha=opciones.sha,
             run_id=opciones.run_id,
+            run_attempt=opciones.run_attempt,
             directorio=opciones.directorio.resolve(),
         )
     except (ErrorPublicacion, ErrorDespliegue, OSError) as error:

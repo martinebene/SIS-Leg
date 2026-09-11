@@ -11,7 +11,8 @@ software que el repositorio ya publica en abierto.
 WP-100 reemplaza ese transporte por un canal **público**: cada push a ``main``
 cuya CI completa termine en ``success`` publica una GitHub Release inmutable con
 tag determinista ``sis-leg-<SHA>``, que contiene el paquete, su sidecar SHA-256
-y un archivo de metadatos que ata publicación, commit, árbol Git y run de CI.
+y un archivo de metadatos que ata publicación, commit, árbol Git y el intento
+exacto de CI que la habilitó.
 
 Este módulo es el lado **consumidor** de ese canal. Su contrato es estricto:
 
@@ -25,8 +26,8 @@ Este módulo es el lado **consumidor** de ese canal. Su contrato es estricto:
 Reparto de responsabilidades
 ----------------------------
 
-Este módulo se ocupa de **transporte y selección**: qué SHA, qué run, qué job,
-qué publicación y qué assets. La **validez** de la release sigue decidiéndola la
+Este módulo se ocupa de **transporte y selección**: qué SHA, qué publicación,
+qué intento de CI la habilitó y qué assets. La **validez** de la release sigue decidiéndola la
 herramienta canónica: ``verificar_checksum``, ``validar_manifest`` y, más tarde,
 ``extraer_paquete_seguro`` dentro de ``preparar``. No hay acá un segundo motor de
 validación de tar, manifest o checksum; se importan los que ya existen.
@@ -44,7 +45,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -163,6 +164,14 @@ class ClienteHttpPublico(Protocol):
     def obtener_json(self, url: str, *, maximo_bytes: int = MAXIMO_BYTES_JSON) -> Any: ...
 
     def descargar(self, url: str, destino: Path, *, maximo_bytes: int) -> int: ...
+
+
+# Frontera mínima para consultar evidencia de CI: recibe una URL y devuelve el
+# JSON ya parseado, o ``None`` si el recurso no existe. La cumplen tanto el
+# cliente público de este módulo como el cliente autenticado del publicador, y
+# por eso las dos mitades del canal comparten una sola implementación de las
+# comprobaciones sobre runs, intentos y jobs.
+ConsultaJson = Callable[[str], Any]
 
 
 def validar_url_publica(url: str, *, hosts_permitidos: Sequence[str]) -> None:
@@ -314,13 +323,27 @@ class ClienteHttpPublicoReal:
 
 
 # --------------------------------------------------------------------------
-# Selección determinista: SHA -> run -> job -> publicación -> assets
+# Selección determinista:
+# SHA -> publicación -> metadatos -> intento histórico de CI -> assets
+#
+# El orden importa. Hasta la corrección de WP-100 I002 el actualizador elegía
+# primero «la run más reciente» del SHA y exigía que los metadatos de la release
+# coincidieran con ella. Eso rompía ante una re-ejecución: la release inmutable
+# seguía nombrando el intento que la publicó, pero la comparación se hacía
+# contra el intento más nuevo. Ahora la release manda: sus metadatos declaran el
+# intento habilitante y ese intento exacto es el que se va a demostrar contra la
+# API.
 # --------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class RunCi:
-    """La run de CI exacta que habilitó una publicación."""
+    """El intento exacto de la run de CI que habilitó una publicación.
+
+    ``identificador`` e ``intento`` se leen juntos: una misma run puede tener
+    varios intentos y sólo uno de ellos publicó la release. Ese par es la
+    identidad estable de la evidencia de CI.
+    """
 
     identificador: int
     numero: int
@@ -331,11 +354,18 @@ class RunCi:
 
 @dataclass(frozen=True, slots=True)
 class JobCi:
-    """El job de empaquetado exacto dentro de esa run."""
+    """El job de empaquetado exacto dentro de ese intento.
+
+    Conserva ``run_id`` e ``intento`` porque una re-ejecución crea jobs nuevos:
+    saber a qué ejecución pertenece el job es lo que impide mezclar el
+    identificador de un intento con la evidencia de otro.
+    """
 
     identificador: int
     nombre: str
     head_sha: str
+    run_id: int
+    intento: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -358,7 +388,12 @@ class PublicacionPublica:
 
 @dataclass(frozen=True, slots=True)
 class ReleaseDescargada:
-    """Resultado verificado y listo para entregar a ``preparar``."""
+    """Resultado verificado y listo para entregar a ``preparar``.
+
+    ``run_ci`` y ``job_ci`` son la evidencia **histórica**: el intento de CI que
+    publicó esta release y su job de empaquetado, no la ejecución más reciente
+    de esa run.
+    """
 
     commit_sha: str
     tree_sha: str
@@ -441,95 +476,172 @@ def resolver_sha_main(
     return validar_sha(_texto(datos, "sha", url))
 
 
-def seleccionar_run_ci(
-    cliente: ClienteHttpPublico,
-    sha: str,
+# --------------------------------------------------------------------------
+# Evidencia histórica: el intento de CI que habilitó una publicación
+# --------------------------------------------------------------------------
+#
+# ¿Por qué «el intento histórico» y no «el último intento»?
+# ---------------------------------------------------------
+#
+# GitHub Actions permite **re-ejecutar** una run conservando el mismo ``run_id``
+# y el mismo SHA, pero creando un intento nuevo (``run_attempt``) con jobs
+# nuevos y, por lo tanto, con identificadores nuevos. La release pública, en
+# cambio, es inmutable: la habilitó un intento concreto y sus metadatos nombran
+# ese intento para siempre.
+#
+# Si el consumidor preguntara por «los jobs de la run» —``/actions/runs/{id}/jobs``,
+# que responde con ``filter=latest`` de forma predeterminada— después de una
+# re-ejecución recibiría los jobs del intento más reciente y rechazaría una
+# release que sigue siendo íntegra. Por eso acá se consulta el endpoint por
+# intento exacto, que GitHub conserva para siempre:
+#
+#     /repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{run_attempt}
+#     /repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{run_attempt}/jobs
+#
+# Los metadatos de la release dicen qué intento hay que demostrar; la API dice
+# si ese intento existió, si fue del mismo SHA, del mismo workflow, del mismo
+# evento y rama, y si terminó en ``success``. Una re-ejecución posterior no
+# cambia ninguna de esas respuestas, así que no puede invalidar ni volver
+# falsamente divergente una publicación previa.
+#
+# Los identificadores salen de un asset público y por lo tanto son un dato
+# externo. No se confía en ellos: sólo se usan como enteros para armar una URL
+# del repositorio ya validado, y el intento que nombren debe demostrar por sí
+# mismo que corresponde a este SHA exacto. Unos metadatos falsificados no
+# pueden apuntar a una CI que no sea, realmente, una CI verde de este commit.
+
+
+def url_intento_ci(repositorio: str, run_id: int, intento: int) -> str:
+    """URL pública del intento histórico exacto de una run de CI."""
+
+    return f"https://{HOST_API}/repos/{repositorio}/actions/runs/{run_id}/attempts/{intento}"
+
+
+def url_jobs_intento_ci(repositorio: str, run_id: int, intento: int) -> str:
+    """URL pública de los jobs de ese intento histórico, no los del más reciente."""
+
+    return f"{url_intento_ci(repositorio, run_id, intento)}/jobs?per_page=100"
+
+
+def _identificador_positivo(valor: object, nombre: str) -> int:
+    """Exige un entero positivo antes de concatenarlo en una URL del API."""
+
+    if not isinstance(valor, int) or isinstance(valor, bool) or valor <= 0:
+        raise ErrorActualizadorPublico(
+            f"{nombre} debe ser un entero positivo y se recibió {valor!r}."
+        )
+    return valor
+
+
+def _consultar_evidencia(consultar: ConsultaJson, url: str, descripcion: str) -> dict[str, Any]:
+    """Pide una evidencia de CI traduciendo ausencia y falla a un mensaje claro.
+
+    Las dos fronteras HTTP del proyecto señalan «no existe» de forma distinta: el
+    consumidor público levanta ``ErrorActualizadorPublico`` con el código HTTP y
+    el publicador autenticado devuelve ``None`` ante un 404. Las dos formas se
+    traducen acá al mismo resultado: fallar cerrado nombrando qué evidencia no
+    pudo demostrarse.
+    """
+
+    try:
+        datos = consultar(url)
+    except ErrorActualizadorPublico as error:
+        raise ErrorActualizadorPublico(f"No se pudo demostrar {descripcion}: {error}") from error
+    if datos is None:
+        raise ErrorActualizadorPublico(f"No existe {descripcion}: {url}")
+    return _objeto(datos, url)
+
+
+def verificar_intento_ci(
+    consultar: ConsultaJson,
     *,
-    repositorio: str = REPOSITORIO_PREDETERMINADO,
+    repositorio: str,
+    run_id: int,
+    intento: int,
+    sha: str,
     rama: str = RAMA_PUBLICACION,
 ) -> RunCi:
-    """Paso 2: exige una run de ``push`` sobre ``main`` para ese SHA exacto.
+    """Exige que ese intento histórico haya sido la CI completa y verde del SHA.
 
-    Los filtros de la query son una optimización, no una garantía: cada campo se
-    vuelve a comprobar en código sobre la respuesta. Una run de ``pull_request``
-    se rechaza aunque comparta SHA, porque valida un merge hipotético y no el
-    contenido que quedó en ``main``.
+    Entradas:
+        consultar: frontera HTTP que devuelve el JSON de una URL del API.
+        repositorio: ``propietario/nombre`` ya conocido y validado.
+        run_id, intento: el par exacto que se quiere demostrar.
+        sha: el commit que la publicación dice haber empaquetado.
+        rama: la única rama publicable.
 
-    Si hay varias runs válidas para el mismo SHA —por ejemplo, una re-ejecución
-    manual— se elige de forma determinista la de mayor ``run_number`` y, ante
-    empate, la de mayor identificador. Si la respuesta viene paginada no se puede
-    demostrar que se vio el conjunto completo, así que se aborta.
+    Resultado: la :class:`RunCi` correspondiente a ese intento.
+
+    Errores:
+        ErrorActualizadorPublico si el intento no existe, pertenece a otro
+        workflow, evento, rama o SHA, no terminó, o no terminó en ``success``.
+        No alcanza con que el job de empaquetado esté verde: se exige la
+        conclusión de la **run entera** de ese intento, que es lo que el WP pide
+        para no publicar ni consumir una CI parcial o fallida.
     """
 
     sha = validar_sha(sha)
     _validar_repositorio(repositorio)
-    consulta = urllib.parse.urlencode(
-        {
-            "head_sha": sha,
-            "event": EVENTO_PUBLICABLE,
-            "branch": rama,
-            "status": "completed",
-            "per_page": "100",
-        }
+    run_id = _identificador_positivo(run_id, "run_id")
+    intento = _identificador_positivo(intento, "run_attempt")
+
+    url = url_intento_ci(repositorio, run_id, intento)
+    descripcion = f"el intento {intento} de la run de CI {run_id}"
+    datos = _consultar_evidencia(consultar, url, descripcion)
+
+    if _texto(datos, "name", url) != NOMBRE_WORKFLOW_CI:
+        raise ErrorActualizadorPublico(
+            f"{descripcion} no pertenece al workflow {NOMBRE_WORKFLOW_CI}."
+        )
+    if _texto(datos, "event", url) != EVENTO_PUBLICABLE:
+        raise ErrorActualizadorPublico(
+            f"{descripcion} no corresponde a un evento {EVENTO_PUBLICABLE}."
+        )
+    if _texto(datos, "head_branch", url) != rama:
+        raise ErrorActualizadorPublico(f"{descripcion} no corresponde a {rama}.")
+    if _texto(datos, "head_sha", url) != sha:
+        raise ErrorActualizadorPublico(f"{descripcion} no corresponde al SHA {sha}.")
+    if _texto(datos, "status", url) != "completed":
+        raise ErrorActualizadorPublico(f"{descripcion} todavía no terminó.")
+    if _texto(datos, "conclusion", url) != "success":
+        raise ErrorActualizadorPublico(f"{descripcion} no terminó en success.")
+    if _entero(datos, "id", url) != run_id:
+        raise ErrorActualizadorPublico(
+            f"{descripcion} devolvió otra run; no se mezclan ejecuciones."
+        )
+    if _entero(datos, "run_attempt", url) != intento:
+        raise ErrorActualizadorPublico(
+            f"{descripcion} devolvió otro intento; no se mezclan ejecuciones."
+        )
+
+    return RunCi(
+        identificador=run_id,
+        numero=_entero(datos, "run_number", url),
+        intento=intento,
+        head_sha=sha,
+        workflow=NOMBRE_WORKFLOW_CI,
     )
-    url = f"https://{HOST_API}/repos/{repositorio}/actions/runs?{consulta}"
-    datos = _objeto(cliente.obtener_json(url), url)
-    runs = _lista(datos, "workflow_runs", url)
-    total = _entero(datos, "total_count", url)
-    if total > len(runs):
-        raise ErrorActualizadorPublico(
-            f"{url} devolvió {len(runs)} runs de {total}: no se puede demostrar una elección "
-            "única y se aborta."
-        )
-
-    candidatas: list[RunCi] = []
-    for cruda in runs:
-        run = _objeto(cruda, url)
-        if (
-            _texto(run, "head_sha", url) != sha
-            or _texto(run, "event", url) != EVENTO_PUBLICABLE
-            or _texto(run, "head_branch", url) != rama
-            or _texto(run, "status", url) != "completed"
-            or _texto(run, "conclusion", url) != "success"
-            or _texto(run, "name", url) != NOMBRE_WORKFLOW_CI
-        ):
-            continue
-        candidatas.append(
-            RunCi(
-                identificador=_entero(run, "id", url),
-                numero=_entero(run, "run_number", url),
-                intento=_entero(run, "run_attempt", url),
-                head_sha=sha,
-                workflow=NOMBRE_WORKFLOW_CI,
-            )
-        )
-
-    if not candidatas:
-        raise ErrorActualizadorPublico(
-            f"No hay una run de CI de tipo {EVENTO_PUBLICABLE} sobre {rama} completada con "
-            f"éxito para {sha}. No hay release productiva nueva disponible."
-        )
-    return max(candidatas, key=lambda run: (run.numero, run.identificador))
 
 
 def verificar_job_empaquetado(
-    cliente: ClienteHttpPublico,
+    consultar: ConsultaJson,
     run: RunCi,
     *,
     repositorio: str = REPOSITORIO_PREDETERMINADO,
 ) -> JobCi:
-    """Paso 3: exige el job exacto ``Empaquetado · release productiva`` exitoso.
+    """Exige el job ``Empaquetado · release productiva`` exacto de ese intento.
 
     La coincidencia de nombre es exacta y sensible a mayúsculas y acentos: un
-    job parecido no es el job. Además se comprueba que el job pertenezca al
-    mismo ``head_sha``, para que no se mezclen datos de dos SHAs distintos.
+    job parecido no es el job. Además el job debe declarar el mismo ``head_sha``
+    que la run y pertenecer a esa run y a ese intento, para que no puedan
+    combinarse datos de dos ejecuciones distintas.
     """
 
     _validar_repositorio(repositorio)
-    url = (
-        f"https://{HOST_API}/repos/{repositorio}/actions/runs/{run.identificador}/jobs?per_page=100"
-    )
-    datos = _objeto(cliente.obtener_json(url), url)
+    url = url_jobs_intento_ci(repositorio, run.identificador, run.intento)
+    descripcion = f"los jobs del intento {run.intento} de la run {run.identificador}"
+    datos = _consultar_evidencia(consultar, url, descripcion)
+
     jobs = _lista(datos, "jobs", url)
     total = _entero(datos, "total_count", url)
     if total > len(jobs):
@@ -545,8 +657,8 @@ def verificar_job_empaquetado(
             continue
         if _texto(job, "conclusion", url) != "success":
             raise ErrorActualizadorPublico(
-                f"El job {NOMBRE_JOB_EMPAQUETADO} de la run {run.identificador} no terminó en "
-                "success."
+                f"El job {NOMBRE_JOB_EMPAQUETADO} del intento {run.intento} de la run "
+                f"{run.identificador} no terminó en success."
             )
         head_sha = _texto(job, "head_sha", url)
         if head_sha != run.head_sha:
@@ -554,20 +666,73 @@ def verificar_job_empaquetado(
                 f"El job {NOMBRE_JOB_EMPAQUETADO} declara head_sha {head_sha} y la run "
                 f"{run.head_sha}: no se mezclan SHAs distintos."
             )
+        if _entero(job, "run_id", url) != run.identificador:
+            raise ErrorActualizadorPublico(
+                f"El job {NOMBRE_JOB_EMPAQUETADO} pertenece a otra run; no se mezclan ejecuciones."
+            )
+        if _entero(job, "run_attempt", url) != run.intento:
+            raise ErrorActualizadorPublico(
+                f"El job {NOMBRE_JOB_EMPAQUETADO} pertenece a otro intento; no se mezclan "
+                "ejecuciones."
+            )
         coincidencias.append(
             JobCi(
                 identificador=_entero(job, "id", url),
                 nombre=NOMBRE_JOB_EMPAQUETADO,
                 head_sha=head_sha,
+                run_id=run.identificador,
+                intento=run.intento,
             )
         )
 
     if len(coincidencias) != 1:
         raise ErrorActualizadorPublico(
-            f"Se esperaba exactamente un job {NOMBRE_JOB_EMPAQUETADO} en la run "
-            f"{run.identificador} y se encontraron {len(coincidencias)}."
+            f"Se esperaba exactamente un job {NOMBRE_JOB_EMPAQUETADO} en el intento "
+            f"{run.intento} de la run {run.identificador} y se encontraron "
+            f"{len(coincidencias)}."
         )
     return coincidencias[0]
+
+
+def verificar_intento_historico(
+    consultar: ConsultaJson,
+    *,
+    repositorio: str,
+    run_id: int,
+    intento: int,
+    sha: str,
+    rama: str = RAMA_PUBLICACION,
+) -> tuple[RunCi, JobCi]:
+    """Demuestra de una vez el intento habilitante y su job de empaquetado.
+
+    Es el único punto donde se prueba «hubo CI verde de push a main para este
+    SHA y su empaquetado fue exitoso». Lo usan los dos lados del canal: el
+    publicador sobre el intento que está publicando y el consumidor sobre el
+    intento que los metadatos de la release declaran como habilitante.
+    """
+
+    run = verificar_intento_ci(
+        consultar, repositorio=repositorio, run_id=run_id, intento=intento, sha=sha, rama=rama
+    )
+    return run, verificar_job_empaquetado(consultar, run, repositorio=repositorio)
+
+
+def leer_intento_declarado(datos: Mapping[str, Any], sha: str) -> tuple[int, int]:
+    """Lee qué intento dicen los metadatos, sin darlo todavía por bueno.
+
+    Se separa de :func:`validar_metadatos` porque hay un orden obligatorio: para
+    validar los metadatos hace falta la run y el job reales, y para pedirlos hace
+    falta saber primero qué intento declaran. Acá sólo se comprueba la forma
+    —dos enteros positivos— y la prueba de fondo la da
+    :func:`verificar_intento_historico`.
+    """
+
+    contexto = nombre_metadatos(sha)
+    ci = _objeto(datos.get("ci"), f"{contexto}.ci")
+    return (
+        _identificador_positivo(_entero(ci, "run_id", contexto), f"{contexto}.ci.run_id"),
+        _identificador_positivo(_entero(ci, "run_attempt", contexto), f"{contexto}.ci.run_attempt"),
+    )
 
 
 def resolver_publicacion(
@@ -648,6 +813,13 @@ def validar_metadatos(
 ) -> str:
     """Valida el archivo que ata publicación, commit, árbol y CI.
 
+    Entradas:
+        datos: el JSON de metadatos ya parseado.
+        sha: el commit que se está consumiendo o publicando.
+        repositorio: ``propietario/nombre`` esperado.
+        run, job: el intento habilitante y su job de empaquetado, **ya
+            demostrados contra la API** por :func:`verificar_intento_historico`.
+
     Resultado: el ``tree_sha`` declarado, que después debe coincidir con el que
     trae ``release.json`` dentro del paquete. Esa doble comprobación es la que
     impide combinar metadatos de un SHA con el tar de otro.
@@ -669,6 +841,14 @@ def validar_metadatos(
     ci = _objeto(datos.get("ci"), f"{contexto}.ci")
     if _entero(ci, "run_id", contexto) != run.identificador:
         raise ErrorActualizadorPublico(f"{contexto} nombra una run de CI distinta de la exigida.")
+    # El intento y el número de la run se comprueban además del identificador
+    # porque son lo que ata la publicación a una ejecución concreta: unos
+    # metadatos que mezclaran el ``run_id`` de una ejecución con el intento o el
+    # job de otra quedarían descartados acá.
+    if _entero(ci, "run_attempt", contexto) != run.intento:
+        raise ErrorActualizadorPublico(f"{contexto} nombra un intento distinto del demostrado.")
+    if _entero(ci, "run_number", contexto) != run.numero:
+        raise ErrorActualizadorPublico(f"{contexto} nombra otro número de run de CI.")
     if _entero(ci, "job_id", contexto) != job.identificador:
         raise ErrorActualizadorPublico(f"{contexto} nombra un job distinto del exigido.")
     if _texto(ci, "workflow", contexto) != NOMBRE_WORKFLOW_CI:
@@ -742,9 +922,21 @@ def obtener_release_publica(
     ``os.replace``. Ante cualquier error el temporal se borra y ``destino`` queda
     sin artefactos parciales.
 
-    Orden de validación, deliberadamente de lo barato a lo caro:
-    SHA, run, job, publicación, nombres, descarga, sidecar, metadatos y, por
-    último, ``release.json`` con el motor canónico de la herramienta.
+    Orden de validación, deliberadamente de lo barato a lo caro y de lo que
+    decide a lo que se deriva:
+
+    1. SHA de ``main``;
+    2. publicación por tag y nombres exactos de los tres assets;
+    3. descarga del asset de metadatos, que es chico y dice qué intento de CI
+       habilitó esta release;
+    4. demostración de ese intento histórico exacto y de su job de empaquetado
+       contra la API pública;
+    5. validación completa de los metadatos contra esa evidencia;
+    6. recién entonces descarga del paquete y del sidecar, que son los caros;
+    7. checksum, y por último ``release.json`` con el motor canónico.
+
+    Los pasos 3 a 5 son los que sobreviven a una re-ejecución de CI: se demuestra
+    el intento que publicó esta release, no el intento más reciente de la run.
     """
 
     cliente = cliente or ClienteHttpPublicoReal()
@@ -753,8 +945,6 @@ def obtener_release_publica(
         if sha is not None
         else resolver_sha_main(cliente, repositorio=repositorio, rama=rama)
     )
-    run = seleccionar_run_ci(cliente, sha_objetivo, repositorio=repositorio, rama=rama)
-    job = verificar_job_empaquetado(cliente, run, repositorio=repositorio)
     publicacion = resolver_publicacion(cliente, sha_objetivo, repositorio=repositorio)
 
     destino.mkdir(parents=True, exist_ok=True)
@@ -766,6 +956,38 @@ def obtener_release_publica(
         paquete_tmp = temporal / nombre_paquete(sha_objetivo)
         sidecar_tmp = temporal / nombre_sidecar(sha_objetivo)
         metadatos_tmp = temporal / nombre_metadatos(sha_objetivo)
+
+        # Primero el asset chico: dice qué intento de CI hay que demostrar y
+        # evita bajar un tar entero cuando la evidencia no se sostiene.
+        _descargar_asset(
+            cliente,
+            publicacion.assets[metadatos_tmp.name],
+            metadatos_tmp,
+            maximo_bytes=MAXIMO_BYTES_METADATOS,
+        )
+        try:
+            crudos = json.loads(metadatos_tmp.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ErrorActualizadorPublico(
+                f"Los metadatos de {publicacion.tag} no son JSON válido: {error}"
+            ) from error
+        metadatos = _objeto(crudos, nombre_metadatos(sha_objetivo))
+
+        # La release es inmutable y nombra el intento que la habilitó. Ese es el
+        # que se demuestra, aunque después haya habido re-ejecuciones con
+        # identificadores nuevos.
+        run_declarada, intento_declarado = leer_intento_declarado(metadatos, sha_objetivo)
+        run, job = verificar_intento_historico(
+            cliente.obtener_json,
+            repositorio=repositorio,
+            run_id=run_declarada,
+            intento=intento_declarado,
+            sha=sha_objetivo,
+            rama=rama,
+        )
+        tree_sha = validar_metadatos(
+            metadatos, sha_objetivo, repositorio=repositorio, run=run, job=job
+        )
 
         _descargar_asset(
             cliente,
@@ -779,27 +1001,10 @@ def obtener_release_publica(
             sidecar_tmp,
             maximo_bytes=MAXIMO_BYTES_SIDECAR,
         )
-        _descargar_asset(
-            cliente,
-            publicacion.assets[metadatos_tmp.name],
-            metadatos_tmp,
-            maximo_bytes=MAXIMO_BYTES_METADATOS,
-        )
 
         # Defensa canónica número uno: el sidecar. Se delega en la herramienta
         # de despliegue para que no exista un segundo cálculo de checksum.
         checksum = verificar_checksum(paquete_tmp, sidecar_tmp)
-
-        try:
-            crudos = json.loads(metadatos_tmp.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ErrorActualizadorPublico(
-                f"Los metadatos de {publicacion.tag} no son JSON válido: {error}"
-            ) from error
-        metadatos = _objeto(crudos, nombre_metadatos(sha_objetivo))
-        tree_sha = validar_metadatos(
-            metadatos, sha_objetivo, repositorio=repositorio, run=run, job=job
-        )
         checksum_declarado = cast(dict[str, Any], metadatos["paquete"])["sha256"]
         if checksum_declarado != checksum:
             raise ErrorActualizadorPublico(
@@ -892,6 +1097,7 @@ def main(argumentos: Sequence[str] | None = None) -> int:
                 "metadatos": str(release.metadatos),
                 "ci_run_id": release.run_ci.identificador,
                 "ci_run_number": release.run_ci.numero,
+                "ci_run_attempt": release.run_ci.intento,
                 "ci_job_id": release.job_ci.identificador,
                 "paquete_sha256": sha256_archivo(release.paquete),
             },

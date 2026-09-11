@@ -72,9 +72,15 @@ jobs:
           SISLEG_REPOSITORIO: ${{ github.repository }}
           SISLEG_SHA: ${{ github.event.workflow_run.head_sha }}
           SISLEG_RUN_ID: ${{ github.event.workflow_run.id }}
+          # El intento viaja explícito porque una re-ejecución conserva el mismo
+          # `run_id` y el mismo SHA: sin él, el script tendría que preguntarle a
+          # la API cuál es el intento «actual», que no es necesariamente el que
+          # produjo este artefacto.
+          SISLEG_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           uv run python scripts/publicar_release_publica.py \
             --repositorio "${SISLEG_REPOSITORIO}" \
             --sha "${SISLEG_SHA}" \
             --run-id "${SISLEG_RUN_ID}" \
+            --run-attempt "${SISLEG_RUN_ATTEMPT}" \
             --directorio dist/publicacion

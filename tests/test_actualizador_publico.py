@@ -20,13 +20,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import urllib.error
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -43,10 +44,10 @@ from deploy.actualizador_publico import (
     obtener_release_publica,
     resolver_publicacion,
     resolver_sha_main,
-    seleccionar_run_ci,
     tag_publicacion,
     validar_url_publica,
-    verificar_job_empaquetado,
+    verificar_intento_ci,
+    verificar_intento_historico,
 )
 from deploy.configuracion_local import (
     ACCION_CREAR,
@@ -64,7 +65,7 @@ from deploy.herramienta_despliegue import (
     validar_manifest,
 )
 from scripts.empaquetar_produccion import construir_paquete
-from scripts.publicar_release_publica import ErrorPublicacion, publicar_release
+from scripts.publicar_release_publica import ErrorPublicacion, crear_parser, publicar_release
 
 SHA = "a" * 40
 SHA_ARBOL = "c" * 40
@@ -74,6 +75,9 @@ RAIZ_REPOSITORIO = Path(__file__).resolve().parents[1]
 RUN_ID = 4242
 RUN_NUMERO = 17
 JOB_ID = 990099
+# Identificador del job de empaquetado que produciría una re-ejecución de la
+# misma run: distinto del original, igual que en GitHub Actions.
+JOB_ID_REEJECUCION = 991177
 
 
 # ---------------------------------------------------------------------------
@@ -151,13 +155,18 @@ def construir_artefactos(tmp_path: Path, sha: str = SHA) -> tuple[Path, Path]:
 # ---------------------------------------------------------------------------
 
 
-def run_exitosa(sha: str = SHA, **cambios: Any) -> dict[str, Any]:
-    """Devuelve la run de CI canónica que habilita una publicación."""
+def run_exitosa(sha: str = SHA, *, intento: int = 1, **cambios: Any) -> dict[str, Any]:
+    """Devuelve el intento de CI canónico que habilita una publicación.
+
+    Es la respuesta de ``/actions/runs/{run_id}/attempts/{intento}``: una run de
+    ``push`` sobre ``main``, del workflow ``CI``, completada con éxito para ese
+    SHA. ``cambios`` permite romper un campo por vez en las pruebas de rechazo.
+    """
 
     run: dict[str, Any] = {
         "id": RUN_ID,
         "run_number": RUN_NUMERO,
-        "run_attempt": 1,
+        "run_attempt": intento,
         "name": NOMBRE_WORKFLOW_CI,
         "event": "push",
         "head_branch": "main",
@@ -169,21 +178,42 @@ def run_exitosa(sha: str = SHA, **cambios: Any) -> dict[str, Any]:
     return run
 
 
-def jobs_exitosos(sha: str = SHA, **cambios: Any) -> dict[str, Any]:
-    """Devuelve la lista de jobs con el de empaquetado exitoso."""
+def jobs_exitosos(
+    sha: str = SHA,
+    *,
+    intento: int = 1,
+    job_id: int = JOB_ID,
+    run_id: int = RUN_ID,
+    **cambios: Any,
+) -> dict[str, Any]:
+    """Devuelve los jobs de un intento exacto, con el de empaquetado exitoso.
 
-    job: dict[str, Any] = {
-        "id": JOB_ID,
-        "name": NOMBRE_JOB_EMPAQUETADO,
-        "conclusion": "success",
+    Cada job declara ``run_id`` y ``run_attempt`` como lo hace la API real: eso
+    es lo que permite detectar metadatos que mezclen la ejecución de un intento
+    con el identificador de otro. ``cambios`` altera solamente el job de
+    empaquetado, que es el que las pruebas de rechazo quieren romper.
+    """
+
+    comunes: dict[str, Any] = {
+        "run_id": run_id,
+        "run_attempt": intento,
         "head_sha": sha,
+        "conclusion": "success",
     }
+    job: dict[str, Any] = {**comunes, "id": job_id, "name": NOMBRE_JOB_EMPAQUETADO}
     job.update(cambios)
     otros = [
-        {"id": 1, "name": "Backend · pruebas", "conclusion": "success", "head_sha": sha},
-        {"id": 2, "name": "Frontend · build estático", "conclusion": "success", "head_sha": sha},
+        {**comunes, "id": job_id + 1, "name": "Backend · pruebas"},
+        {**comunes, "id": job_id + 2, "name": "Frontend · build estático"},
     ]
     return {"total_count": 3, "jobs": [*otros, job]}
+
+
+def numero_de_intento(url: str) -> int:
+    """Extrae el intento de una URL ``/attempts/<n>`` o ``/attempts/<n>/jobs``."""
+
+    cola = url.split("/attempts/", 1)[1]
+    return int(cola.split("/", 1)[0].split("?", 1)[0])
 
 
 class ClienteApiFalso:
@@ -192,21 +222,34 @@ class ClienteApiFalso:
     Guarda las releases creadas y los bytes de cada asset subido, de modo que la
     misma instancia sirve después como origen de datos del consumidor. Así una
     incompatibilidad entre lo que se publica y lo que se consume rompe la prueba.
+
+    Los intentos de CI se guardan indexados por número para poder simular una
+    re-ejecución: registrar el intento 2 no borra el 1, igual que en GitHub.
     """
 
-    def __init__(self, *, run: dict[str, Any], jobs: dict[str, Any]) -> None:
-        self.run = run
-        self.jobs = jobs
+    def __init__(self, *, run: dict[str, Any], jobs: dict[str, Any], intento: int = 1) -> None:
+        self.intentos: dict[int, dict[str, Any]] = {}
+        self.jobs: dict[int, dict[str, Any]] = {}
+        self.registrar_intento(intento, run, jobs)
         self.releases: dict[str, dict[str, Any]] = {}
         self.contenidos: dict[str, bytes] = {}
         self.creaciones = 0
         self.subidas: list[str] = []
+        self.urls: list[str] = []
+
+    def registrar_intento(self, numero: int, run: dict[str, Any], jobs: dict[str, Any]) -> None:
+        """Agrega un intento histórico consultable, sin quitar los anteriores."""
+
+        self.intentos[numero] = run
+        self.jobs[numero] = jobs
 
     def obtener(self, url: str) -> Any | None:
-        if "/actions/runs/" in url and url.endswith("/jobs?per_page=100"):
-            return self.jobs
-        if "/actions/runs/" in url:
-            return self.run
+        self.urls.append(url)
+        if "/attempts/" in url:
+            numero = numero_de_intento(url)
+            if url.endswith("/jobs?per_page=100"):
+                return self.jobs.get(numero)
+            return self.intentos.get(numero)
         if "/releases/tags/" in url:
             tag = url.rsplit("/", 1)[1]
             return self.releases.get(tag)
@@ -254,23 +297,23 @@ class ClienteHttpFalso:
     """Emula el lado lectura público del API de GitHub para el consumidor.
 
     El ruteo se hace por forma de la URL y no por coincidencia exacta para que
-    las pruebas no dependan del orden de los parámetros de la query.
+    las pruebas no dependan del orden de los parámetros de la query. Un intento
+    no registrado se comporta como el cliente real ante un 404: levanta el error
+    del canal, que es lo que obliga al consumidor a fallar cerrado.
     """
 
     def __init__(
         self,
         *,
         sha: str = SHA,
-        runs: dict[str, Any] | None = None,
-        jobs: dict[str, Any] | None = None,
+        intentos: dict[int, dict[str, Any]] | None = None,
+        jobs: dict[int, dict[str, Any]] | None = None,
         release: dict[str, Any] | None = None,
         contenidos: dict[str, bytes] | None = None,
     ) -> None:
         self.sha = sha
-        self.runs = (
-            runs if runs is not None else {"total_count": 1, "workflow_runs": [run_exitosa(sha)]}
-        )
-        self.jobs = jobs if jobs is not None else jobs_exitosos(sha)
+        self.intentos = intentos if intentos is not None else {1: run_exitosa(sha)}
+        self.jobs = jobs if jobs is not None else {1: jobs_exitosos(sha)}
         self.release = release
         self.contenidos = contenidos or {}
         self.urls: list[str] = []
@@ -286,10 +329,12 @@ class ClienteHttpFalso:
                 raise error
         if "/commits/" in url:
             return {"sha": self.sha}
-        if "/actions/runs?" in url:
-            return self.runs
-        if url.endswith("/jobs?per_page=100"):
-            return self.jobs
+        if "/attempts/" in url:
+            numero = numero_de_intento(url)
+            fuente = self.jobs if url.endswith("/jobs?per_page=100") else self.intentos
+            if numero not in fuente:
+                raise ErrorActualizadorPublico(f"GitHub respondió HTTP 404 en {url}.")
+            return fuente[numero]
         if "/releases/tags/" in url:
             if self.release is None:
                 raise ErrorActualizadorPublico("GitHub respondió HTTP 404.")
@@ -321,9 +366,29 @@ def publicar_para_pruebas(
     directorio = paquete.parent
     cliente = ClienteApiFalso(run=run_exitosa(sha), jobs=jobs_exitosos(sha))
     resumen = publicar_release(
-        cliente, repositorio=REPOSITORIO, sha=sha, run_id=RUN_ID, directorio=directorio
+        cliente,
+        repositorio=REPOSITORIO,
+        sha=sha,
+        run_id=RUN_ID,
+        run_attempt=1,
+        directorio=directorio,
     )
     return cliente, resumen, directorio
+
+
+def registrar_reejecucion(publicador: ClienteApiFalso, *, sha: str = SHA) -> None:
+    """Simula una re-ejecución: mismo ``run_id`` y SHA, intento y jobs nuevos.
+
+    El intento 1 sigue existiendo, como en GitHub. Lo que cambia es qué devuelve
+    la consulta genérica por «los jobs de la run», que ya no sirve como prueba
+    del job histórico.
+    """
+
+    publicador.registrar_intento(
+        2,
+        run_exitosa(sha, intento=2),
+        jobs_exitosos(sha, intento=2, job_id=JOB_ID_REEJECUCION),
+    )
 
 
 def consumidor_desde_publicacion(
@@ -333,6 +398,8 @@ def consumidor_desde_publicacion(
 
     return ClienteHttpFalso(
         sha=sha,
+        intentos=dict(publicador.intentos),
+        jobs=dict(publicador.jobs),
         release=publicador.releases[tag_publicacion(sha)],
         contenidos=dict(publicador.contenidos),
     )
@@ -354,6 +421,7 @@ def test_publicacion_exige_push_main_ci_completa_y_job_exacto(tmp_path: Path) ->
         "commit_sha": SHA,
         "tree_sha": SHA_ARBOL,
         "ci_run_id": RUN_ID,
+        "ci_run_attempt": 1,
     }
     assert sorted(publicador.subidas) == sorted(assets_esperados(SHA))
     release = publicador.releases[tag_publicacion(SHA)]
@@ -387,6 +455,7 @@ def test_publicacion_rechaza_runs_no_habilitantes(
             repositorio=REPOSITORIO,
             sha=SHA,
             run_id=RUN_ID,
+            run_attempt=1,
             directorio=paquete.parent,
         )
     assert cliente.releases == {}
@@ -396,11 +465,16 @@ def test_publicacion_rechaza_job_de_empaquetado_fallido(tmp_path: Path) -> None:
     """Una CI verde con el job de empaquetado no exitoso no puede publicarse."""
 
     paquete, _ = construir_artefactos(tmp_path)
-    cliente = ClienteApiFalso(run=run_exitosa(), jobs=jobs_exitosos(**{"conclusion": "failure"}))
+    cliente = ClienteApiFalso(run=run_exitosa(), jobs=jobs_exitosos(conclusion="failure"))
 
     with pytest.raises(ErrorPublicacion, match="no terminó en success"):
         publicar_release(
-            cliente, repositorio=REPOSITORIO, sha=SHA, run_id=RUN_ID, directorio=paquete.parent
+            cliente,
+            repositorio=REPOSITORIO,
+            sha=SHA,
+            run_id=RUN_ID,
+            run_attempt=1,
+            directorio=paquete.parent,
         )
     assert cliente.releases == {}
 
@@ -409,11 +483,16 @@ def test_publicacion_rechaza_job_de_otro_sha(tmp_path: Path) -> None:
     """El job debe pertenecer al mismo head_sha; no se mezclan dos SHAs."""
 
     paquete, _ = construir_artefactos(tmp_path)
-    cliente = ClienteApiFalso(run=run_exitosa(), jobs=jobs_exitosos(**{"head_sha": SHA_OTRO}))
+    cliente = ClienteApiFalso(run=run_exitosa(), jobs=jobs_exitosos(head_sha=SHA_OTRO))
 
-    with pytest.raises(ErrorPublicacion, match="no corresponde al SHA"):
+    with pytest.raises(ErrorPublicacion, match="no se mezclan SHAs"):
         publicar_release(
-            cliente, repositorio=REPOSITORIO, sha=SHA, run_id=RUN_ID, directorio=paquete.parent
+            cliente,
+            repositorio=REPOSITORIO,
+            sha=SHA,
+            run_id=RUN_ID,
+            run_attempt=1,
+            directorio=paquete.parent,
         )
 
 
@@ -425,9 +504,14 @@ def test_publicacion_rechaza_jobs_paginados(tmp_path: Path) -> None:
     jobs["total_count"] = 99
     cliente = ClienteApiFalso(run=run_exitosa(), jobs=jobs)
 
-    with pytest.raises(ErrorPublicacion, match="paginado"):
+    with pytest.raises(ErrorPublicacion, match="jobs de 99"):
         publicar_release(
-            cliente, repositorio=REPOSITORIO, sha=SHA, run_id=RUN_ID, directorio=paquete.parent
+            cliente,
+            repositorio=REPOSITORIO,
+            sha=SHA,
+            run_id=RUN_ID,
+            run_attempt=1,
+            directorio=paquete.parent,
         )
 
 
@@ -444,7 +528,12 @@ def test_republicar_los_mismos_bytes_es_idempotente(tmp_path: Path) -> None:
     subidas = list(publicador.subidas)
 
     segundo = publicar_release(
-        publicador, repositorio=REPOSITORIO, sha=SHA, run_id=RUN_ID, directorio=directorio
+        publicador,
+        repositorio=REPOSITORIO,
+        sha=SHA,
+        run_id=RUN_ID,
+        run_attempt=1,
+        directorio=directorio,
     )
 
     assert segundo["estado"] == "idempotente"
@@ -462,7 +551,12 @@ def test_colision_con_bytes_distintos_aborta_sin_reemplazar(tmp_path: Path) -> N
 
     with pytest.raises(ErrorPublicacion, match="difiere byte a byte"):
         publicar_release(
-            publicador, repositorio=REPOSITORIO, sha=SHA, run_id=RUN_ID, directorio=directorio
+            publicador,
+            repositorio=REPOSITORIO,
+            sha=SHA,
+            run_id=RUN_ID,
+            run_attempt=1,
+            directorio=directorio,
         )
     assert publicador.creaciones == 1
 
@@ -478,7 +572,12 @@ def test_publicacion_existente_incompleta_aborta(tmp_path: Path) -> None:
 
     with pytest.raises(ErrorPublicacion, match="conjunto de assets distinto"):
         publicar_release(
-            publicador, repositorio=REPOSITORIO, sha=SHA, run_id=RUN_ID, directorio=directorio
+            publicador,
+            repositorio=REPOSITORIO,
+            sha=SHA,
+            run_id=RUN_ID,
+            run_attempt=1,
+            directorio=directorio,
         )
 
 
@@ -494,7 +593,12 @@ def test_publicacion_rechaza_paquete_ambiguo_en_el_directorio(tmp_path: Path) ->
 
     with pytest.raises(ErrorPublicacion, match="exactamente un"):
         publicar_release(
-            cliente, repositorio=REPOSITORIO, sha=SHA, run_id=RUN_ID, directorio=paquete.parent
+            cliente,
+            repositorio=REPOSITORIO,
+            sha=SHA,
+            run_id=RUN_ID,
+            run_attempt=1,
+            directorio=paquete.parent,
         )
 
 
@@ -562,25 +666,24 @@ def test_la_redireccion_a_http_se_rechaza() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5. Selección determinista de run y job
+# 5. Evidencia determinista del intento de CI y de su job
 # ---------------------------------------------------------------------------
 
 
-def test_se_elige_la_run_mas_reciente_de_forma_determinista() -> None:
-    """Con dos runs válidas gana la de mayor número, siempre la misma."""
+def test_el_intento_historico_habilitante_se_demuestra_contra_la_api() -> None:
+    """El par run + intento se resuelve sin heurísticas ni ``latest``."""
 
-    runs = {
-        "total_count": 2,
-        "workflow_runs": [
-            run_exitosa(id=1, run_number=5),
-            run_exitosa(id=2, run_number=9),
-        ],
-    }
-    cliente = ClienteHttpFalso(runs=runs)
+    cliente = ClienteHttpFalso()
 
-    elegida = seleccionar_run_ci(cliente, SHA, repositorio=REPOSITORIO)
+    run, job = verificar_intento_historico(
+        cliente.obtener_json, repositorio=REPOSITORIO, run_id=RUN_ID, intento=1, sha=SHA
+    )
 
-    assert (elegida.identificador, elegida.numero) == (2, 9)
+    assert (run.identificador, run.intento, run.numero) == (RUN_ID, 1, RUN_NUMERO)
+    assert (job.identificador, job.run_id, job.intento) == (JOB_ID, RUN_ID, 1)
+    # Nunca se usa la consulta genérica de jobs de la run: devolvería el intento
+    # más reciente y no serviría como prueba del histórico.
+    assert all("/attempts/" in url for url in cliente.urls)
 
 
 @pytest.mark.parametrize(
@@ -589,27 +692,69 @@ def test_se_elige_la_run_mas_reciente_de_forma_determinista() -> None:
         {"event": "pull_request"},
         {"head_branch": "wp/100"},
         {"conclusion": "failure"},
+        {"status": "in_progress"},
         {"head_sha": SHA_OTRO},
         {"name": "Otro workflow"},
+        {"id": 7777},
+        {"run_attempt": 5},
     ],
-    ids=["pull-request", "otra-rama", "fallida", "otro-sha", "otro-workflow"],
+    ids=[
+        "pull-request",
+        "otra-rama",
+        "fallida",
+        "en-curso",
+        "otro-sha",
+        "otro-workflow",
+        "otra-run",
+        "otro-intento",
+    ],
 )
-def test_no_se_acepta_una_run_de_otro_origen(cambio: dict[str, Any]) -> None:
-    """Una run de otro evento, rama, SHA o workflow no habilita la descarga."""
+def test_no_se_acepta_un_intento_de_otro_origen(cambio: dict[str, Any]) -> None:
+    """Un intento de otro evento, rama, SHA, workflow o ejecución no habilita nada."""
 
-    cliente = ClienteHttpFalso(runs={"total_count": 1, "workflow_runs": [run_exitosa(**cambio)]})
+    cliente = ClienteHttpFalso(intentos={1: run_exitosa(**cambio)})
 
-    with pytest.raises(ErrorActualizadorPublico, match="No hay una run de CI"):
-        seleccionar_run_ci(cliente, SHA, repositorio=REPOSITORIO)
+    with pytest.raises(ErrorActualizadorPublico):
+        verificar_intento_ci(
+            cliente.obtener_json, repositorio=REPOSITORIO, run_id=RUN_ID, intento=1, sha=SHA
+        )
 
 
-def test_runs_paginadas_abortan_en_lugar_de_elegir_a_ciegas() -> None:
-    """Si no se vio el conjunto completo no se puede demostrar la elección."""
+def test_un_intento_inexistente_no_puede_demostrarse() -> None:
+    """Si el intento que los metadatos nombran no existe, se falla cerrado."""
 
-    cliente = ClienteHttpFalso(runs={"total_count": 50, "workflow_runs": [run_exitosa()]})
+    cliente = ClienteHttpFalso(intentos={2: run_exitosa(intento=2)})
 
-    with pytest.raises(ErrorActualizadorPublico, match="elección"):
-        seleccionar_run_ci(cliente, SHA, repositorio=REPOSITORIO)
+    with pytest.raises(ErrorActualizadorPublico, match="intento 1"):
+        verificar_intento_ci(
+            cliente.obtener_json, repositorio=REPOSITORIO, run_id=RUN_ID, intento=1, sha=SHA
+        )
+
+
+@pytest.mark.parametrize("intento", [0, -3], ids=["cero", "negativo"])
+def test_un_intento_no_positivo_se_rechaza_antes_de_consultar(intento: int) -> None:
+    """Los identificadores se validan antes de concatenarlos en una URL."""
+
+    cliente = ClienteHttpFalso()
+
+    with pytest.raises(ErrorActualizadorPublico, match="entero positivo"):
+        verificar_intento_ci(
+            cliente.obtener_json, repositorio=REPOSITORIO, run_id=RUN_ID, intento=intento, sha=SHA
+        )
+    assert cliente.urls == []
+
+
+def test_jobs_del_intento_paginados_abortan_en_lugar_de_elegir_a_ciegas() -> None:
+    """Si no se vio el conjunto completo no se puede demostrar unicidad."""
+
+    jobs = jobs_exitosos()
+    jobs["total_count"] = 50
+    cliente = ClienteHttpFalso(jobs={1: jobs})
+
+    with pytest.raises(ErrorActualizadorPublico, match="jobs de 50"):
+        verificar_intento_historico(
+            cliente.obtener_json, repositorio=REPOSITORIO, run_id=RUN_ID, intento=1, sha=SHA
+        )
 
 
 def test_el_job_de_empaquetado_debe_existir_una_sola_vez() -> None:
@@ -618,21 +763,34 @@ def test_el_job_de_empaquetado_debe_existir_una_sola_vez() -> None:
     jobs = jobs_exitosos()
     jobs["jobs"].append(dict(jobs["jobs"][-1]))
     jobs["total_count"] = 4
-    cliente = ClienteHttpFalso(jobs=jobs)
-    run = seleccionar_run_ci(cliente, SHA, repositorio=REPOSITORIO)
+    cliente = ClienteHttpFalso(jobs={1: jobs})
 
     with pytest.raises(ErrorActualizadorPublico, match="exactamente un job"):
-        verificar_job_empaquetado(cliente, run, repositorio=REPOSITORIO)
+        verificar_intento_historico(
+            cliente.obtener_json, repositorio=REPOSITORIO, run_id=RUN_ID, intento=1, sha=SHA
+        )
 
 
-def test_el_job_de_otro_sha_se_rechaza() -> None:
-    """No se combinan datos de runs o jobs pertenecientes a SHAs distintos."""
+@pytest.mark.parametrize(
+    ("cambio", "mensaje"),
+    [
+        ({"head_sha": SHA_OTRO}, "no se mezclan SHAs"),
+        ({"conclusion": "failure"}, "no terminó en success"),
+        ({"conclusion": "cancelled"}, "no terminó en success"),
+        ({"run_id": 909090}, "otra run"),
+        ({"run_attempt": 9}, "otro intento"),
+    ],
+    ids=["otro-sha", "fallido", "cancelado", "otra-run", "otro-intento"],
+)
+def test_el_job_historico_invalido_se_rechaza(cambio: dict[str, Any], mensaje: str) -> None:
+    """El job del intento debe ser exitoso y de esa misma ejecución y SHA."""
 
-    cliente = ClienteHttpFalso(jobs=jobs_exitosos(**{"head_sha": SHA_OTRO}))
-    run = seleccionar_run_ci(cliente, SHA, repositorio=REPOSITORIO)
+    cliente = ClienteHttpFalso(jobs={1: jobs_exitosos(**cambio)})
 
-    with pytest.raises(ErrorActualizadorPublico, match="no se mezclan SHAs"):
-        verificar_job_empaquetado(cliente, run, repositorio=REPOSITORIO)
+    with pytest.raises(ErrorActualizadorPublico, match=mensaje):
+        verificar_intento_historico(
+            cliente.obtener_json, repositorio=REPOSITORIO, run_id=RUN_ID, intento=1, sha=SHA
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -887,12 +1045,12 @@ def test_asset_con_tamano_distinto_del_declarado_aborta(tmp_path: Path) -> None:
     ("fragmento", "error"),
     [
         ("/commits/", ErrorActualizadorPublico("HTTP 500")),
-        ("/actions/runs?", ErrorActualizadorPublico("límite de tasa")),
+        ("/attempts/", ErrorActualizadorPublico("límite de tasa")),
         ("/jobs", ErrorActualizadorPublico("timed out")),
         ("/releases/tags/", ErrorActualizadorPublico("JSON")),
         ("objects.githubusercontent.com", ErrorActualizadorPublico("conexión interrumpida")),
     ],
-    ids=["commit", "runs", "jobs", "release", "descarga"],
+    ids=["commit", "intento", "jobs", "release", "descarga"],
 )
 def test_cualquier_falla_de_red_es_fail_safe(
     tmp_path: Path, fragmento: str, error: Exception
@@ -947,6 +1105,290 @@ def test_json_invalido_del_cliente_real_falla_cerrado(monkeypatch: pytest.Monkey
 
     with pytest.raises(ErrorActualizadorPublico, match="JSON válido"):
         cliente.obtener_json("https://api.github.com/repos/x/y/commits/main")
+
+
+# ---------------------------------------------------------------------------
+# 18. Re-ejecuciones de CI: la release inmutable sobrevive (WP-100 I002)
+#
+# GitHub permite re-ejecutar una run conservando `run_id` y SHA, creando un
+# intento nuevo con jobs nuevos. La release ya publicada no cambia —es inmutable—
+# así que la evidencia que hay que demostrar es siempre la del intento que la
+# habilitó. Estas pruebas fijan ese comportamiento en los dos extremos del canal.
+# ---------------------------------------------------------------------------
+
+
+def metadatos_publicados(publicador: ClienteApiFalso, *, sha: str = SHA) -> dict[str, Any]:
+    """Lee el asset de metadatos tal como quedó publicado."""
+
+    return cast(
+        dict[str, Any], json.loads(publicador.contenidos[nombre_metadatos(sha)].decode("utf-8"))
+    )
+
+
+def consumidor_con_metadatos_mutados(
+    publicador: ClienteApiFalso,
+    mutar: Callable[[dict[str, Any]], None],
+    *,
+    sha: str = SHA,
+) -> ClienteHttpFalso:
+    """Publica, altera los metadatos ya publicados y arma el consumidor.
+
+    Sirve para simular una release manipulada o incoherente sin tocar el
+    publicador: el consumidor debe rechazarla por sí mismo.
+    """
+
+    contenidos = dict(publicador.contenidos)
+    metadatos = metadatos_publicados(publicador, sha=sha)
+    mutar(metadatos)
+    contenidos[nombre_metadatos(sha)] = (json.dumps(metadatos, ensure_ascii=False) + "\n").encode(
+        "utf-8"
+    )
+    release = dict(publicador.releases[tag_publicacion(sha)])
+    release["assets"] = [
+        {**asset, "size": len(contenidos[asset["name"]])} for asset in release["assets"]
+    ]
+    cliente = consumidor_desde_publicacion(publicador, sha=sha)
+    cliente.release = release
+    cliente.contenidos = contenidos
+    return cliente
+
+
+def test_la_publicacion_del_primer_intento_registra_ese_intento_exacto(tmp_path: Path) -> None:
+    """El intento 1 publica y sus metadatos nombran run, intento y job reales."""
+
+    publicador, resumen, _ = publicar_para_pruebas(tmp_path)
+
+    assert resumen["estado"] == "creada"
+    assert resumen["ci_run_attempt"] == 1
+    ci = metadatos_publicados(publicador)["ci"]
+    assert (ci["run_id"], ci["run_attempt"], ci["job_id"]) == (RUN_ID, 1, JOB_ID)
+
+
+def test_una_reejecucion_reconoce_idempotencia_sin_sustituir_assets(tmp_path: Path) -> None:
+    """Re-ejecutar la CI del mismo SHA no reescribe ni invalida la release.
+
+    El publicador vuelve a correr con `run_attempt=2` y jobs nuevos. La release
+    del intento 1 sigue siendo válida, así que la operación es idempotente: no
+    crea, no sube y no toca los metadatos ya publicados.
+    """
+
+    publicador, _, directorio = publicar_para_pruebas(tmp_path)
+    registrar_reejecucion(publicador)
+    creaciones = publicador.creaciones
+    subidas = list(publicador.subidas)
+    antes = dict(publicador.contenidos)
+
+    segundo = publicar_release(
+        publicador,
+        repositorio=REPOSITORIO,
+        sha=SHA,
+        run_id=RUN_ID,
+        run_attempt=2,
+        directorio=directorio,
+    )
+
+    assert segundo["estado"] == "idempotente"
+    # Se informa el intento que realmente publicó, no el que está re-ejecutando.
+    assert segundo["ci_run_attempt"] == 1
+    assert segundo["ci_run_id"] == RUN_ID
+    assert publicador.creaciones == creaciones
+    assert publicador.subidas == subidas
+    assert publicador.contenidos == antes
+    assert metadatos_publicados(publicador)["ci"]["job_id"] == JOB_ID
+
+
+def test_el_consumidor_consume_la_publicacion_del_intento_uno_tras_la_reejecucion(
+    tmp_path: Path,
+) -> None:
+    """Existiendo un intento 2, se sigue verificando y consumiendo el intento 1."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    registrar_reejecucion(publicador)
+    cliente = consumidor_desde_publicacion(publicador)
+    destino = tmp_path / "descarga"
+
+    release = obtener_release_publica(destino, cliente=cliente, repositorio=REPOSITORIO)
+
+    assert release.commit_sha == SHA
+    assert (release.run_ci.identificador, release.run_ci.intento) == (RUN_ID, 1)
+    assert release.job_ci.identificador == JOB_ID
+    # La prueba del job histórico se pide por intento exacto; jamás se consulta
+    # `/actions/runs/<id>/jobs`, que respondería con los jobs del intento 2.
+    assert f"/actions/runs/{RUN_ID}/attempts/1/jobs?per_page=100" in " ".join(cliente.urls)
+    assert not re.search(rf"/actions/runs/{RUN_ID}/jobs", " ".join(cliente.urls))
+    assert sorted(ruta.name for ruta in destino.iterdir()) == sorted(assets_esperados(SHA))
+
+
+def test_el_consumidor_rechaza_un_intento_historico_inexistente(tmp_path: Path) -> None:
+    """Si el intento que los metadatos declaran no existe, no se consume nada."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_desde_publicacion(publicador)
+    # Sólo sobrevive un intento 2: el que la release nombra ya no está.
+    registrar_reejecucion(publicador)
+    cliente.intentos = {2: publicador.intentos[2]}
+    cliente.jobs = {2: publicador.jobs[2]}
+    destino = tmp_path / "descarga"
+
+    with pytest.raises(ErrorActualizadorPublico, match="intento 1"):
+        obtener_release_publica(destino, cliente=cliente, repositorio=REPOSITORIO)
+    assert not destino.exists() or list(destino.iterdir()) == []
+
+
+@pytest.mark.parametrize("conclusion", ["failure", "cancelled"], ids=["fallido", "cancelado"])
+def test_el_consumidor_rechaza_un_job_historico_no_exitoso(tmp_path: Path, conclusion: str) -> None:
+    """Un empaquetado histórico que no terminó en success invalida la release."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_desde_publicacion(publicador)
+    cliente.jobs = {1: jobs_exitosos(conclusion=conclusion)}
+    destino = tmp_path / "descarga"
+
+    with pytest.raises(ErrorActualizadorPublico, match="no terminó en success"):
+        obtener_release_publica(destino, cliente=cliente, repositorio=REPOSITORIO)
+    assert not destino.exists() or list(destino.iterdir()) == []
+
+
+def test_el_consumidor_rechaza_un_job_historico_de_otro_sha(tmp_path: Path) -> None:
+    """El job del intento debe declarar el mismo commit que se está instalando."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_desde_publicacion(publicador)
+    cliente.jobs = {1: jobs_exitosos(head_sha=SHA_OTRO)}
+
+    with pytest.raises(ErrorActualizadorPublico, match="no se mezclan SHAs"):
+        obtener_release_publica(tmp_path / "descarga", cliente=cliente, repositorio=REPOSITORIO)
+
+
+@pytest.mark.parametrize(
+    ("campo", "valor", "mensaje"),
+    [
+        ("run_id", 606060, "intento"),
+        ("run_attempt", 2, "job distinto"),
+        ("run_number", 99, "número de run"),
+        ("job_id", 111222, "job distinto"),
+    ],
+    ids=["otra-run", "otro-intento", "otro-numero", "otro-job"],
+)
+def test_el_consumidor_rechaza_metadatos_con_ci_cruzada(
+    tmp_path: Path, campo: str, valor: Any, mensaje: str
+) -> None:
+    """Unos metadatos que mezclen run, intento o job de otra ejecución no sirven.
+
+    El caso ``run_attempt`` es el interesante después de una re-ejecución: el
+    intento 2 existe y es válido en sí mismo, pero su job de empaquetado tiene un
+    identificador nuevo que no es el que los metadatos declaran.
+    """
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    registrar_reejecucion(publicador)
+
+    def mutar(metadatos: dict[str, Any]) -> None:
+        cast(dict[str, Any], metadatos["ci"])[campo] = valor
+
+    cliente = consumidor_con_metadatos_mutados(publicador, mutar)
+
+    with pytest.raises(ErrorActualizadorPublico, match=mensaje):
+        obtener_release_publica(tmp_path / "descarga", cliente=cliente, repositorio=REPOSITORIO)
+
+
+def test_el_publicador_aborta_si_la_evidencia_historica_ya_no_se_sostiene(
+    tmp_path: Path,
+) -> None:
+    """Sin intento histórico demostrable no se confirma idempotencia ni se muta.
+
+    Es el caso simétrico del anterior: la release existe y sus bytes coinciden,
+    pero la evidencia de CI que declara dejó de ser verificable. Fallar cerrado
+    es preferible a dar por buena una publicación que ya no puede demostrarse.
+    """
+
+    publicador, _, directorio = publicar_para_pruebas(tmp_path)
+    registrar_reejecucion(publicador)
+    antes = dict(publicador.contenidos)
+    publicador.jobs[1] = jobs_exitosos(conclusion="failure")
+
+    with pytest.raises(ErrorPublicacion, match="no terminó en success"):
+        publicar_release(
+            publicador,
+            repositorio=REPOSITORIO,
+            sha=SHA,
+            run_id=RUN_ID,
+            run_attempt=2,
+            directorio=directorio,
+        )
+    assert publicador.creaciones == 1
+    assert publicador.contenidos == antes
+
+
+def test_el_publicador_aborta_si_los_metadatos_publicados_declaran_otro_arbol(
+    tmp_path: Path,
+) -> None:
+    """Paquete idéntico pero metadatos divergentes siguen exigiendo una persona."""
+
+    publicador, _, directorio = publicar_para_pruebas(tmp_path)
+    metadatos = metadatos_publicados(publicador)
+    metadatos["tree_sha"] = "d" * 40
+    publicador.contenidos[nombre_metadatos(SHA)] = (
+        json.dumps(metadatos, ensure_ascii=False) + "\n"
+    ).encode("utf-8")
+
+    with pytest.raises(ErrorPublicacion, match="árbol Git"):
+        publicar_release(
+            publicador,
+            repositorio=REPOSITORIO,
+            sha=SHA,
+            run_id=RUN_ID,
+            run_attempt=1,
+            directorio=directorio,
+        )
+    assert publicador.creaciones == 1
+
+
+def test_el_workflow_le_pasa_al_publicador_el_intento_del_evento() -> None:
+    """El workflow y la CLI del publicador no pueden desincronizarse.
+
+    El intento habilitante llega desde el evento `workflow_run` y no se deduce
+    releyendo la run, así que si el workflow dejara de pasarlo —o la CLI dejara
+    de exigirlo— el publicador volvería a trabajar sobre «el intento actual».
+    Esa regresión sólo se vería en producción, y por eso se fija acá.
+    """
+
+    workflow = (RAIZ_REPOSITORIO / ".github/workflows/publicar-release.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "SISLEG_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}" in workflow
+    assert '--run-attempt "${SISLEG_RUN_ATTEMPT}"' in workflow
+    assert '--run-id "${SISLEG_RUN_ID}"' in workflow
+
+    # La CLI exige ambos: sin `--run-attempt` no se publica nada.
+    with pytest.raises(SystemExit):
+        crear_parser().parse_args(
+            [
+                "--repositorio",
+                REPOSITORIO,
+                "--sha",
+                SHA,
+                "--run-id",
+                str(RUN_ID),
+                "--directorio",
+                ".",
+            ]
+        )
+    opciones = crear_parser().parse_args(
+        [
+            "--repositorio",
+            REPOSITORIO,
+            "--sha",
+            SHA,
+            "--run-id",
+            str(RUN_ID),
+            "--run-attempt",
+            "2",
+            "--directorio",
+            ".",
+        ]
+    )
+    assert (opciones.run_id, opciones.run_attempt) == (RUN_ID, 2)
 
 
 # ---------------------------------------------------------------------------
