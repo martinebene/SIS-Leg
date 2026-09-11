@@ -14,6 +14,21 @@
  * Dicho de otro modo: si mañana alguien reemplaza un asset por otro con el
  * nombre pegado al borde, esta prueba falla antes de que la pantalla recorte
  * información institucional.
+ *
+ * Alcance después de WP-098
+ * -------------------------
+ *
+ * WP-098 eliminó las copias por aplicación: las fotografías ya no viven en
+ * el directorio `public/assets/bancas/` de cada aplicación sino en la configuración local de cada
+ * instalación, bajo `config/assets/bancas/`. Lo único versionado —y por lo
+ * tanto lo único que una prueba puede medir en cada Pull Request— es la
+ * plantilla reproducible `config/assets.example/bancas/`, que es de donde sale
+ * el directorio runtime en desarrollo y en las pruebas.
+ *
+ * Queda escrito con claridad: esta prueba ya no puede garantizar el encuadre de
+ * una fotografía que el operador cargue en producción, porque ese archivo no
+ * está en el repositorio. Sigue garantizando el de las doce de referencia, que
+ * son las que ejercitan desarrollo, las pruebas y el E2E integrado.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -42,12 +57,21 @@ function ubicarRaizMonorepo(): string {
   return directorio
 }
 
-const raizRecinto = join(ubicarRaizMonorepo(), 'apps', 'recinto')
-const rutaComponente = join(raizRecinto, 'app', 'components', 'BancaPublica.vue')
+const raizMonorepo = ubicarRaizMonorepo()
+const rutaComponente = join(
+  raizMonorepo,
+  'apps',
+  'recinto',
+  'app',
+  'components',
+  'BancaPublica.vue',
+)
+
+/** Plantilla versionada de las fotografías, única fuente revisable (WP-098). */
+const directorioPlantilla = join(raizMonorepo, 'config', 'assets.example', 'bancas')
 
 function rutaAsset(banca: number): string {
-  const nombre = `banca-${String(banca).padStart(2, '0')}.png`
-  return join(raizRecinto, 'public', 'assets', 'bancas', nombre)
+  return join(directorioPlantilla, `banca-${String(banca).padStart(2, '0')}.png`)
 }
 
 interface ImagenDecodificada {

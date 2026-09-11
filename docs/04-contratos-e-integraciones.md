@@ -163,6 +163,7 @@ Mapeo mínimo:
 - `409 Conflict` + `VOTACION_PENDIENTE`: existe una votación pendiente en un estado técnico o no autorizado para el flujo solicitado; `EN_CURSO` y `EMPATADA` sí son resueltas por el cierre de sesión;
 - `503 Service Unavailable` + `CONFIGURACION_INVALIDA`: `system.toml` no puede cargarse o validarse;
 - `503 Service Unavailable` + `PADRON_INVALIDO`: `concejales.csv` no cumple el contrato canónico;
+- `404 Not Found` + `IMAGEN_CONCEJAL_NO_DISPONIBLE`: la fotografía de banca pedida no está en la configuración local o su nombre no cumple el contrato seguro (WP-098);
 - `503 Service Unavailable` + `AUDITORIA_NO_DISPONIBLE`: no puede garantizarse la auditoría obligatoria;
 - `500 Internal Server Error` + `ERROR_INTERNO`: fallo inesperado no clasificado por los contratos anteriores.
 
@@ -209,6 +210,45 @@ La implementación denomina al DTO Pydantic `EstadoRecinto` y lo construye por
 allowlist. No incluye DNI, dispositivos, capacidades ni mensajes de auditoría.
 Al cerrar puede incluir votos asociados a bancas; el voto presidencial se
 mantiene separado y solo se publica cuando existe resultado final auditado.
+
+## 7 bis. Recursos de configuración publicados (WP-098)
+
+Las fotografías de banca no viajan dentro de los frontends: son **configuración
+local de la instalación** y viven en una única ubicación física runtime,
+`config/assets/bancas/`. El backend las publica en su propia API para que las
+cuatro SPA resuelvan exactamente el mismo archivo:
+
+```text
+GET /api/v1/recursos/imagenes-concejales/{nombre_archivo}
+```
+
+Reglas del contrato:
+
+- `nombre_archivo` es el último segmento de la `ruta_imagen` declarada en el
+  padrón. Para `assets/bancas/banca-01.png`, la URL es
+  `/api/v1/recursos/imagenes-concejales/banca-01.png`;
+- la ruta del padrón debe empezar por `assets/bancas/`, nombrar un único archivo
+  sin subdirectorios y terminar en `.png`, `.jpg`, `.jpeg` o `.webp`. Se rechazan
+  URLs de cualquier esquema, rutas absolutas, barras invertidas, segmentos `..`
+  y nombres ocultos. La validación es la misma en la carga del padrón y en el
+  endpoint, de modo que la URL no pueda pedir nada que un padrón válido no
+  pudiera declarar;
+- una ruta inválida bloquea `Preparar recinto` con `PADRON_INVALIDO`, igual que
+  cualquier otro incumplimiento del padrón;
+- un archivo ausente o un nombre inválido responden `404 Not Found` +
+  `IMAGEN_CONCEJAL_NO_DISPONIBLE`, con el mismo cuerpo en los dos casos para no
+  revelar qué archivos existen en el servidor. **No** es una indisponibilidad
+  técnica: una banca sin foto muestra las iniciales del concejal y el resto del
+  sistema sigue operando;
+- la respuesta declara `Cache-Control: no-cache` y el archivo se lee en cada
+  pedido. Sustituir el archivo en la configuración local se ve en todas las
+  superficies sin reconstruir el frontend ni reiniciar el backend;
+- el endpoint no enumera el directorio ni admite escritura.
+
+El directorio runtime no se versiona. El repositorio publica la plantilla
+`config/assets.example/bancas/` y `scripts/preparar_config_local.py` copia desde
+ella **sólo los archivos que falten**, sin sobrescribir ninguno existente. Ver
+`docs/07-configuracion-datos-y-assets.md`.
 
 ## 8. Votaciones
 

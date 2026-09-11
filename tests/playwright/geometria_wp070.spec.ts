@@ -30,6 +30,7 @@ import {
   URL_RECINTO,
   URL_TECNICO,
 } from './soporte/apoyo_tecnico'
+import { instalarFotosConcejales } from './soporte/fotos_concejales'
 
 /** Texto exacto aprobado por HUMAN_GATE para el impedimento de carga. */
 const TEXTO_ORDEN_DEL_DIA = 'Debe comenzar a preparar el recinto antes de cargar el orden del dia'
@@ -194,6 +195,11 @@ for (const viewport of RESOLUCIONES) {
  * medio de la medición.
  */
 async function instalarBackendQueSeCae(page: Page, estado: unknown): Promise<void> {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   await page.addInitScript((snapshot) => {
     type Escucha = (evento: { type: string; data?: string }) => void
     let yaEntregoUnSnapshot = false

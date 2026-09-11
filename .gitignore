@@ -49,6 +49,16 @@ Thumbs.db
 /config/apoyo-tecnico/mensajes.csv
 /services/device-bridge/config/devices.json
 
+# Recursos de configuración por directorio (WP-098)
+#
+# Las fotografías de banca son configuración local de la instalación, igual que
+# el padrón: el repositorio versiona únicamente la plantilla
+# `config/assets.example/bancas/` y `scripts/preparar_config_local.py` copia a
+# `config/assets/` los archivos que falten, sin sobrescribir ninguno. Se ignora
+# el árbol completo para que un recurso de configuración futuro no se cuele por
+# olvido en el checkout.
+/config/assets/
+
 # Temporales de editores de texto
 #
 # Vim y compatibles dejan estos archivos mientras se edita cualquier otro. No

@@ -19,6 +19,8 @@
 
 import type { Page } from '@playwright/test'
 
+import { instalarFotosConcejales } from './fotos_concejales'
+
 /** Registro de una reproducción observada en la ventana real. */
 export interface ReproduccionObservada {
   /** Identificador del elemento multimedia; dos ids distintos son dos instancias. */
@@ -105,6 +107,11 @@ export async function instalarEspiaAudio(page: Page): Promise<void> {
  * hecho posterior a la baseline.
  */
 export async function instalarBackendControlable(page: Page, inicial: unknown): Promise<void> {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   await page.addInitScript((estadoInicial) => {
     type Escucha = (evento: { type: string; data?: string }) => void
     let ultimoEstado = estadoInicial

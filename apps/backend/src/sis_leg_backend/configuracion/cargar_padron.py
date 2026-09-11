@@ -13,7 +13,8 @@ Flujo principal paso a paso:
 4. Cada fila restante se valida por campos: DNI, nombre y apellido
    obligatorios tras recortar espacios; banca entera positiva, dentro de la
    capacidad y única; dispositivo obligatorio y único; ``ruta_imagen``
-   obligatoria y sin esquema de URL externa. ``bloque`` puede quedar vacío.
+   obligatoria y conforme al contrato seguro de WP-098. ``bloque`` puede
+   quedar vacío.
    Ante el primer incumplimiento se lanza el error correspondiente, con el
    número de fila para facilitar la corrección del archivo.
 5. Al final se exige la correspondencia exacta padrón/disposición
@@ -32,6 +33,10 @@ import csv
 from pathlib import Path
 
 from sis_leg_backend.configuracion.errores import ErrorPadronInvalido
+from sis_leg_backend.configuracion.imagenes_concejales import (
+    ErrorRutaImagenInvalida,
+    validar_ruta_imagen_concejal,
+)
 from sis_leg_backend.configuracion.modelos import Concejal, ConfiguracionSistema, Padron
 
 # Encabezado canónico exacto aprobado en WP-003: siete columnas y ese orden.
@@ -157,11 +162,14 @@ def cargar_padron_concejales(ruta: Path, configuracion: ConfiguracionSistema) ->
         ruta_imagen = fila[INDICE_RUTA_IMAGEN].strip()
         if not ruta_imagen:
             raise ErrorPadronInvalido(f"la fila {numero_fila}: la ruta_imagen no puede estar vacía")
-        if not _es_ruta_interna_valida(ruta_imagen):
-            raise ErrorPadronInvalido(
-                f"la fila {numero_fila}: la ruta_imagen debe ser una ruta "
-                f"interna del sistema, no una URL externa"
-            )
+        try:
+            # WP-098: la validación vive en un único módulo porque exactamente
+            # las mismas reglas las aplica el endpoint que publica la imagen.
+            # Si la carga del padrón aceptara algo que el endpoint rechaza, la
+            # banca quedaría con una foto que nunca puede resolverse.
+            validar_ruta_imagen_concejal(ruta_imagen)
+        except ErrorRutaImagenInvalida as error:
+            raise ErrorPadronInvalido(f"la fila {numero_fila}: {error}") from error
 
         concejales.append(
             Concejal(
@@ -182,15 +190,3 @@ def cargar_padron_concejales(ruta: Path, configuracion: ConfiguracionSistema) ->
         )
 
     return Padron(concejales=tuple(concejales))
-
-
-def _es_ruta_interna_valida(ruta: str) -> bool:
-    """Decide si una ``ruta_imagen`` es una ruta interna y no una URL externa.
-
-    Interpretación mínima del contrato sin agregar reglas de formato: se
-    rechaza cualquier esquema de URL (``http://``, ``https://``, ``ftp://``,
-    etc., detectado por ``://``) y las URLs de protocolo relativo (las que
-    comienzan con ``//``). Las rutas internas relativas o absolutas del propio
-    sistema pasan sin más requisitos.
-    """
-    return "://" not in ruta and not ruta.startswith("//")

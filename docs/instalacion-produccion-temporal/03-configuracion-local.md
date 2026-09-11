@@ -65,13 +65,25 @@ reinstalable. Ante duda, se retrocede el software, nunca la configuración.
 
 ## El modelo va a crecer
 
-Este modelo de cuatro archivos **es el estado actual, no el estado final**. La campaña de desarrollo
-en curso ya prevé ampliarlo, en particular con una fuente única de imágenes de bancas bajo la
-configuración local, de modo que cambiar una foto en el host se refleje en todas las superficies sin
-reconstruir el frontend.
+Este modelo de cuatro archivos **es el estado actual, no el estado final**.
 
-Cuando eso ocurra, la política de actualización tendrá que distinguir tres casos, y así está previsto
-para WP-100:
+WP-098 ya implementó en desarrollo la primera ampliación prevista: una fuente única de imágenes de
+bancas bajo la configuración local, en `config/assets/bancas/`, que el backend publica en
+`GET /api/v1/recursos/imagenes-concejales/<archivo>`. Cambiar una foto en el host se refleja en
+todas las superficies sin reconstruir el frontend y sin reiniciar el backend. El directorio es un
+recurso de configuración más: el repositorio versiona la plantilla `config/assets.example/bancas/` y
+el bootstrap de desarrollo copia **sólo lo que falta**, archivo por archivo, sin sobrescribir ni
+borrar nada.
+
+Dos cosas siguen pendientes y son explícitamente posteriores a WP-098:
+
+- **Permisos productivos.** El plan declarativo de `deploy/herramienta_despliegue.py` no incluye
+  todavía `config/assets/` ni su contenido. Habrá que agregarlo —lectura para el usuario del
+  backend, sin escritura— junto con el traslado de las fotos reales, porque ambos son operaciones
+  sobre el host que WP-098 tiene prohibidas.
+- **Traslado de las fotos reales**, según la sección siguiente.
+
+La política de actualización debe distinguir tres casos, y así está previsto para WP-100:
 
 | Caso | Conducta esperada |
 | --- | --- |
@@ -85,7 +97,12 @@ intervención manual.
 
 ## Migración de las fotos productivas
 
-La consolidación de las imágenes de bancas en una fuente única de configuración se implementa en
-desarrollo. **El traslado de las fotos reales que hoy están en el host se hará después del merge
-final del lote de desarrollo, por el operador local**, no durante los Work Packages de desarrollo y
-no como parte de una actualización automática.
+La consolidación de las imágenes de bancas en una fuente única de configuración quedó implementada
+en desarrollo por WP-098. **El traslado de las fotos reales que hoy están en el host se hará después
+del merge final del lote de desarrollo, por el operador local**, no durante los Work Packages de
+desarrollo y no como parte de una actualización automática.
+
+Ese traslado consiste en dejar los archivos bajo `/opt/sis-leg/config/assets/bancas/` con los
+nombres que ya declara `ruta_imagen` en el padrón instalado, y aplicarles los permisos de lectura
+del usuario del backend. Hasta que eso ocurra, las bancas de esa instalación mostrarían las
+iniciales de cada concejal en lugar de su fotografía: la pantalla sigue operando con normalidad.

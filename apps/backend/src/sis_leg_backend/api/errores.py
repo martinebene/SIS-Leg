@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from sis_leg_backend.auditoria import ErrorAuditoria
 from sis_leg_backend.configuracion.errores import (
+    ErrorImagenConcejalNoDisponible,
     ErrorPadronInvalido,
     ErrorTomlInvalido,
     ErrorValidacionConfiguracion,
@@ -112,6 +113,9 @@ CODIGOS_SERVICIO_NO_DISPONIBLE: dict[type[Exception], str] = {
 # el conflicto no es de estado global: simplemente el recurso ya no existe.
 CODIGOS_NO_ENCONTRADO: dict[type[Exception], str] = {
     ErrorMensajeTecnicoNoExistente: "MENSAJE_TECNICO_NO_EXISTENTE",
+    # WP-098: una fotografía de banca ausente o con nombre inválido. No impide
+    # operar, así que no puede responder 503 como el resto de la configuración.
+    ErrorImagenConcejalNoDisponible: "IMAGEN_CONCEJAL_NO_DISPONIBLE",
 }
 
 CODIGOS_ENTIDAD_NO_PROCESABLE: dict[type[Exception], str] = {

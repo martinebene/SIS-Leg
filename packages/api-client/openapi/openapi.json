@@ -1236,6 +1236,50 @@
         }
       }
     },
+    "/api/v1/recursos/imagenes-concejales/{nombre_archivo}": {
+      "get": {
+        "tags": [
+          "recursos"
+        ],
+        "summary": "Obtener Imagen Concejal",
+        "description": "Devuelve la fotografía de banca guardada en la configuración local.\n\nEntradas:\n    nombre_archivo: último segmento de la ``ruta_imagen`` declarada en el\n        padrón, por ejemplo ``banca-01.png``. Es el **único** dato que el\n        cliente controla: el directorio no es parametrizable desde la\n        petición, igual que ``system.toml`` o el padrón, para que nadie\n        pueda pedir la lectura de otra carpeta del servidor.\n\nResultado:\n    El archivo tal cual está en disco, con el ``Content-Type`` que\n    corresponde a su extensión.\n\nErrores:\n    ``ErrorImagenConcejalNoDisponible`` (HTTP 404) tanto si el nombre incumple el\n    contrato como si el archivo no existe. La respuesta es deliberadamente\n    la misma en los dos casos: distinguirlas permitiría averiguar qué\n    archivos existen en el servidor probando nombres.\n\nNota sobre caché: se responde ``no-cache`` para que el navegador revalide\nsiempre. Es justamente lo que exige el criterio «sustituir el archivo se ve\nsin rebuild»: con una caché larga, la pantalla del recinto seguiría\nmostrando la foto anterior durante horas después de reemplazarla.",
+        "operationId": "obtener_imagen_concejal_api_v1_recursos_imagenes_concejales__nombre_archivo__get",
+        "parameters": [
+          {
+            "name": "nombre_archivo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Nombre Archivo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fotografía de banca tal como está en la configuración local.",
+            "content": {
+              "image/png": {},
+              "image/jpeg": {},
+              "image/webp": {}
+            }
+          },
+          "404": {
+            "description": "La fotografía no está configurada o su nombre es inválido."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/apoyo-tecnico/transmision": {
       "post": {
         "tags": [

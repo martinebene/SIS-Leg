@@ -2,6 +2,8 @@
 
 import { expect, test, type Page } from '@playwright/test'
 
+import { instalarFotosConcejales } from './soporte/fotos_concejales'
+
 const HORA_RELOJ_E2E = new Date('2026-08-28T10:00:00Z')
 
 /**
@@ -122,6 +124,11 @@ function crearEventosPublicos() {
  * la aplicación siguen siendo GET snapshot y EventSource de EstadoRecinto.
  */
 async function instalarBackendPublico(page: Page, estadoInicial: Record<string, unknown>) {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   await page.addInitScript((inicial) => {
     type EstadoPrueba = Record<string, unknown> & { revision: number }
     type EventoPrueba = { type: string; data?: string }

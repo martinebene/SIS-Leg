@@ -71,6 +71,14 @@ Regla visual histórica a conservar salvo decisión de diseño posterior:
 
 Cada banca obtiene la imagen del concejal desde `ruta_imagen` en el padrón. No debe existir una asociación hardcodeada entre número de banca y archivo de imagen.
 
+Desde WP-098 esa ruta **no** resuelve contra los assets del build de la pantalla,
+sino contra la fuente única de configuración `config/assets/bancas/`, que publica
+el backend en `GET /api/v1/recursos/imagenes-concejales/{nombre_archivo}`. La
+Pantalla del Recinto y el cuadrante 3 de Moderación resuelven así exactamente el
+mismo archivo, y reemplazarlo en la configuración local se ve en las dos sin
+reconstruir el frontend. Una ruta inválida o un archivo ausente dibujan las
+iniciales del concejal y no rompen la pantalla.
+
 Estados visuales diferenciables:
 
 - ausente;

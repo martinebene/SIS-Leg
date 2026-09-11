@@ -16,6 +16,7 @@ from sis_leg_backend.api.estado import enrutador_estado
 from sis_leg_backend.api.orden_del_dia import enrutador_orden_del_dia
 from sis_leg_backend.api.palabra import enrutador_palabra
 from sis_leg_backend.api.preparacion import enrutador_preparacion
+from sis_leg_backend.api.recursos import enrutador_recursos
 from sis_leg_backend.api.remapeos import enrutador_remapeos
 from sis_leg_backend.api.salud import enrutador_salud
 from sis_leg_backend.api.sesion import enrutador_sesion
@@ -156,5 +157,8 @@ def crear_aplicacion(*, ruta_mensajes_tecnicos: Path | None = None) -> FastAPI:
     aplicacion.include_router(enrutador_palabra, prefix="/api/v1")
     aplicacion.include_router(enrutador_estado, prefix="/api/v1")
     aplicacion.include_router(enrutador_remapeos, prefix="/api/v1")
+    # WP-098: publica las fotografías de banca desde la configuración local, de
+    # modo que las cuatro SPA resuelvan la misma fuente física sin copiarla.
+    aplicacion.include_router(enrutador_recursos, prefix="/api/v1")
     aplicacion.include_router(enrutador_apoyo_tecnico, prefix="/api/v1")
     return aplicacion

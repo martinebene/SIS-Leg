@@ -13,6 +13,8 @@
 
 import { expect, type Page } from '@playwright/test'
 
+import { instalarFotosConcejales } from './fotos_concejales'
+
 export const URL_TECNICO = 'http://localhost:3003/tecnico/'
 export const URL_RECINTO = 'http://localhost:3001/recinto/'
 export const URL_MODERACION = 'http://localhost:3000/moderacion/'
@@ -357,6 +359,11 @@ export function estadoModeracion(parcialTecnico: Record<string, unknown> = {}) {
  * pantallas, incluido el puesto técnico, que consume dos proyecciones a la vez.
  */
 export async function instalarBackend(page: Page, estados: Record<string, unknown>): Promise<void> {
+  // WP-098: la fotografía de banca ya no es un asset del build; la publica
+  // el backend desde la configuración local. Sin backend real, se responde
+  // desde la plantilla versionada, que es el mismo archivo de siempre.
+  await instalarFotosConcejales(page)
+
   await page.addInitScript((iniciales) => {
     type Escucha = (evento: { type: string; data?: string }) => void
     const mapa = iniciales as Record<string, unknown>

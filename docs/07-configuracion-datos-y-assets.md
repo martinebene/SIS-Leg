@@ -18,9 +18,13 @@ config/
 ├── system.toml               archivo operativo local, ignorado por Git
 ├── concejales.example.csv    plantilla versionada
 ├── concejales.csv            archivo operativo local, ignorado por Git
-└── apoyo-tecnico/
-    ├── mensajes.example.csv  plantilla versionada
-    └── mensajes.csv          archivo operativo local, ignorado por Git
+├── apoyo-tecnico/
+│   ├── mensajes.example.csv  plantilla versionada
+│   └── mensajes.csv          archivo operativo local, ignorado por Git
+├── assets.example/
+│   └── bancas/               plantilla versionada de fotografías (WP-098)
+└── assets/
+    └── bancas/               fotografías operativas locales, ignoradas por Git
 
 services/device-bridge/
 └── config/
@@ -28,7 +32,7 @@ services/device-bridge/
     └── devices.json          archivo operativo local, ignorado por Git
 ```
 
-`system.toml` concentra configuración funcional/técnica del backend; `concejales.csv` contiene el padrón; `mensajes.csv` guarda la biblioteca de Apoyo Técnico; `devices.json` pertenece exclusivamente al bridge físico.
+`system.toml` concentra configuración funcional/técnica del backend; `concejales.csv` contiene el padrón; `mensajes.csv` guarda la biblioteca de Apoyo Técnico; `devices.json` pertenece exclusivamente al bridge físico; `assets/bancas/` es la **única** ubicación física de las fotografías de banca desde WP-098.
 
 ### Plantillas versionadas y archivos operativos locales (WP-073)
 
@@ -38,6 +42,26 @@ Las rutas que el sistema lee en ejecución son las cuatro sin `.example`, en des
 - los cuatro archivos operativos están declarados en `.gitignore` y nunca se versionan, porque son estado real de cada instalación: una prueba humana, un remapeo de hardware o un ajuste de volumen no deben ensuciar el checkout ni bloquear el lanzador de Work Packages;
 - `uv run python scripts/preparar_config_local.py` (alias `pnpm preparar:config`) crea desde su plantilla cada archivo operativo que falte y **nunca sobrescribe** uno existente;
 - producción sigue provisionando su configuración fuera de las releases, bajo `/opt/sis-leg/config/`, conforme a DT-031 y `docs/13-despliegue-y-operacion.md`. El bootstrap local no interviene en el despliegue productivo.
+
+### Recursos de configuración por directorio (WP-098)
+
+Hay recursos de configuración que no son un archivo sino un **conjunto**: las
+fotografías de banca son una por concejal y todas resuelven bajo
+`config/assets/bancas/`. Para ellos rige el mismo modelo, con la comparación
+hecha archivo por archivo:
+
+- el repositorio versiona el directorio plantilla `config/assets.example/bancas/`;
+- el directorio runtime `config/assets/` está declarado en `.gitignore`, porque
+  las fotografías reales de una institución son dato de esa instalación;
+- `scripts/preparar_config_local.py` copia desde la plantilla **sólo los archivos
+  que faltan**; los que ya existen quedan byte a byte intactos;
+- un archivo que el operador agregó y la plantilla no tiene —la foto de un
+  concejal nuevo, por ejemplo— **no se borra**: el bootstrap sólo agrega.
+
+Éste es el modelo que debe reutilizar WP-100 para incorporar recursos nuevos de
+configuración durante una actualización: agregar lo que falta y nunca sobrescribir
+ni eliminar lo que la instalación ya tiene. La consecuencia práctica es que una
+actualización futura no puede pisar las fotografías cargadas por el operador.
 
 ## 3. Configuración mínima de `system.toml`
 
@@ -195,7 +219,7 @@ Reglas:
 - `bloque`: puede estar vacío;
 - `banca`: obligatoria, válida y única;
 - `dispositivo_votacion`: obligatorio y único;
-- `ruta_imagen`: obligatoria y debe ser una ruta interna del propio sistema, no una URL externa.
+- `ruta_imagen`: obligatoria y debe cumplir el contrato seguro de WP-098: empezar por `assets/bancas/`, nombrar un único archivo sin subdirectorios y terminar en `.png`, `.jpg`, `.jpeg` o `.webp`. Se rechazan URLs de cualquier esquema, rutas absolutas, barras invertidas, segmentos `..` y nombres ocultos. La ruta se resuelve contra `config/assets/bancas/`, nunca contra los assets de una aplicación.
 
 La presencia **no forma parte del archivo de padrón**: es un dato operativo dinámico y toda preparación comienza con todos los concejales ausentes.
 
@@ -310,6 +334,33 @@ SIS-Leg no debe hardcodear la imagen por número de banca. La ruta interna corre
 
 Los agentes pueden copiar esos assets cuando implementen la interfaz. No deben copiar el frontend histórico completo para obtenerlos.
 
+### Fuente única runtime (WP-098)
+
+Hasta WP-097 cada aplicación guardaba su propia copia de las doce imágenes en el
+directorio `public/assets/bancas/` de cada SPA. Esa duplicación quedó
+**eliminada**: cambiar una foto obligaba a reconstruir los frontends y nada
+garantizaba que las superficies mostraran la misma versión de una persona.
+
+Desde WP-098:
+
+- la única ubicación física en ejecución es `config/assets/bancas/`;
+- el backend la publica en `GET /api/v1/recursos/imagenes-concejales/{nombre_archivo}`,
+  leyendo el archivo en cada pedido y respondiendo `Cache-Control: no-cache`;
+- Moderación y la Pantalla del Recinto resuelven esa URL mediante
+  `@sis-leg/api-client`, de modo que no pueden divergir;
+- reemplazar una fotografía en la configuración local se ve en todas las
+  superficies **sin rebuild del frontend y sin reiniciar el backend**;
+- un archivo ausente o una ruta inválida muestran las iniciales del concejal y no
+  rompen la superficie;
+- las doce imágenes de referencia siguen versionadas, pero como plantilla
+  reproducible en `config/assets.example/bancas/`. De ahí salen el desarrollo, las
+  pruebas y el E2E integrado.
+
+A diferencia de la marca institucional y de los sonidos —que son parte del
+producto y viajan dentro de cada release—, las fotografías son dato de la
+institución: cambian con el cuerpo legislativo y no pertenecen a un artefacto
+inmutable.
+
 ## 11 bis. Assets de sonido del Recinto
 
 Los 22 archivos WAV del Recinto están versionados en
@@ -395,7 +446,7 @@ El nombre visible del producto es **SIS-Leg** (WP-062). Los archivos aprobados p
 
 El manual de usuario (`manual/index.html`) incrusta el mismo logo como `data:` para conservar su condición de documento único sin recursos externos; el contenido decodificado es idéntico al canónico.
 
-Cada SPA consume una copia idéntica bajo `apps/<aplicacion>/public/assets/marca/`, igual que ya ocurre con las imágenes de banca. La duplicación es deliberada: cada aplicación se sirve bajo su propio prefijo (`/moderacion/`, `/recinto/`, `/tecnico/`, `/simulador/`) y publica su propio directorio estático, así que un único archivo compartido no sería alcanzable desde las cuatro sin introducir una ruta de servidor adicional.
+Cada SPA consume una copia idéntica bajo `apps/<aplicacion>/public/assets/marca/`. Las imágenes de banca ya **no** siguen este patrón desde WP-098: son configuración de la instalación y las publica el backend desde `config/assets/bancas/`. La duplicación es deliberada: cada aplicación se sirve bajo su propio prefijo (`/moderacion/`, `/recinto/`, `/tecnico/`, `/simulador/`) y publica su propio directorio estático, así que un único archivo compartido no sería alcanzable desde las cuatro sin introducir una ruta de servidor adicional.
 
 Reglas de uso:
 
