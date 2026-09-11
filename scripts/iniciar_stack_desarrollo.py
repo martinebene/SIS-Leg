@@ -27,6 +27,7 @@ SALIDA_MODERACION = RAIZ_REPOSITORIO / "apps" / "moderacion" / ".output" / "publ
 SALIDA_RECINTO = RAIZ_REPOSITORIO / "apps" / "recinto" / ".output" / "public"
 SALIDA_SIMULADOR = RAIZ_REPOSITORIO / "apps" / "simulador" / ".output" / "public"
 SALIDA_TECNICO = RAIZ_REPOSITORIO / "apps" / "tecnico" / ".output" / "public"
+SALIDA_ZOCALO = RAIZ_REPOSITORIO / "apps" / "zocalo" / ".output" / "public"
 # El manual de usuario (WP-067) no se construye: es un HTML estático versionado que en
 # producción sirve Nginx desde `web/manual/`. Acá se monta desde su directorio fuente para
 # que `/manual/` exista también bajo el origen único de desarrollo.
@@ -98,10 +99,11 @@ def crear_aplicacion_integrada(
     salida_recinto: Path = SALIDA_RECINTO,
     salida_simulador: Path = SALIDA_SIMULADOR,
     salida_tecnico: Path = SALIDA_TECNICO,
+    salida_zocalo: Path = SALIDA_ZOCALO,
     directorio_manual: Path = DIRECTORIO_MANUAL,
     ruta_mensajes_tecnicos: Path | None = None,
 ) -> FastAPI:
-    """Crea una instancia real de FastAPI y monta las cuatro SPA para desarrollo.
+    """Crea una instancia real de FastAPI y monta las cinco SPA para desarrollo.
 
     Cada invocación parte de ``crear_aplicacion()``, por lo que conserva REST,
     SSE, OpenAPI y el ciclo de vida que inicia en ``SIN_PREPARAR``. Los mounts
@@ -113,6 +115,7 @@ def crear_aplicacion_integrada(
         salida_recinto: Build estático de la Pantalla del Recinto.
         salida_simulador: Build estático del Simulador de dispositivos lógicos.
         salida_tecnico: Build estático del puesto de Apoyo Técnico.
+        salida_zocalo: Build estático del Zócalo para OBS (WP-099).
         directorio_manual: Directorio fuente del manual de usuario estático.
         ruta_mensajes_tecnicos: CSV de mensajes precargados de Apoyo Técnico
             para este proceso. Omitirlo deja la ruta canónica
@@ -131,6 +134,7 @@ def crear_aplicacion_integrada(
     validar_salida_spa(salida_recinto, "Recinto")
     validar_salida_spa(salida_simulador, "Simulador")
     validar_salida_spa(salida_tecnico, "Apoyo Técnico")
+    validar_salida_spa(salida_zocalo, "Zócalo")
     validar_manual(directorio_manual)
 
     aplicacion = crear_aplicacion(ruta_mensajes_tecnicos=ruta_mensajes_tecnicos)
@@ -148,6 +152,7 @@ def crear_aplicacion_integrada(
       <li><a href="/recinto/">Pantalla del Recinto</a></li>
       <li><a href="/tecnico/">Apoyo Técnico</a></li>
       <li><a href="/simulador/">Simulador</a></li>
+      <li><a href="/zocalo/">Zócalo para OBS</a></li>
       <li><a href="/manual/">Manual de usuario</a></li>
       <li><a href="/docs">API (Swagger)</a></li>
     </ul>
@@ -185,6 +190,14 @@ def crear_aplicacion_integrada(
         "/tecnico",
         StaticFiles(directory=salida_tecnico, html=True),
         name="tecnico",
+    )
+    # Zócalo para OBS (WP-099). Se monta igual que las demás superficies públicas para que
+    # `/zocalo/` exista también bajo el origen único de desarrollo, que es el mismo
+    # contrato de mismo origen que aplica Nginx en producción.
+    aplicacion.mount(
+        "/zocalo",
+        StaticFiles(directory=salida_zocalo, html=True),
+        name="zocalo",
     )
     # `html=True` hace que /manual/ resuelva a index.html, igual que el `try_files` de la
     # plantilla Nginx productiva. Así la misma URL funciona en desarrollo y en producción.

@@ -18,6 +18,8 @@ import { instalarFotosConcejales } from './fotos_concejales'
 export const URL_TECNICO = 'http://localhost:3003/tecnico/'
 export const URL_RECINTO = 'http://localhost:3001/recinto/'
 export const URL_MODERACION = 'http://localhost:3000/moderacion/'
+// Zócalo para OBS (WP-099). Se sirve como una SPA más del monorepo.
+export const URL_ZOCALO = 'http://localhost:3004/zocalo/'
 
 export const RESOLUCIONES = [
   { width: 1920, height: 1080 },
@@ -376,6 +378,12 @@ export async function instalarBackend(page: Page, estados: Record<string, unknow
       return null
     }
 
+    // Registro de las fuentes vivas: lo necesita `publicarEstadoPrueba` para emitir una
+    // revisión nueva por el mismo canal por el que llegó la primera, en lugar de recargar
+    // la página. Recargar probaría otra cosa: que la pantalla arranca bien, no que se
+    // actualiza en vivo desde la fuente autoritativa.
+    const fuentesAbiertas: FuentePrueba[] = []
+
     class FuentePrueba {
       cerrada = false
       onopen: Escucha | null = null
@@ -384,15 +392,21 @@ export async function instalarBackend(page: Page, estados: Record<string, unknow
       escuchas: Record<string, Escucha[]> = {}
 
       constructor(readonly url: string) {
+        fuentesAbiertas.push(this)
         setTimeout(() => {
           if (this.cerrada) return
           this.onopen?.({ type: 'open' })
           const estado = resolver(this.url)
           if (estado === null) return
-          for (const escuchar of this.escuchas.estado ?? []) {
-            escuchar({ type: 'estado', data: JSON.stringify(estado) })
-          }
+          this.emitir(estado)
         }, 10)
+      }
+
+      /** Entrega un snapshot a todos los escuchas del evento `estado`. */
+      emitir(estado: unknown): void {
+        for (const escuchar of this.escuchas.estado ?? []) {
+          escuchar({ type: 'estado', data: JSON.stringify(estado) })
+        }
       }
 
       addEventListener(tipo: string, escuchar: Escucha): void {
@@ -412,6 +426,29 @@ export async function instalarBackend(page: Page, estados: Record<string, unknow
     // @ts-expect-error Sustitución determinista de EventSource para el E2E.
     window.EventSource = FuentePrueba
 
+    /*
+      Publicación de una revisión nueva desde la prueba (WP-099).
+
+      Reemplaza el snapshot asociado a una ruta y lo emite por las fuentes ya abiertas que
+      correspondan a esa ruta. Desde el punto de vista de la aplicación es indistinguible de
+      que el backend hubiera publicado otra revisión: el mismo evento, el mismo canal y la
+      misma reacción. Queda en `window` porque `page.evaluate` es lo único que puede
+      dispararla desde el proceso de Playwright.
+    */
+    ;(window as unknown as Record<string, unknown>).publicarEstadoPrueba = (
+      clave: string,
+      estado: unknown,
+    ): number => {
+      mapa[clave] = estado
+      let alcanzadas = 0
+      for (const fuente of fuentesAbiertas) {
+        if (fuente.cerrada || !fuente.url.includes(clave)) continue
+        fuente.emitir(estado)
+        alcanzadas += 1
+      }
+      return alcanzadas
+    }
+
     const fetchOriginal = window.fetch.bind(window)
     window.fetch = async (entrada: RequestInfo | URL, opciones?: RequestInit) => {
       const url =
@@ -426,6 +463,31 @@ export async function instalarBackend(page: Page, estados: Record<string, unknow
       return fetchOriginal(entrada, opciones)
     }
   }, estados)
+}
+
+/**
+ * Publica una revisión nueva por el canal SSE simulado y comprueba que alguien la recibió.
+ *
+ * @param page Página con `instalarBackend` ya aplicado.
+ * @param clave Fragmento de URL que identifica la proyección, por ejemplo
+ *   `/api/v1/estado/recinto`.
+ * @param estado Snapshot completo que debe adoptar la superficie.
+ *
+ * Falla si ninguna fuente abierta correspondía a esa ruta: un cero significa que la
+ * pantalla no estaba suscrita y que la prueba siguiente mediría una actualización que
+ * nunca ocurrió.
+ */
+export async function publicarEstado(page: Page, clave: string, estado: unknown): Promise<void> {
+  const alcanzadas = await page.evaluate(
+    ([rutaParcial, snapshot]) =>
+      (
+        window as unknown as {
+          publicarEstadoPrueba: (clave: string, estado: unknown) => number
+        }
+      ).publicarEstadoPrueba(rutaParcial as string, snapshot),
+    [clave, estado] as [string, unknown],
+  )
+  expect(alcanzadas, `ninguna suscripción abierta coincidió con «${clave}»`).toBeGreaterThan(0)
 }
 
 /** Mide el desborde del documento; es la definición operativa de "sin scroll global". */

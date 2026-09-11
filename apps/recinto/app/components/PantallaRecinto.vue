@@ -15,11 +15,14 @@
 
 import { computed, toRefs } from 'vue'
 import type { EstadoRecinto } from '@sis-leg/api-client'
-import { usePresentacionTecnica, useSonidosRecinto } from '@sis-leg/frontend-shared'
+import {
+  usePresentacionTecnica,
+  usePresentacionVotacion,
+  useSonidosRecinto,
+} from '@sis-leg/frontend-shared'
 import AvisoSuperficie from '@sis-leg/frontend-shared/componentes/AvisoSuperficie.vue'
 import IndicadorCargaInicial from '@sis-leg/frontend-shared/componentes/IndicadorCargaInicial.vue'
 import type { EstadoConexionRecinto } from '../composables/useEstadoRecinto'
-import { usePresentacionVotacion } from '../composables/usePresentacionVotacion'
 import { resolverRutaAsset } from '../utils/rutas'
 import BloqueTransmisionPublico from './BloqueTransmisionPublico.vue'
 import CabeceraRecinto from './CabeceraRecinto.vue'

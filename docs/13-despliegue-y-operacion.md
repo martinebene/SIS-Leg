@@ -49,9 +49,14 @@ Estructura objetivo conceptual:
 http://botonera/
 ├── /moderacion/
 ├── /recinto/
+├── /zocalo/
 ├── /manual/
 └── /api/v1/
 ```
+
+Desde WP-099 `/zocalo/` es otra superficie pública de solo lectura, publicada con la misma
+política que `/recinto/`: mismo origen, sin autenticación y sin restricción a loopback. La
+consume el equipo de transmisión como Browser Source.
 
 Nginx:
 
@@ -234,7 +239,7 @@ python3.14 deploy/herramienta_despliegue.py preflight
    ```
 
 La activación valida configuración, units y Nginx; cambia `current`
-atómicamente; reinicia backend/bridge; comprueba health, las cuatro SPA y el
+atómicamente; reinicia backend/bridge; comprueba health, las cinco SPA y el
 manual por Nginx; y recién entonces actualiza `previous`.
 
 La validación de configuración recibe dos rutas: la raíz de la instalación
@@ -375,6 +380,7 @@ curl --fail http://127.0.0.1:8000/api/v1/health
 curl --fail http://127.0.0.1/api/v1/health
 curl --fail http://127.0.0.1/moderacion/
 curl --fail http://127.0.0.1/recinto/
+curl --fail http://127.0.0.1/zocalo/
 curl --fail http://127.0.0.1/manual/
 ```
 

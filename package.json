@@ -17,6 +17,7 @@
     "dev:recinto": "pnpm --filter @sis-leg/recinto dev",
     "dev:simulador": "pnpm --filter @sis-leg/simulador dev",
     "dev:tecnico": "pnpm --filter @sis-leg/tecnico dev",
+    "dev:zocalo": "pnpm --filter @sis-leg/zocalo dev",
     "dev:stack": "pnpm preparar:config && pnpm build && uv run python scripts/iniciar_stack_desarrollo.py",
     "dev:stack:hot": "pnpm preparar:config && node scripts/iniciar_stack_hot.mjs",
     "format": "prettier --write '.github/**/*.yml' 'apps/**/*.{ts,vue,css,json,mjs}' 'packages/**/*.{ts,vue,json}' 'scripts/**/*.mjs' 'tests/**/*.{ts,json}' playwright.config.ts playwright.integrado.config.ts vitest.config.mjs package.json pnpm-workspace.yaml README.md tools/device-simulator/README.md config/README.md",
@@ -24,13 +25,13 @@
     "generate:contrato": "pnpm generate:openapi && pnpm generate:types",
     "generate:openapi": "uv run python scripts/exportar_openapi.py",
     "generate:types": "pnpm --filter @sis-leg/api-client generate:types",
-    "lint": "pnpm --filter @sis-leg/moderacion lint && pnpm --filter @sis-leg/recinto lint && pnpm --filter @sis-leg/simulador lint && pnpm --filter @sis-leg/tecnico lint",
-    "postinstall": "pnpm --filter @sis-leg/moderacion prepare && pnpm --filter @sis-leg/recinto prepare && pnpm --filter @sis-leg/simulador prepare && pnpm --filter @sis-leg/tecnico prepare",
+    "lint": "pnpm --filter @sis-leg/moderacion lint && pnpm --filter @sis-leg/recinto lint && pnpm --filter @sis-leg/simulador lint && pnpm --filter @sis-leg/tecnico lint && pnpm --filter @sis-leg/zocalo lint",
+    "postinstall": "pnpm --filter @sis-leg/moderacion prepare && pnpm --filter @sis-leg/recinto prepare && pnpm --filter @sis-leg/simulador prepare && pnpm --filter @sis-leg/tecnico prepare && pnpm --filter @sis-leg/zocalo prepare",
     "preparar:config": "uv run python scripts/preparar_config_local.py",
-    "test": "vitest run && vitest run --config apps/recinto/vitest.config.ts && vitest run --config apps/simulador/vitest.config.ts && vitest run --config apps/tecnico/vitest.config.ts",
+    "test": "vitest run && vitest run --config apps/recinto/vitest.config.ts && vitest run --config apps/simulador/vitest.config.ts && vitest run --config apps/tecnico/vitest.config.ts && vitest run --config apps/zocalo/vitest.config.ts",
     "test:e2e": "playwright test",
     "test:e2e:integrado": "pnpm preparar:config && pnpm build && playwright test --config playwright.integrado.config.ts",
-    "typecheck": "pnpm --filter @sis-leg/api-client typecheck && pnpm --filter @sis-leg/moderacion typecheck && pnpm --filter @sis-leg/recinto typecheck && pnpm --filter @sis-leg/simulador typecheck && pnpm --filter @sis-leg/tecnico typecheck"
+    "typecheck": "pnpm --filter @sis-leg/api-client typecheck && pnpm --filter @sis-leg/moderacion typecheck && pnpm --filter @sis-leg/recinto typecheck && pnpm --filter @sis-leg/simulador typecheck && pnpm --filter @sis-leg/tecnico typecheck && pnpm --filter @sis-leg/zocalo typecheck"
   },
   "devDependencies": {
     "@nuxt/test-utils": "4.1.0",

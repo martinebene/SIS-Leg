@@ -446,7 +446,12 @@ El nombre visible del producto es **SIS-Leg** (WP-062). Los archivos aprobados p
 
 El manual de usuario (`manual/index.html`) incrusta el mismo logo como `data:` para conservar su condición de documento único sin recursos externos; el contenido decodificado es idéntico al canónico.
 
-Cada SPA consume una copia idéntica bajo `apps/<aplicacion>/public/assets/marca/`. Las imágenes de banca ya **no** siguen este patrón desde WP-098: son configuración de la instalación y las publica el backend desde `config/assets/bancas/`. La duplicación es deliberada: cada aplicación se sirve bajo su propio prefijo (`/moderacion/`, `/recinto/`, `/tecnico/`, `/simulador/`) y publica su propio directorio estático, así que un único archivo compartido no sería alcanzable desde las cuatro sin introducir una ruta de servidor adicional.
+El Zócalo para OBS (WP-099) es la única superficie que **no** consume la marca: no lleva
+pantalla de carga ni favicon, porque cualquiera de las dos dibujaría píxeles opacos sobre el
+fondo de croma que el programa de transmisión tiene que recortar. Por eso las dos filas de
+arriba siguen hablando de cuatro SPA aunque el producto tenga cinco.
+
+Cada SPA que sí la consume guarda una copia idéntica bajo `apps/<aplicacion>/public/assets/marca/`. Las imágenes de banca ya **no** siguen este patrón desde WP-098: son configuración de la instalación y las publica el backend desde `config/assets/bancas/`. La duplicación es deliberada: cada aplicación se sirve bajo su propio prefijo (`/moderacion/`, `/recinto/`, `/tecnico/`, `/simulador/`) y publica su propio directorio estático, así que un único archivo compartido no sería alcanzable desde las cuatro sin introducir una ruta de servidor adicional.
 
 Reglas de uso:
 

@@ -87,6 +87,7 @@ apps/moderacion/           SPA Nuxt 4 de Moderación
 apps/recinto/              SPA Nuxt 4 pública
 apps/simulador/            SPA Nuxt 4 del simulador visual de dispositivos lógicos (WP-034)
 apps/tecnico/              SPA Nuxt 4 del puesto de Apoyo Técnico (WP-056)
+apps/zocalo/               SPA Nuxt 4 del Zócalo para Browser Source de OBS (WP-099)
 services/device-bridge/    paquete Python importable; captura y remapeo físico
 packages/api-client/       cliente TypeScript REST/SSE, reconexión y tipos derivados de OpenAPI
 packages/frontend-shared/  código frontend compartido
@@ -249,7 +250,7 @@ pnpm dev:stack:hot  -> servidores de desarrollo Nuxt/Vite + HMR + autoreload bac
 
 ### 1. Modo estático reproducible (`pnpm dev:stack`)
 
-Construye las cuatro SPA y después mantiene en primer plano un único servidor Uvicorn con la aplicación FastAPI real. Es el harness reproducible que valida los artefactos estáticos tal como se servirán en producción:
+Construye las cinco SPA y después mantiene en primer plano un único servidor Uvicorn con la aplicación FastAPI real. Es el harness reproducible que valida los artefactos estáticos tal como se servirán en producción:
 
 ```bash
 git pull --ff-only origin main
@@ -264,6 +265,7 @@ Escucha por defecto en `127.0.0.1:8000` y expone:
 - `http://127.0.0.1:8000/recinto/`
 - `http://127.0.0.1:8000/simulador/`
 - `http://127.0.0.1:8000/tecnico/`
+- `http://127.0.0.1:8000/zocalo/`
 - `http://127.0.0.1:8000/manual/`
 - `http://127.0.0.1:8000/api/v1/health`
 - `http://127.0.0.1:8000/docs`
@@ -272,7 +274,7 @@ No hay mocks, CORS, servidor Node persistente ni recuperación de estado. Al no 
 
 ### 2. Modo interactivo con hot reload sobre main (`pnpm dev:stack:hot`)
 
-Destinado al checkout coordinador de la rama `main`. Coordina en primer plano los servidores Nuxt/Vite en modo desarrollo con Hot Module Replacement (HMR) para las cuatro SPA, el backend FastAPI con recarga automática por Uvicorn, y un reverse proxy interno que preserva el contrato de mismo origen en un único puerto loopback:
+Destinado al checkout coordinador de la rama `main`. Coordina en primer plano los servidores Nuxt/Vite en modo desarrollo con Hot Module Replacement (HMR) para las cinco SPA, el backend FastAPI con recarga automática por Uvicorn, y un reverse proxy interno que preserva el contrato de mismo origen en un único puerto loopback:
 
 ```bash
 git checkout main
@@ -288,7 +290,7 @@ pnpm dev:stack:hot
    ```bash
    git pull --ff-only origin main
    ```
-4. Los watchers detectan los archivos actualizados y Vite propaga los cambios por HMR a las cuatro SPA sin necesidad de ejecutar `pnpm build`, sin recargar la página (`Ctrl+F5`) y sin reiniciar el stack.
+4. Los watchers detectan los archivos actualizados y Vite propaga los cambios por HMR a las cinco SPA sin necesidad de ejecutar `pnpm build`, sin recargar la página (`Ctrl+F5`) y sin reiniciar el stack.
 5. Si el cambio afectó código Python del backend (`apps/backend/src`), Uvicorn reinicia automáticamente el proceso FastAPI. Como el estado institucional es deliberadamente volátil en memoria, el sistema vuelve a `SIN_PREPARAR`. Modificaciones en archivos de configuración no Python (`config/*.toml` o `config/*.csv`) requieren reiniciar el stack manualmente porque el reloader estándar de Uvicorn vigila exclusivamente archivos Python. Esos archivos son los operativos locales descritos en «Configuración operativa local (WP-073)», no las plantillas versionadas.
 6. Para detener todo el árbol de procesos y liberar los puertos auxiliares, presionar `Ctrl+C`.
 
@@ -340,7 +342,7 @@ Hay dos suites Playwright con propósitos distintos:
 
 - `pnpm test:e2e` verifica de forma rápida y determinista los shells frontend
   con servidores Nuxt y respuestas controladas. No necesita Python.
-- `pnpm test:e2e:integrado` construye las cuatro SPA, inicia el FastAPI real en
+- `pnpm test:e2e:integrado` construye las cinco SPA, inicia el FastAPI real en
   `127.0.0.1:18027` y recorre REST, SSE, Moderación, Recinto, Simulador, Apoyo Técnico y
   la CLI real del simulador. También reinicia el backend para comprobar que la nueva baseline
   vuelve a `SIN_PREPARAR` con revisión 0.
@@ -371,7 +373,7 @@ Desde un checkout limpio y confirmado, el comando:
 pnpm empaquetar:produccion
 ```
 
-construye las cuatro SPA y deja en `dist/produccion/` un
+construye las cinco SPA y deja en `dist/produccion/` un
 `sis-leg-<sha-completo>.tar.gz` junto con su sidecar `.sha256`. El paquete
 contiene fuentes runtime Python, lockfiles, frontends ya compilados, el manual
 de usuario, `release.json`, unidades systemd, configuración Nginx y la

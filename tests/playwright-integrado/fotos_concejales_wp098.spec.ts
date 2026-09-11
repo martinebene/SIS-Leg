@@ -2,7 +2,7 @@
  * WP-098 · fuente única de fotografías de banca contra el stack real.
  *
  * Este recorrido es el que no puede hacerse con dobles: corre contra el FastAPI
- * real sirviendo la configuración local de este checkout y contra las cuatro SPA
+ * real sirviendo la configuración local de este checkout y contra las cinco SPA
  * ya construidas, servidas como archivos estáticos igual que en producción.
  *
  * Qué demuestra
@@ -45,7 +45,7 @@ const RUTA_FOTO_PRUEBA = join(DIRECTORIO_FOTOS, NOMBRE_FOTO_PRUEBA)
 const URL_FOTO_PRUEBA = `${URL_STACK}/api/v1/recursos/imagenes-concejales/${NOMBRE_FOTO_PRUEBA}`
 
 /** Prefijo público de cada SPA construida, tal como los sirve el stack. */
-const SALIDAS_SPA = ['moderacion', 'recinto', 'simulador', 'tecnico'] as const
+const SALIDAS_SPA = ['moderacion', 'recinto', 'simulador', 'tecnico', 'zocalo'] as const
 
 const PRIMERA_VERSION = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),

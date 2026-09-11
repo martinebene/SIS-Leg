@@ -37,6 +37,9 @@ URL_NGINX_MODERACION = "http://127.0.0.1/moderacion/"
 URL_NGINX_RECINTO = "http://127.0.0.1/recinto/"
 URL_NGINX_SIMULADOR = "http://127.0.0.1/simulador/"
 URL_NGINX_TECNICO = "http://127.0.0.1/tecnico/"
+# Zócalo para OBS (WP-099). Es una superficie pública más y se sonda igual que las otras:
+# si Nginx no la publica, el equipo de transmisión se entera recién al aire.
+URL_NGINX_ZOCALO = "http://127.0.0.1/zocalo/"
 # El manual de usuario (WP-067) se publica en su propia ruta estática. Se comprueba junto
 # a las SPA porque el icono de ayuda de Moderación y el de Apoyo Técnico dependen de él.
 URL_NGINX_MANUAL = "http://127.0.0.1/manual/"
@@ -45,6 +48,7 @@ SUPERFICIES_NGINX = (
     URL_NGINX_RECINTO,
     URL_NGINX_SIMULADOR,
     URL_NGINX_TECNICO,
+    URL_NGINX_ZOCALO,
     URL_NGINX_MANUAL,
 )
 MAXIMO_ARCHIVOS_TAR = 20_000
@@ -209,8 +213,9 @@ def validar_manifest(
         "recinto": "web/recinto/index.html",
         "simulador": "web/simulador/index.html",
         "tecnico": "web/tecnico/index.html",
+        "zocalo": "web/zocalo/index.html",
     }:
-        raise ErrorDespliegue("release.json no declara las cuatro SPA canónicas.")
+        raise ErrorDespliegue("release.json no declara las cinco SPA canónicas.")
     if manifest.get("manual") != "web/manual/index.html":
         raise ErrorDespliegue("release.json no declara el manual de usuario canónico.")
     if manifest.get("paquetes_python") != [
@@ -254,6 +259,7 @@ def validar_manifest(
         "web/recinto/index.html",
         "web/simulador/index.html",
         "web/tecnico/index.html",
+        "web/zocalo/index.html",
         "web/manual/index.html",
         "deploy/systemd/sis-leg-backend.service",
         "deploy/systemd/sis-leg-device-bridge.service",
@@ -638,6 +644,7 @@ class GestorDespliegue:
             release / "web/recinto/index.html",
             release / "web/simulador/index.html",
             release / "web/tecnico/index.html",
+            release / "web/zocalo/index.html",
             release / "web/manual/index.html",
             release / "deploy/systemd/sis-leg-backend.service",
             release / "deploy/systemd/sis-leg-device-bridge.service",

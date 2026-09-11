@@ -78,7 +78,7 @@ def ejecutar_smoke(paquete: Path, sidecar: Path, sha: str) -> None:
             capture_output=True,
             text=True,
         )
-        for spa in ("moderacion", "recinto", "simulador", "tecnico"):
+        for spa in ("moderacion", "recinto", "simulador", "tecnico", "zocalo"):
             indice = release / "web" / spa / "index.html"
             assets = release / "web" / spa / "_nuxt"
             if not indice.is_file() or not any(ruta.is_file() for ruta in assets.iterdir()):

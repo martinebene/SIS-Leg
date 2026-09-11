@@ -64,5 +64,13 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
     },
+    {
+      // Zócalo para OBS (WP-099). Sus pruebas miden geometría y color reales, así que
+      // necesitan la superficie servida como cualquier otra SPA.
+      command: 'pnpm --filter @sis-leg/zocalo dev --port 3004',
+      url: 'http://localhost:3004/zocalo/',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
+    },
   ],
 })
