@@ -4,6 +4,12 @@ Todo lo descrito en este documento **existe sólo en el host institucional** dur
 No está versionado en este repositorio y no forma parte del producto. Es el andamiaje que permite
 alternar entre los dos sistemas de forma segura hasta que se decida el cutover definitivo.
 
+> **Reemplazo preparado.** WP-101A versionó una implementación canónica equivalente de estas tres
+> operaciones (`deploy/estado_host.py`, `deploy/operaciones_host.py` y los wrappers de
+> `deploy/host/`), con pruebas y revisión independiente. **Todavía no está instalada**: lo que corre
+> hoy en el host es lo que describe este documento. La comparación entre ambos mecanismos y los pasos
+> pendientes están en [10 - Mecanismo versionado y su aplicación](10-mecanismo-versionado-y-aplicacion.md).
+
 ## Por qué existe
 
 `deploy/herramienta_despliegue.py activar` sabe activar una release de SIS-Leg, pero no sabe nada de

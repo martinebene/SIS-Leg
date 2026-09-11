@@ -160,3 +160,19 @@ WP-101 adapte el wrapper al canal público, que es su reemplazo previsto.
 
 Hasta que eso ocurra, **el mecanismo descrito en este documento es el vigente en producción** y
 cualquier documentación que lo presente como definitivo es incorrecta.
+
+## Estado con WP-101A implementado
+
+WP-101A construyó el reemplazo versionado de este wrapper: `deploy/operaciones_host.py`, apoyado en
+`deploy/estado_host.py` y en los wrappers de `deploy/host/`, implementa «Actualizar SIS-Leg» sobre el
+canal público de WP-100, sin `gh`, PAT, `.github_token`, token, cookie ni login, conservando el lock
+global, los guards institucionales, `target-release` atómico y version-agnóstico, la idempotencia, el
+health completo, el rollback y la preservación byte a byte de la configuración local.
+
+**Ese reemplazo todavía no está instalado.** WP-101A es desarrollo únicamente: no escribió en
+`/opt/sis-leg`, `/usr/local/bin` ni `/etc`, no modificó ningún `.desktop` y no ejecutó ninguna
+actualización real. Instalarlo en el host corresponde a WP-101B, que está pendiente de acceso al
+equipo de producción y de una compuerta humana específica.
+
+La comparación entre el mecanismo instalado hoy, el preparado por WP-101A y los pasos que faltan está
+en [10 - Mecanismo versionado y su aplicación](10-mecanismo-versionado-y-aplicacion.md).
