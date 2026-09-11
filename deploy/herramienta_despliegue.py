@@ -865,7 +865,19 @@ class GestorDespliegue:
 
         plan = self.planificar_configuracion_local(release)
         exigir_plan_sin_migraciones(plan)
-        return aplicar_plan_configuracion(self.raiz, release, plan)
+        return aplicar_plan_configuracion(
+            self.raiz, release, plan, aplicar_propietario=self._aplicar_propietario_declarado
+        )
+
+    def _aplicar_propietario_declarado(self, ruta: Path, usuario: str, grupo: str) -> None:
+        """Delega el ``chown`` del recurso recién creado en el ejecutor auditable.
+
+        Se usa ``--no-dereference`` por el mismo motivo que en el plan de
+        permisos del bootstrap: nunca aplicar privilegios siguiendo un enlace
+        fuera del árbol administrado.
+        """
+
+        self.ejecutor.ejecutar(["chown", "--no-dereference", f"{usuario}:{grupo}", str(ruta)])
 
     def _exigir_acceso_runtime(
         self, usuario: str, argumentos_test: Sequence[str], descripcion: str

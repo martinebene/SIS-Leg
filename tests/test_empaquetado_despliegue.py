@@ -1360,7 +1360,8 @@ def test_activar_preserva_byte_a_byte_la_configuracion_declarada(tmp_path: Path)
 def test_activar_incorpora_add_only_un_recurso_nuevo_ausente(tmp_path: Path) -> None:
     """Una release que declara un recurso nuevo lo crea sin tocar lo existente."""
 
-    gestor = crear_gestor(tmp_path)
+    ejecutor = EjecutorFalso()
+    gestor = crear_gestor(tmp_path, ejecutor)
     release = crear_release_preparada(gestor, SHA_A)
     crear_config_externa(gestor)
     predeterminado = release / "deploy/defaults/nuevo.json"
@@ -1395,6 +1396,14 @@ def test_activar_incorpora_add_only_un_recurso_nuevo_ausente(tmp_path: Path) -> 
     creado = gestor.config / "nuevo.json"
     assert creado.read_text(encoding="utf-8") == '{"origen": "release"}'
     assert creado.stat().st_mode & 0o777 == 0o640
+    # El ownership declarado se aplica con el mismo ejecutor auditable que usa el
+    # plan de permisos: un archivo 0640 con dueño equivocado sería ilegible.
+    assert [
+        "chown",
+        "--no-dereference",
+        "root:sis-leg-backend",
+        str(creado),
+    ] in ejecutor.llamadas
     assert (gestor.config / "system.toml").read_bytes() == system_antes
 
 

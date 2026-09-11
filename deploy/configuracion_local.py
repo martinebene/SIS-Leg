@@ -42,7 +42,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
@@ -467,10 +467,29 @@ def _crear_archivo_add_only(origen: Path, destino: Path, modo: int) -> bool:
         temporal.unlink(missing_ok=True)
 
 
+def _fijar_propietario(
+    ruta: Path,
+    recurso: RecursoConfiguracion,
+    aplicar_propietario: Callable[[Path, str, str], None] | None,
+) -> None:
+    """Aplica el ownership declarado a algo recién creado, si se puede.
+
+    Un archivo de configuración creado con modo ``0640`` pero con dueño y grupo
+    equivocados sería ilegible para el servicio que lo necesita. Por eso el
+    ownership forma parte del contrato y no de la buena voluntad del llamador.
+    """
+
+    if aplicar_propietario is None or recurso.usuario is None or recurso.grupo is None:
+        return
+    aplicar_propietario(ruta, recurso.usuario, recurso.grupo)
+
+
 def aplicar_plan_configuracion(
     raiz: Path,
     release: Path,
     plan: Sequence[EntradaPlanConfiguracion],
+    *,
+    aplicar_propietario: Callable[[Path, str, str], None] | None = None,
 ) -> tuple[str, ...]:
     """Materializa únicamente las entradas ``CREAR`` del plan.
 
@@ -479,6 +498,12 @@ def aplicar_plan_configuracion(
         release: release cuyo contrato generó el plan; de ahí salen los
             contenidos de bootstrap declarados.
         plan: plan ya calculado por :func:`planificar_configuracion`.
+        aplicar_propietario: callback que recibe ``(ruta, usuario, grupo)`` para
+            fijar el ownership declarado. Se inyecta porque cambiar de dueño es
+            una operación privilegiada: la herramienta de despliegue la delega en
+            su ejecutor auditable y las pruebas la observan sin ser root. Si es
+            ``None`` sólo se aplica el modo, que ``chmod`` sí puede fijar sin
+            privilegios sobre un archivo recién creado.
 
     Resultado: rutas locales efectivamente creadas, en orden.
 
@@ -519,6 +544,7 @@ def aplicar_plan_configuracion(
                         f"regular de la release: {origen}"
                     )
                 if _crear_archivo_add_only(origen, destino, recurso.modo):
+                    _fijar_propietario(destino, recurso, aplicar_propietario)
                     creados.append(recurso.ruta_local)
                 continue
 
@@ -532,6 +558,7 @@ def aplicar_plan_configuracion(
             # sólo esas cuatro. Es el mismo criterio que WP-098 fijó para el
             # checkout de desarrollo, aplicado ahora a producción.
             destino.mkdir(parents=True, exist_ok=True)
+            _fijar_propietario(destino, recurso, aplicar_propietario)
             hubo_creacion = False
             for archivo in sorted(ruta for ruta in origen.rglob("*") if ruta.is_file()):
                 if archivo.is_symlink():
@@ -539,7 +566,9 @@ def aplicar_plan_configuracion(
                         f"El bootstrap de {recurso.ruta_local} contiene un enlace: {archivo}"
                     )
                 relativa = archivo.relative_to(origen)
-                if _crear_archivo_add_only(archivo, destino / relativa, recurso.modo):
+                creado = destino / relativa
+                if _crear_archivo_add_only(archivo, creado, recurso.modo):
+                    _fijar_propietario(creado, recurso, aplicar_propietario)
                     hubo_creacion = True
             if hubo_creacion:
                 creados.append(recurso.ruta_local)
