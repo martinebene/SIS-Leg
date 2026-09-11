@@ -640,6 +640,24 @@ def test_el_job_de_otro_sha_se_rechaza() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_se_acepta_target_commitish_normalizado_a_la_rama(tmp_path: Path) -> None:
+    """GitHub puede devolver la rama en lugar del SHA; la atadura no depende de eso.
+
+    La identidad con el commit la garantizan el nombre del tag, el ``commit_sha``
+    de los metadatos y el de ``release.json``. Aceptar ``main`` en ese campo no
+    afloja ninguna de esas tres comprobaciones.
+    """
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    release = dict(publicador.releases[tag_publicacion(SHA)])
+    release["target_commitish"] = "main"
+    cliente = ClienteHttpFalso(release=release, contenidos=dict(publicador.contenidos))
+
+    publicacion = resolver_publicacion(cliente, SHA, repositorio=REPOSITORIO)
+
+    assert publicacion.commit_sha == SHA
+
+
 def test_la_publicacion_resuelta_declara_los_tres_assets_exactos(tmp_path: Path) -> None:
     """El tag y los tres nombres derivan del SHA, sin ningún ``latest``."""
 
@@ -690,10 +708,11 @@ def test_publicacion_con_assets_invalidos_se_rechaza(
     [
         ("draft", True, "borrador o prerelease"),
         ("prerelease", True, "borrador o prerelease"),
-        ("target_commitish", SHA_OTRO, "no apunta al commit"),
+        ("target_commitish", SHA_OTRO, "no al commit"),
+        ("target_commitish", "wp/100", "no al commit"),
         ("tag_name", "sis-leg-otro", "tag distinto"),
     ],
-    ids=["borrador", "prerelease", "otro-commit", "otro-tag"],
+    ids=["borrador", "prerelease", "otro-commit", "otra-rama", "otro-tag"],
 )
 def test_publicacion_con_identidad_incorrecta_se_rechaza(
     tmp_path: Path, campo: str, valor: Any, mensaje: str

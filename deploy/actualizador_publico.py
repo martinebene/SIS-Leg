@@ -599,9 +599,16 @@ def resolver_publicacion(
         raise ErrorActualizadorPublico(
             f"La publicación {tag} es borrador o prerelease y no es consumible."
         )
-    if _texto(datos, "target_commitish", url) != sha:
+    # ``target_commitish`` se acepta como el SHA exacto o como la rama publicable
+    # porque GitHub puede normalizarlo al crear el tag. La atadura fuerte al SHA
+    # no depende de este campo: la dan el nombre del tag, el ``commit_sha`` de los
+    # metadatos y el de ``release.json``, que se comparan todos más abajo.
+    # Cualquier otro valor indica una publicación que apunta a otro lado.
+    objetivo = _texto(datos, "target_commitish", url)
+    if objetivo not in (sha, RAMA_PUBLICACION):
         raise ErrorActualizadorPublico(
-            f"La publicación {tag} no apunta al commit {sha}; no se mezclan publicaciones."
+            f"La publicación {tag} apunta a {objetivo!r} y no al commit {sha}; no se mezclan "
+            "publicaciones."
         )
 
     esperados = assets_esperados(sha)
