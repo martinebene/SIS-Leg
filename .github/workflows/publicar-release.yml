@@ -1,0 +1,94 @@
+name: Publicar release pública
+
+# Canal público de releases por SHA (WP-100).
+#
+# Se dispara con `workflow_run` y no dentro de la CI a propósito: el WP exige que
+# la publicación ocurra sólo después de que la CI **completa** haya terminado, y
+# un job dentro del mismo workflow no puede observar la conclusión del workflow
+# que lo contiene. Esperar el evento `completed` es la única forma objetiva de
+# saber que todos los jobs pasaron.
+#
+# Un push documental exento por `paths-ignore` (DEC-019) no genera run de CI, así
+# que tampoco genera publicación. Esa ausencia es esperada: no hay release
+# productiva nueva porque no hay contenido material nuevo.
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+
+# `contents: write` es el permiso mínimo para crear una release y subir sus
+# assets. `actions: read` permite releer la run y sus jobs para verificarlos de
+# nuevo desde el script, sin confiar únicamente en la expresión `if`.
+permissions:
+  contents: write
+  actions: read
+
+# Dos publicaciones simultáneas del mismo SHA competirían por el mismo tag. La
+# cola es por SHA y no se cancela: abortar a mitad de una subida dejaría una
+# release parcial, que es justamente lo que el contrato prohíbe.
+concurrency:
+  group: publicar-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    name: Publicación · release pública por SHA
+    # Primera compuerta, declarativa: evento, rama, conclusión y repositorio de
+    # origen. La segunda compuerta la vuelve a aplicar el script sobre el API,
+    # porque una condición de workflow no es evidencia auditable por sí sola.
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # El checkout se fija al SHA exacto que disparó la CI, no a la cabeza
+          # actual de `main`: entre medio pudo entrar otro commit.
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: astral-sh/setup-uv@v10.0.0
+        with:
+          version: '0.12.1'
+          python-version: '3.14'
+          enable-cache: true
+      - run: uv sync --frozen --all-packages
+      # Se reutiliza el artefacto que la CI ya construyó y validó, en lugar de
+      # reconstruirlo: los bytes publicados son exactamente los que superaron el
+      # job `Empaquetado · release productiva` de esa misma run.
+      #
+      # El nombre se arma con `head_sha` **y** `run_attempt` del evento, exactamente
+      # igual que lo hace `ci.yml` con `github.sha` y `github.run_attempt`. `run-id`
+      # sólo acota la run: dentro de una misma run re-ejecutada pueden convivir
+      # artifacts homónimos y `download-artifact` resuelve el más reciente por
+      # nombre. Al incluir el intento, la publicación disparada por el intento 1
+      # no puede nombrar —y por lo tanto no puede descargar— el artifact del
+      # intento 2, que es el escenario de carrera que esta identidad cierra.
+      - name: Descargar el artefacto validado por la CI
+        uses: actions/download-artifact@v7
+        with:
+          name: sis-leg-release-${{ github.event.workflow_run.head_sha }}-intento-${{ github.event.workflow_run.run_attempt }}
+          path: dist/publicacion
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Los valores del evento viajan por `env` y no interpolados dentro del
+      # comando: es la forma recomendada de evitar inyección en `run`.
+      - name: Publicar release pública inmutable
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SISLEG_REPOSITORIO: ${{ github.repository }}
+          SISLEG_SHA: ${{ github.event.workflow_run.head_sha }}
+          SISLEG_RUN_ID: ${{ github.event.workflow_run.id }}
+          # El intento viaja explícito porque una re-ejecución conserva el mismo
+          # `run_id` y el mismo SHA: sin él, el script tendría que preguntarle a
+          # la API cuál es el intento «actual», que no es necesariamente el que
+          # produjo este artefacto.
+          SISLEG_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          uv run python scripts/publicar_release_publica.py \
+            --repositorio "${SISLEG_REPOSITORIO}" \
+            --sha "${SISLEG_SHA}" \
+            --run-id "${SISLEG_RUN_ID}" \
+            --run-attempt "${SISLEG_RUN_ATTEMPT}" \
+            --directorio dist/publicacion

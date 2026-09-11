@@ -50,7 +50,7 @@ Es deliberadamente rígida. Se exige, sin excepciones:
 | `status` | `completed` |
 | `conclusion` | `success` |
 | job | `Empaquetado · release productiva`, coincidencia **exacta** |
-| artifact | `sis-leg-release-<SHA>`, de **esa** run, no expirado |
+| artifact | `sis-leg-release-<SHA>`, de **esa** run, no expirado (ver [nota sobre el nombre del artifact](#el-nombre-del-artifact-interno-cambia-con-wp-100)) |
 
 Si hay varias runs válidas para el mismo SHA, se elige una de forma determinística; si no se puede
 demostrar una única elección correcta, se aborta. **No se acepta una run de `pull_request` aunque
@@ -131,5 +131,32 @@ en un paquete sin validar. El actualizador deberá descubrir esa release públic
 credenciales, verificar identidad y checksums, y mantener intactos los guards institucionales, el
 lock global y la preservación de la configuración local.
 
-Hasta que WP-100 esté integrado, **el mecanismo descrito en este documento es el vigente** y
+## Estado con WP-100 implementado
+
+WP-100 ya construyó ese canal público. Desde su integración el repositorio publica, para cada
+`push` a `main` con CI completa verde, una GitHub Release inmutable `sis-leg-<SHA>` con paquete,
+sidecar y metadatos, y el Producto incluye `deploy/actualizador_publico.py`, que la consume sin
+ninguna credencial del host. El diseño completo está en
+[13 - Despliegue y operación](../13-despliegue-y-operacion.md), sección «Canal público de
+releases por SHA».
+
+**El wrapper instalado en el host sigue siendo el descrito en este documento.** WP-100 es
+desarrollo únicamente: no instaló ni reemplazó `/home/concejo/.local/bin/actualizar-sisleg.sh`,
+no tocó `/opt/sis-leg`, no modificó launchers `.desktop` y no ejecutó ninguna actualización real.
+Adaptar el wrapper productivo al canal público corresponde a WP-101 y a su compuerta humana.
+
+### El nombre del artifact interno cambia con WP-100
+
+Para que la release pública pueda demostrar **qué intento de CI construyó los bytes publicados**,
+WP-100 pasó a nombrar el artifact interno de empaquetado con el SHA **y** el número de intento:
+`sis-leg-release-<SHA>-intento-<N>`. Los nombres públicos de la release —`sis-leg-<SHA>.tar.gz`,
+su sidecar `.sha256` y sus metadatos— no cambian.
+
+Consecuencia operativa: desde la integración de WP-100, el wrapper descrito en este documento ya
+no encuentra un artifact llamado exactamente `sis-leg-release-<SHA>`. Su propio guard lo trata como
+«artifact ausente» y **aborta sin mutar nada**, que es el comportamiento fail-safe esperado. No hay
+riesgo de desplegar un paquete incorrecto; sí deja de haber actualizaciones por esa vía hasta que
+WP-101 adapte el wrapper al canal público, que es su reemplazo previsto.
+
+Hasta que eso ocurra, **el mecanismo descrito en este documento es el vigente en producción** y
 cualquier documentación que lo presente como definitivo es incorrecta.

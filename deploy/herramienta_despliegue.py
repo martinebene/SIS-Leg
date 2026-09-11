@@ -26,6 +26,27 @@ from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol, cast
 
+# Producción invoca esta herramienta como script suelto
+# (``python3.14 /opt/sis-leg/current/deploy/herramienta_despliegue.py``). En esa
+# forma Python agrega ``deploy/`` a ``sys.path`` y no la raíz de la release, así
+# que el paquete ``deploy`` todavía no sería importable. Hacemos explícita esa
+# raíz con el mismo criterio que ya usa ``scripts/validar_release_produccion.py``.
+RAIZ_PARA_IMPORTS = Path(__file__).resolve().parents[1]
+if str(RAIZ_PARA_IMPORTS) not in sys.path:
+    sys.path.insert(0, str(RAIZ_PARA_IMPORTS))
+
+from deploy.configuracion_local import (  # noqa: E402 - raíz preparada arriba
+    RUTA_CONTRATO_EN_RELEASE,
+    EntradaPlanConfiguracion,
+    ErrorConfiguracionLocal,
+    RecursoConfiguracion,
+    aplicar_plan_configuracion,
+    exigir_plan_sin_migraciones,
+    leer_contrato_de_release,
+    plan_como_json,
+    planificar_configuracion,
+)
+
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 MARCADOR_PREPARADA = ".sis-leg-preparada.json"
 SERVICIO_BACKEND = "sis-leg-backend.service"
@@ -266,11 +287,47 @@ def validar_manifest(
         "deploy/nginx/sis-leg.conf",
         "deploy/herramienta_despliegue.py",
         "deploy/validar_configuracion.py",
+        # El contrato de configuración local (WP-100) viaja dentro de la release
+        # y queda inventariado como cualquier otro archivo. Exigirlo acá es lo
+        # que permite decidir, antes de activar, si la release nueva necesita un
+        # recurso ausente o una migración aprobada por HUMAN_GATE.
+        RUTA_CONTRATO_EN_RELEASE,
     }
     faltantes = sorted(requeridas - inventario.keys())
     if faltantes:
         raise ErrorDespliegue(f"La release omite entradas obligatorias: {faltantes}")
     return inventario
+
+
+def inspeccionar_manifest_paquete(paquete: Path, sha_solicitado: str) -> dict[str, Any]:
+    """Valida ``release.json`` sin extraer el paquete al disco.
+
+    Entradas:
+        paquete: tar comprimido ya descargado.
+        sha_solicitado: SHA que el consumidor pidió; debe coincidir con el
+            manifest o la validación falla.
+
+    Resultado: el manifest completo, ya validado por :func:`validar_manifest`.
+
+    ¿Por qué existe? El canal público de WP-100 necesita comprobar identidad e
+    inventario **antes** de mover el paquete a su lugar definitivo, y hacerlo sin
+    crear todavía el directorio de release. Reutiliza exactamente las mismas
+    funciones que después vuelve a correr ``preparar``: no hay un segundo motor
+    de validación, sólo un punto de entrada más barato al mismo motor.
+
+    Errores:
+        ErrorDespliegue si el tar no se puede abrir, si no contiene
+        ``release.json`` o si el manifest no supera la validación canónica.
+    """
+
+    validar_sha(sha_solicitado)
+    try:
+        with tarfile.open(paquete, mode="r:gz") as tar:
+            manifest = _leer_manifest_desde_tar(tar)
+    except (tarfile.TarError, OSError, EOFError) as error:
+        raise ErrorDespliegue(f"No se pudo leer el paquete {paquete}: {error}") from error
+    validar_manifest(manifest, sha_solicitado)
+    return manifest
 
 
 def extraer_paquete_seguro(paquete: Path, destino: Path, sha_solicitado: str) -> dict[str, Any]:
@@ -650,6 +707,7 @@ class GestorDespliegue:
             release / "deploy/systemd/sis-leg-device-bridge.service",
             release / "deploy/nginx/sis-leg.conf",
             release / "deploy/validar_configuracion.py",
+            release / RUTA_CONTRATO_EN_RELEASE,
         )
         faltantes = [str(ruta) for ruta in requeridas if not ruta.is_file()]
         if faltantes:
@@ -759,6 +817,67 @@ class GestorDespliegue:
             ],
             directorio=self.raiz,
         )
+
+    def contrato_configuracion_activo(self) -> tuple[RecursoConfiguracion, ...] | None:
+        """Lee el contrato de configuración de la release actualmente activa.
+
+        Resultado: los recursos declarados por ``current``, o ``None`` cuando no
+        hay release activa o la activa es anterior a WP-100 y no trae contrato.
+
+        ``None`` significa «no hay con qué comparar», no «todo permitido»: el
+        planificador sigue preservando cualquier recurso existente, así que la
+        ausencia de contrato anterior nunca habilita una escritura.
+        """
+
+        actual = resolver_enlace_release(self.current, self.releases)
+        if actual is None or not (actual / RUTA_CONTRATO_EN_RELEASE).is_file():
+            return None
+        return leer_contrato_de_release(actual)
+
+    def planificar_configuracion_local(self, release: Path) -> tuple[EntradaPlanConfiguracion, ...]:
+        """Calcula, sin tocar nada, qué haría activar esa release con la config.
+
+        Entradas:
+            release: release candidata ya preparada.
+
+        Resultado: el plan completo, con una entrada por recurso declarado.
+
+        Efectos laterales: ninguno. Es la operación que permite decidir si una
+        actualización puede seguir o si necesita una migración aprobada.
+        """
+
+        return planificar_configuracion(
+            self.raiz,
+            leer_contrato_de_release(release),
+            self.contrato_configuracion_activo(),
+        )
+
+    def incorporar_configuracion_local(self, release: Path) -> tuple[str, ...]:
+        """Aplica el plan add-only después de exigir que no haya migraciones.
+
+        Resultado: rutas locales efectivamente creadas.
+
+        Un recurso incorporado **no** se elimina si la activación falla más
+        tarde. Borrarlo sería exactamente la mutación destructiva que el
+        contrato prohíbe, y su presencia es inocua para la release anterior, que
+        simplemente no lo lee.
+        """
+
+        plan = self.planificar_configuracion_local(release)
+        exigir_plan_sin_migraciones(plan)
+        return aplicar_plan_configuracion(
+            self.raiz, release, plan, aplicar_propietario=self._aplicar_propietario_declarado
+        )
+
+    def _aplicar_propietario_declarado(self, ruta: Path, usuario: str, grupo: str) -> None:
+        """Delega el ``chown`` del recurso recién creado en el ejecutor auditable.
+
+        Se usa ``--no-dereference`` por el mismo motivo que en el plan de
+        permisos del bootstrap: nunca aplicar privilegios siguiendo un enlace
+        fuera del árbol administrado.
+        """
+
+        self.ejecutor.ejecutar(["chown", "--no-dereference", f"{usuario}:{grupo}", str(ruta)])
 
     def _exigir_acceso_runtime(
         self, usuario: str, argumentos_test: Sequence[str], descripcion: str
@@ -1120,6 +1239,12 @@ class GestorDespliegue:
 
         objetivo = self.releases / validar_sha(sha)
         self._validar_release_preparada(objetivo)
+        # Compuerta de configuración (WP-100). Va antes que cualquier otra
+        # validación que pueda mutar el host: si la release nueva exige migrar un
+        # archivo institucional existente, la activación se detiene acá, con la
+        # configuración intacta y sin haber tocado enlaces ni servicios. Sólo
+        # después se incorporan, de forma add-only, los recursos que falten.
+        self.incorporar_configuracion_local(objetivo)
         self.validar_configuracion(objetivo)
         self._validar_permisos_runtime(objetivo)
         self.guard_institucional()
@@ -1252,6 +1377,10 @@ def crear_parser() -> argparse.ArgumentParser:
     rollback = sub.add_parser("rollback")
     rollback.add_argument("--sha")
     sub.add_parser("estado")
+    # Diagnóstico de solo lectura del contrato de configuración (WP-100). Permite
+    # ver qué haría una activación con la configuración local sin ejecutarla.
+    plan_configuracion = sub.add_parser("plan-configuracion")
+    plan_configuracion.add_argument("sha")
     return parser
 
 
@@ -1274,7 +1403,17 @@ def main(argumentos: Sequence[str] | None = None) -> int:
             gestor.rollback(opciones.sha)
         elif opciones.comando == "estado":
             print(json.dumps(gestor.estado(), ensure_ascii=False, indent=2))
-    except (ErrorDespliegue, OSError, ValueError, json.JSONDecodeError) as error:
+        elif opciones.comando == "plan-configuracion":
+            release = gestor.releases / validar_sha(opciones.sha)
+            plan = gestor.planificar_configuracion_local(release)
+            print(json.dumps(plan_como_json(plan), ensure_ascii=False, indent=2))
+    except (
+        ErrorDespliegue,
+        ErrorConfiguracionLocal,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
     return 0

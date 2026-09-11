@@ -1,0 +1,41 @@
+{
+  "formato": "sis-leg-configuracion",
+  "version_contrato": 1,
+  "recursos": [
+    {
+      "ruta_local": "config/system.toml",
+      "tipo": "archivo",
+      "schema": "system-toml-v1",
+      "bootstrap": null,
+      "descripcion": "configuracion funcional del backend"
+    },
+    {
+      "ruta_local": "config/concejales.csv",
+      "tipo": "archivo",
+      "schema": "concejales-csv-v1",
+      "bootstrap": null,
+      "descripcion": "padron del cuerpo"
+    },
+    {
+      "ruta_local": "config/apoyo-tecnico/mensajes.csv",
+      "tipo": "archivo",
+      "schema": "mensajes-apoyo-tecnico-csv-v1",
+      "bootstrap": null,
+      "descripcion": "biblioteca de mensajes precargados de Apoyo Tecnico"
+    },
+    {
+      "ruta_local": "config/bridge/devices.json",
+      "tipo": "archivo",
+      "schema": "devices-json-v1",
+      "bootstrap": null,
+      "descripcion": "mapeo fisico del device bridge"
+    },
+    {
+      "ruta_local": "config/assets/bancas",
+      "tipo": "directorio",
+      "schema": "bancas-imagenes-v1",
+      "bootstrap": null,
+      "descripcion": "fotografias de banca del padron"
+    }
+  ]
+}
