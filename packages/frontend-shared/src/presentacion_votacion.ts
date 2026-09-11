@@ -4,11 +4,17 @@
  * El backend ya decidió apertura, secreto, cierre, resultado y deadlines. Este
  * composable solamente hace avanzar la representación visual entre mensajes
  * SSE, sin polling ni una copia histórica de votos/resultados.
+ *
+ * Vivía en `apps/recinto/app/composables/` mientras la Pantalla del Recinto era la única
+ * superficie pública. WP-099 agrega el Zócalo para OBS, que debe decidir exactamente igual
+ * qué votación se muestra y cuándo deja de mostrarse un resultado ya vencido. Duplicar esa
+ * decisión habría creado dos relojes capaces de divergir; compartirla garantiza que las dos
+ * pantallas oculten y muestren lo mismo en el mismo instante.
  */
 
 import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
 import type { EstadoRecinto, VotacionPublica } from '@sis-leg/api-client'
-import { resultadoIndividualVisible } from '@sis-leg/frontend-shared'
+import { resultadoIndividualVisible } from './estado_banca'
 
 const INTERVALO_RELOJ_MS = 250
 

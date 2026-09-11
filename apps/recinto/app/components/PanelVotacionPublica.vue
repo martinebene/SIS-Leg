@@ -1,53 +1,34 @@
 <script setup lang="ts">
-/** Presenta el DTO público sin recalcular mayoría, conteos ni resultado. */
+/**
+ * Presenta el DTO público sin recalcular mayoría, conteos ni resultado.
+ *
+ * Desde WP-099 la redacción de los tres renglones no se escribe acá: la aporta
+ * `usePresentacionVotacionPublica`, en `@sis-leg/frontend-shared`. El motivo es que el
+ * Zócalo para OBS muestra el mismo contenido con otra geometría, y dos copias de las
+ * mismas etiquetas podrían corregirse en una sola pantalla. Este componente conserva
+ * exactamente su marcado y su hoja de estilos: lo único que cambió es de dónde salen los
+ * textos.
+ */
 
-import { computed } from 'vue'
+import { computed, toRef } from 'vue'
 import type { VotacionPublica } from '@sis-leg/api-client'
-// WP-063: el factor se escribe siempre con dos decimales truncados. La regla vive en
-// frontend-shared para que Recinto y Moderación muestren el mismo texto del mismo dato.
-import { formatearFactorMayoria } from '@sis-leg/frontend-shared'
+import { etiquetaSentidoVoto, usePresentacionVotacionPublica } from '@sis-leg/frontend-shared'
 
 const props = defineProps<{ votacion: VotacionPublica | null }>()
 
-const etiquetasResultado: Record<string, string> = {
-  APROBADA: 'Aprobada',
-  RECHAZADA: 'Rechazada',
-  EMPATADA: 'Empatada',
-  INCONCLUSA: 'Inconclusa',
-}
+const {
+  resumen: resumenVotacion,
+  estado: estadoPrincipal,
+  claseEstado,
+  conteosVisibles,
+  esperaDesempate,
+  votoPresidencial,
+} = usePresentacionVotacionPublica(toRef(props, 'votacion'))
 
-const etiquetasBase: Record<string, string> = {
-  VOTOS_COMPUTABLES: 'votos computables',
-  PRESENTES: 'presentes',
-  CUERPO: 'cuerpo completo',
-}
-
-const enCurso = computed(() => props.votacion?.estado_recepcion === 'EN_CURSO')
-const resultadoHumano = computed(() =>
-  props.votacion?.resultado ? etiquetasResultado[props.votacion.resultado] : null,
-)
-const mayoriaHumana = computed(() => {
-  if (!props.votacion) return ''
-  if (props.votacion.tipo_mayoria === 'SIMPLE') return 'Mayoría simple'
-  const base = etiquetasBase[props.votacion.base] ?? props.votacion.base
-  return `Mayoría especial · factor ${formatearFactorMayoria(props.votacion.factor)} · base ${base}`
-})
-const conteosVisibles = computed(() => (enCurso.value ? null : (props.votacion?.conteos ?? null)))
-const resumenVotacion = computed(() => {
-  if (!props.votacion) return 'Sin votación activa'
-  return `N.º ${props.votacion.numero_votacion} · ${props.votacion.tipo} · ${mayoriaHumana.value}`
-})
-const estadoPrincipal = computed(() => {
-  if (!props.votacion) return 'Sin votación'
-  return enCurso.value ? 'En curso' : (resultadoHumano.value ?? 'Recepción cerrada')
-})
-const claseEstado = computed(() =>
-  (props.votacion?.resultado ?? props.votacion?.estado_recepcion ?? 'SIN_VOTACION').toLowerCase(),
-)
-
-function etiquetaSentido(sentido: string): string {
-  return sentido === 'POSITIVO' ? 'Positivo' : sentido === 'NEGATIVO' ? 'Negativo' : sentido
-}
+// El tema se sigue leyendo directo del DTO porque la plantilla necesita distinguir el
+// valor ausente para el `title` del tooltip, que muestra el texto completo al pasar el
+// cursor cuando el renglón quedó recortado con elipsis.
+const tema = computed(() => props.votacion?.tema ?? null)
 </script>
 
 <template>
@@ -59,8 +40,8 @@ function etiquetaSentido(sentido: string): string {
 
     <div class="renglon-votacion">
       <strong>Tema</strong>
-      <span data-testid="tema-votacion" class="tema-votacion" :title="votacion?.tema ?? '—'">
-        {{ votacion?.tema ?? '—' }}
+      <span data-testid="tema-votacion" class="tema-votacion" :title="tema ?? '—'">
+        {{ tema ?? '—' }}
       </span>
     </div>
 
@@ -76,20 +57,16 @@ function etiquetaSentido(sentido: string): string {
         Positivos {{ conteosVisibles.positivos }} · Negativos {{ conteosVisibles.negativos }} ·
         Abstenciones {{ conteosVisibles.abstenciones }} · Total {{ conteosVisibles.total }}
       </span>
-      <span
-        v-if="votacion?.resultado === 'EMPATADA'"
-        data-testid="espera-desempate"
-        class="detalle-estado"
-      >
+      <span v-if="esperaDesempate" data-testid="espera-desempate" class="detalle-estado">
         En espera del desempate de Presidencia
       </span>
       <span
-        v-if="votacion?.voto_presidencial"
+        v-if="votoPresidencial"
         data-testid="voto-presidencial"
         class="detalle-estado detalle-presidencial"
       >
-        Desempate: {{ votacion.voto_presidencial.presidencia }} ·
-        {{ etiquetaSentido(votacion.voto_presidencial.sentido) }}
+        Desempate: {{ votoPresidencial.presidencia }} ·
+        {{ etiquetaSentidoVoto(votoPresidencial.sentido) }}
       </span>
     </div>
   </article>

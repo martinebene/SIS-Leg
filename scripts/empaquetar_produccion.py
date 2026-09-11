@@ -134,6 +134,14 @@ def poblar_release(raiz: Path, destino: Path) -> None:
         destino / "web/tecnico",
         "Apoyo Técnico",
     )
+    # Zócalo para OBS (WP-099). Es una SPA estática igual que las otras cuatro y viaja en
+    # la misma allowlist, de modo que el manifiesto inventaría sus archivos y la release
+    # queda completa sin ningún paso manual adicional.
+    copiar_salida_spa(
+        raiz / "apps/zocalo/.output/public",
+        destino / "web/zocalo",
+        "Zócalo",
+    )
     # Manual de usuario (WP-067). Es un HTML estático versionado, no la salida de un
     # build: se copia tal cual desde `manual/` a `web/manual/`, la misma raíz que sirve
     # Nginx para las SPA. Al viajar como una entrada más de la allowlist, queda incluido
@@ -180,9 +188,10 @@ def escribir_manifest(
             "recinto": "web/recinto/index.html",
             "simulador": "web/simulador/index.html",
             "tecnico": "web/tecnico/index.html",
+            "zocalo": "web/zocalo/index.html",
         },
         # El manual no es una SPA: se declara aparte para que la herramienta de despliegue
-        # pueda exigirlo sin ampliar el contrato cerrado de las cuatro aplicaciones.
+        # pueda exigirlo sin ampliar el contrato cerrado de las cinco aplicaciones.
         "manual": "web/manual/index.html",
         "paquetes_python": ["sis-leg-backend", "sis-leg-device-bridge"],
         "archivos": inventariar_archivos(raiz_release),

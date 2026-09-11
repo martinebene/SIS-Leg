@@ -23,6 +23,7 @@ from scripts.iniciar_stack_hot import (
     PUERTO_RECINTO_PREDETERMINADO,
     PUERTO_SIMULADOR_PREDETERMINADO,
     PUERTO_TECNICO_PREDETERMINADO,
+    PUERTO_ZOCALO_PREDETERMINADO,
     RAIZ_REPOSITORIO,
     ErrorStackHot,
     crear_analizador_argumentos,
@@ -107,6 +108,7 @@ def test_analizador_argumentos_predeterminados_y_personalizados() -> None:
     assert opciones_defecto.recinto_port == PUERTO_RECINTO_PREDETERMINADO == 8003
     assert opciones_defecto.simulador_port == PUERTO_SIMULADOR_PREDETERMINADO == 8004
     assert opciones_defecto.tecnico_port == PUERTO_TECNICO_PREDETERMINADO == 8005
+    assert opciones_defecto.zocalo_port == PUERTO_ZOCALO_PREDETERMINADO == 8006
     assert opciones_defecto.allow_non_main is False
 
     # Opciones personalizadas
@@ -126,6 +128,8 @@ def test_analizador_argumentos_predeterminados_y_personalizados() -> None:
             "8884",
             "--tecnico-port",
             "8885",
+            "--zocalo-port",
+            "8886",
             "--allow-non-main",
         ]
     )
@@ -136,6 +140,7 @@ def test_analizador_argumentos_predeterminados_y_personalizados() -> None:
     assert opciones_personalizadas.recinto_port == 8883
     assert opciones_personalizadas.simulador_port == 8884
     assert opciones_personalizadas.tecnico_port == 8885
+    assert opciones_personalizadas.zocalo_port == 8886
     assert opciones_personalizadas.allow_non_main is True
 
 
@@ -358,6 +363,7 @@ async function ejecutar() {
   const recinto = await crearServidorAuxiliar('Recinto');
   const simulador = await crearServidorAuxiliar('Simulador');
   const tecnico = await crearServidorAuxiliar('Tecnico');
+  const zocalo = await crearServidorAuxiliar('Zocalo');
 
   const proxy = crearServidorProxy({
     host: '127.0.0.1',
@@ -367,6 +373,7 @@ async function ejecutar() {
     puertoRecinto: recinto.port,
     puertoSimulador: simulador.port,
     puertoTecnico: tecnico.port,
+    puertoZocalo: zocalo.port,
   });
 
   await new Promise((resolve) => proxy.listen(0, '127.0.0.1', resolve));
@@ -411,6 +418,13 @@ async function ejecutar() {
   const textoTec = await rTec.text();
   if (!textoTec.includes('Respuesta de Tecnico: /tecnico/consola')) {
     throw new Error('Fallo en Apoyo Técnico: ' + textoTec);
+  }
+
+  // E quater. Probar enrutamiento al Zócalo para OBS (WP-099)
+  const rZoc = await fetch(base + '/zocalo/vista');
+  const textoZoc = await rZoc.text();
+  if (!textoZoc.includes('Respuesta de Zocalo: /zocalo/vista')) {
+    throw new Error('Fallo en Zócalo: ' + textoZoc);
   }
 
   // E ter. El manual (WP-067) no tiene servidor de desarrollo detrás: el proxy lo sirve
@@ -500,6 +514,7 @@ async function ejecutar() {
   recinto.srv.close();
   simulador.srv.close();
   tecnico.srv.close();
+  zocalo.srv.close();
 
   console.log('OK_PROXY_PRUEBAS');
 }
@@ -566,6 +581,7 @@ async function correr() {
   const pRec = await buscarPuerto();
   const pSim = await buscarPuerto();
   const pTec = await buscarPuerto();
+  const pZoc = await buscarPuerto();
 
   const stack = spawn('node', [
     'scripts/iniciar_stack_hot.mjs',
@@ -576,6 +592,7 @@ async function correr() {
     '--recinto-port', String(pRec),
     '--simulador-port', String(pSim),
     '--tecnico-port', String(pTec),
+    '--zocalo-port', String(pZoc),
     '--allow-non-main'
   ], {
     stdio: 'pipe'
@@ -587,21 +604,22 @@ async function correr() {
 
   const base = 'http://127.0.0.1:' + pExt;
 
-  // 1. Esperar readiness en la superficie unificada externa para los 4 servicios
+  // 1. Esperar readiness en la superficie unificada externa para los 5 servicios
   const bListo = await esperarOk(base + '/api/v1/health');
   const mListo = await esperarOk(base + '/moderacion/');
   const rListo = await esperarOk(base + '/recinto/');
   const sListo = await esperarOk(base + '/simulador/');
   const tListo = await esperarOk(base + '/tecnico/');
-  if (!bListo || !mListo || !rListo || !sListo || !tListo) {
+  const zListo = await esperarOk(base + '/zocalo/');
+  if (!bListo || !mListo || !rListo || !sListo || !tListo || !zListo) {
     stack.kill('SIGTERM');
     throw new Error(
       'Timeout esperando readiness en ' + base + '\\n' +
-      JSON.stringify({ bListo, mListo, rListo, sListo, tListo }) + '\\nSalida:\\n' + salida
+      JSON.stringify({ bListo, mListo, rListo, sListo, tListo, zListo }) + '\\nSalida:\\n' + salida
     );
   }
 
-  // 2. Verificar las 4 SPA y Swagger
+  // 2. Verificar las 5 SPA y Swagger
   const rMod = await fetch(base + '/moderacion/');
   if (!rMod.ok || !(await rMod.text()).includes('data-nuxt-data')) {
     throw new Error('Fallo al obtener Moderación desde proxy');
@@ -620,6 +638,11 @@ async function correr() {
   const rTec = await fetch(base + '/tecnico/');
   if (!rTec.ok || !(await rTec.text()).includes('data-nuxt-data')) {
     throw new Error('Fallo al obtener Apoyo Técnico desde proxy');
+  }
+
+  const rZoc = await fetch(base + '/zocalo/');
+  if (!rZoc.ok || !(await rZoc.text()).includes('data-nuxt-data')) {
+    throw new Error('Fallo al obtener Zócalo desde proxy');
   }
 
   const rDocs = await fetch(base + '/docs');

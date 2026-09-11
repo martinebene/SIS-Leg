@@ -1,5 +1,5 @@
 /**
- * Construye las cuatro SPA con una identidad estable derivada del commit actual.
+ * Construye las cinco SPA con una identidad estable derivada del commit actual.
  *
  * Nuxt genera por defecto un buildId aleatorio y una fecha de prerender actual.
  * Este lanzador obtiene una sola identidad Git y la entrega a todos los builds,
@@ -14,6 +14,9 @@ const PAQUETES_FRONTEND = [
   '@sis-leg/recinto',
   '@sis-leg/simulador',
   '@sis-leg/tecnico',
+  // El Zócalo para OBS (WP-099) es una SPA más del producto: se construye con la misma
+  // identidad Git para que su salida entre en la release y en el manifiesto reproducible.
+  '@sis-leg/zocalo',
 ]
 
 /** Ejecuta una consulta Git de solo lectura y normaliza su salida. */

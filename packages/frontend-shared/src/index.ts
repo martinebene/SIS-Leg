@@ -10,8 +10,12 @@
  * de usuario, que las cabeceras de Moderación y de Apoyo Técnico deben compartir. Desde
  * WP-071 se agrega la sonorización completa del recinto —transiciones, motor de audio y
  * frontera reactiva—, porque la Pantalla del Recinto y el puesto de Apoyo Técnico deben
- * reproducir exactamente los mismos quince eventos. Si estas reglas vivieran duplicadas,
- * una corrección posterior podría aplicarse en una sola interfaz.
+ * reproducir exactamente los mismos quince eventos. Desde WP-099 se agrega la proyección
+ * pública completa del Recinto —suscripción autoritativa, reloj de presentación de la
+ * votación y redacción de los renglones `Votación`, `Tema` y `Estado`—, porque el Zócalo
+ * para OBS debe mostrar exactamente el mismo contenido que la Pantalla del Recinto sin
+ * mantener un modelo de estado propio. Si estas reglas vivieran duplicadas, una corrección
+ * posterior podría aplicarse en una sola interfaz.
  *
  * Los componentes Vue compartidos no se exportan por este índice: se importan por su
  * subruta (`@sis-leg/frontend-shared/componentes/…`) para que cada aplicación cargue
@@ -105,3 +109,47 @@ export {
   type OpcionesSonidosRecinto,
   type SonidosRecinto,
 } from './sonidos_recinto'
+
+/*
+  Proyección pública del Recinto compartida con el Zócalo para OBS (WP-099).
+
+  Las tres piezas responden a preguntas distintas y por eso se exportan por separado:
+
+  - `sincronizacion_recinto` resuelve *de dónde* sale el estado. Es el único vínculo con el
+    backend autoritativo, así que las dos superficies públicas no pueden divergir en
+    transporte, reconexión ni manejo de baseline.
+  - `presentacion_votacion` resuelve *qué* votación se muestra y hasta cuándo. Contiene el
+    reloj presentacional que oculta un resultado vencido sin recalcular nada.
+  - `presentacion_votacion_publica` resuelve *cómo se lee* esa votación: los textos exactos
+    de los renglones `Votación`, `Tema` y `Estado`.
+
+  Ninguna de las tres implementa reglas de negocio: todas traducen el DTO que ya decidió el
+  backend.
+*/
+export {
+  crearSincronizacionRecinto,
+  usarSincronizacionRecintoEnComponente,
+  type EstadoConexionRecinto,
+  type OpcionesSincronizacionRecinto,
+  type SincronizacionRecinto,
+} from './sincronizacion_recinto'
+
+export { usePresentacionVotacion, type PresentacionVotacion } from './presentacion_votacion'
+
+export {
+  claseEstadoVotacion,
+  conteosVisiblesVotacion,
+  describirEstadoVotacion,
+  describirMayoriaVotacion,
+  describirTemaVotacion,
+  etiquetaSentidoVoto,
+  resumirVotacion,
+  usePresentacionVotacionPublica,
+  votacionEnCurso,
+  ETIQUETAS_BASE_MAYORIA,
+  ETIQUETAS_RESULTADO_VOTACION,
+  TEXTO_SIN_DATO,
+  type ConteosVotacionPublica,
+  type PresentacionVotacionPublica,
+  type VotoPresidencialPublico,
+} from './presentacion_votacion_publica'

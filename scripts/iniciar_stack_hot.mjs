@@ -26,6 +26,8 @@ export const PUERTO_MODERACION_PREDETERMINADO = 8002
 export const PUERTO_RECINTO_PREDETERMINADO = 8003
 export const PUERTO_SIMULADOR_PREDETERMINADO = 8004
 export const PUERTO_TECNICO_PREDETERMINADO = 8005
+// Zócalo para OBS (WP-099). Continúa la numeración interna de las SPA con HMR.
+export const PUERTO_ZOCALO_PREDETERMINADO = 8006
 export const TIEMPO_ESPERA_APAGADO_MS = 5000
 export const TIMEOUT_INICIO_MS = 60000
 
@@ -172,6 +174,7 @@ export function generarIndiceHtml() {
       <li><a href="/recinto/">Pantalla del Recinto <span class="badge">HMR</span></a></li>
       <li><a href="/simulador/">Simulador de dispositivos <span class="badge">HMR</span></a></li>
       <li><a href="/tecnico/">Apoyo Técnico <span class="badge">HMR</span></a></li>
+      <li><a href="/zocalo/">Zócalo para OBS <span class="badge">HMR</span></a></li>
       <li><a href="/manual/">Manual de usuario</a></li>
       <li><a href="/docs">Documentación de API (Swagger)</a></li>
       <li><a href="/api/v1/health">Estado de salud del backend (/api/v1/health)</a></li>
@@ -251,6 +254,9 @@ export function resolverPuertoDestino(urlRelativa, puertos) {
   if (urlRelativa.startsWith('/tecnico/') || urlRelativa === '/tecnico') {
     return puertos.puertoTecnico
   }
+  if (urlRelativa.startsWith('/zocalo/') || urlRelativa === '/zocalo') {
+    return puertos.puertoZocalo
+  }
 
   // Rutas del backend institucional FastAPI
   if (
@@ -273,7 +279,8 @@ export function resolverPuertoDestino(urlRelativa, puertos) {
  * Preserva:
  * - Streaming continuo para Server-Sent Events (SSE) sin buffering ni compresión intermedia.
  * - Conexiones bidireccionales WebSocket para Vite HMR de las cuatro SPA.
- * - Mismo origen (/moderacion/, /recinto/, /simulador/, /tecnico/, /api/v1/, /docs) en un
+ * - Mismo origen (/moderacion/, /recinto/, /simulador/, /tecnico/, /zocalo/, /api/v1/, /docs)
+ *   en un
  *   único puerto.
  */
 export function crearServidorProxy(opciones) {
@@ -285,8 +292,16 @@ export function crearServidorProxy(opciones) {
     puertoRecinto,
     puertoSimulador,
     puertoTecnico,
+    puertoZocalo,
   } = opciones
-  const puertos = { puertoBackend, puertoModeracion, puertoRecinto, puertoSimulador, puertoTecnico }
+  const puertos = {
+    puertoBackend,
+    puertoModeracion,
+    puertoRecinto,
+    puertoSimulador,
+    puertoTecnico,
+    puertoZocalo,
+  }
 
   const servidor = http.createServer((solicitud, respuesta) => {
     const urlOriginal = solicitud.url || '/'
@@ -309,6 +324,11 @@ export function crearServidorProxy(opciones) {
     }
     if (urlOriginal === '/tecnico') {
       respuesta.writeHead(302, { Location: '/tecnico/' })
+      respuesta.end()
+      return
+    }
+    if (urlOriginal === '/zocalo') {
+      respuesta.writeHead(302, { Location: '/zocalo/' })
       respuesta.end()
       return
     }
@@ -446,7 +466,7 @@ export async function esperarServicio(url, tiempoLimiteMs = TIMEOUT_INICIO_MS) {
 }
 
 /**
- * Inicia los 5 procesos hijos coordinados y gestiona sus ciclos de vida.
+ * Inicia los 6 procesos hijos coordinados y gestiona sus ciclos de vida.
  */
 export function lanzarProcesosHijos(configuracion) {
   const {
@@ -456,6 +476,7 @@ export function lanzarProcesosHijos(configuracion) {
     puertoRecinto,
     puertoSimulador,
     puertoTecnico,
+    puertoZocalo,
     raiz,
   } = configuracion
 
@@ -586,6 +607,30 @@ export function lanzarProcesosHijos(configuracion) {
   conectarSalidaProceso(procesoTecnico, 'Apoyo Técnico')
   procesos.push({ nombre: 'Apoyo Técnico (Nuxt)', proceso: procesoTecnico })
 
+  // 6. Zócalo para OBS (Nuxt / Vite HMR)
+  const procesoZocalo = spawn(
+    comandoPnpm,
+    [
+      '--filter',
+      '@sis-leg/zocalo',
+      'exec',
+      'nuxt',
+      'dev',
+      '--port',
+      String(puertoZocalo),
+      '--host',
+      host,
+      '--no-fork',
+    ],
+    {
+      cwd: raiz,
+      detached: process.platform !== 'win32',
+      stdio: 'pipe',
+    },
+  )
+  conectarSalidaProceso(procesoZocalo, 'Zócalo')
+  procesos.push({ nombre: 'Zócalo (Nuxt)', proceso: procesoZocalo })
+
   return procesos
 }
 
@@ -688,6 +733,7 @@ export function parsearArgumentos(argumentos = process.argv.slice(2)) {
     puertoRecinto: PUERTO_RECINTO_PREDETERMINADO,
     puertoSimulador: PUERTO_SIMULADOR_PREDETERMINADO,
     puertoTecnico: PUERTO_TECNICO_PREDETERMINADO,
+    puertoZocalo: PUERTO_ZOCALO_PREDETERMINADO,
     permitirRamaNoMain: false,
     ayuda: false,
   }
@@ -724,6 +770,10 @@ export function parsearArgumentos(argumentos = process.argv.slice(2)) {
       opciones.puertoTecnico = Number.parseInt(argumentos[++i], 10)
     } else if (arg.startsWith('--tecnico-port=')) {
       opciones.puertoTecnico = Number.parseInt(arg.slice(15), 10)
+    } else if (arg === '--zocalo-port') {
+      opciones.puertoZocalo = Number.parseInt(argumentos[++i], 10)
+    } else if (arg.startsWith('--zocalo-port=')) {
+      opciones.puertoZocalo = Number.parseInt(arg.slice(14), 10)
     } else if (arg === '--allow-non-main' || arg === '--permitir-rama-no-main') {
       opciones.permitirRamaNoMain = true
     }
@@ -752,6 +802,7 @@ Opciones:
   --recinto-port <puerto>      Puerto interno auxiliar para Recinto (predeterminado: ${PUERTO_RECINTO_PREDETERMINADO})
   --simulador-port <puerto>    Puerto interno auxiliar para Simulador (predeterminado: ${PUERTO_SIMULADOR_PREDETERMINADO})
   --tecnico-port <puerto>      Puerto interno auxiliar para Apoyo Técnico (predeterminado: ${PUERTO_TECNICO_PREDETERMINADO})
+  --zocalo-port <puerto>       Puerto interno auxiliar para Zócalo (predeterminado: ${PUERTO_ZOCALO_PREDETERMINADO})
   --allow-non-main             Permite ejecutar en una rama distinta de main (solo para tests/smoke del WP)
   -h, --help                   Muestra esta ayuda y finaliza
 `)
@@ -797,6 +848,7 @@ export async function main(argumentos = process.argv.slice(2)) {
   const puertoRecinto = await obtenerPuertoLibre(opciones.puertoRecinto, opciones.host)
   const puertoSimulador = await obtenerPuertoLibre(opciones.puertoSimulador, opciones.host)
   const puertoTecnico = await obtenerPuertoLibre(opciones.puertoTecnico, opciones.host)
+  const puertoZocalo = await obtenerPuertoLibre(opciones.puertoZocalo, opciones.host)
 
   console.log('Iniciando servicios interactivos de SIS-Leg...')
   console.log(`- Host loopback:       ${opciones.host}`)
@@ -806,8 +858,9 @@ export async function main(argumentos = process.argv.slice(2)) {
   console.log(`- Puerto Recinto:      ${puertoRecinto} (interno)`)
   console.log(`- Puerto Simulador:    ${puertoSimulador} (interno)`)
   console.log(`- Puerto Apoyo Técnico: ${puertoTecnico} (interno)`)
+  console.log(`- Puerto Zócalo:       ${puertoZocalo} (interno)`)
 
-  // 5. Lanzar los 5 procesos hijos
+  // 5. Lanzar los 6 procesos hijos
   const procesos = lanzarProcesosHijos({
     host: opciones.host,
     puertoBackend,
@@ -815,6 +868,7 @@ export async function main(argumentos = process.argv.slice(2)) {
     puertoRecinto,
     puertoSimulador,
     puertoTecnico,
+    puertoZocalo,
     raiz: RAIZ_REPOSITORIO,
   })
 
@@ -862,6 +916,7 @@ export async function main(argumentos = process.argv.slice(2)) {
     puertoRecinto,
     puertoSimulador,
     puertoTecnico,
+    puertoZocalo,
   })
 
   await new Promise((resolver, rechazar) => {
@@ -869,7 +924,7 @@ export async function main(argumentos = process.argv.slice(2)) {
     servidorProxy.on('error', rechazar)
   })
 
-  // 7. Esperar a que los 5 servicios alcancen readiness
+  // 7. Esperar a que los 6 servicios alcancen readiness
   console.log('Esperando inicialización de los servidores...')
   const backendListo = esperarServicio(
     `http://${opciones.host}:${puertoBackend}/api/v1/health`,
@@ -891,6 +946,10 @@ export async function main(argumentos = process.argv.slice(2)) {
     `http://${opciones.host}:${puertoTecnico}/tecnico/`,
     TIMEOUT_INICIO_MS,
   )
+  const zocaloListo = esperarServicio(
+    `http://${opciones.host}:${puertoZocalo}/zocalo/`,
+    TIMEOUT_INICIO_MS,
+  )
 
   const resultados = await Promise.all([
     backendListo,
@@ -898,6 +957,7 @@ export async function main(argumentos = process.argv.slice(2)) {
     recintoListo,
     simuladorListo,
     tecnicoListo,
+    zocaloListo,
   ])
   if (!resultados.every(Boolean)) {
     console.error('❌ Uno o más componentes no alcanzaron estado saludable a tiempo.')
@@ -915,6 +975,7 @@ export async function main(argumentos = process.argv.slice(2)) {
   console.log(`  ├── Pantalla del Recinto (HMR):  ${urlBase}/recinto/`)
   console.log(`  ├── Simulador (HMR):             ${urlBase}/simulador/`)
   console.log(`  ├── Apoyo Técnico (HMR):         ${urlBase}/tecnico/`)
+  console.log(`  ├── Zócalo para OBS (HMR):       ${urlBase}/zocalo/`)
   console.log(`  ├── Manual de usuario:           ${urlBase}/manual/`)
   console.log(`  ├── Documentación API (Swagger): ${urlBase}/docs`)
   console.log(`  └── Verificación de salud:       ${urlBase}/api/v1/health\n`)

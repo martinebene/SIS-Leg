@@ -22,6 +22,8 @@ PUERTO_MODERACION_PREDETERMINADO = 8002
 PUERTO_RECINTO_PREDETERMINADO = 8003
 PUERTO_SIMULADOR_PREDETERMINADO = 8004
 PUERTO_TECNICO_PREDETERMINADO = 8005
+# Zócalo para OBS (WP-099). Continúa la numeración interna de las SPA con HMR.
+PUERTO_ZOCALO_PREDETERMINADO = 8006
 
 RAIZ_REPOSITORIO = Path(__file__).resolve().parents[1]
 RUTA_SCRIPT_NODE = RAIZ_REPOSITORIO / "scripts" / "iniciar_stack_hot.mjs"
@@ -213,6 +215,14 @@ def crear_analizador_argumentos() -> argparse.ArgumentParser:
         help=(
             "puerto interno auxiliar para Apoyo Técnico "
             f"(predeterminado: {PUERTO_TECNICO_PREDETERMINADO})"
+        ),
+    )
+    analizador.add_argument(
+        "--zocalo-port",
+        type=convertir_puerto,
+        default=PUERTO_ZOCALO_PREDETERMINADO,
+        help=(
+            f"puerto interno auxiliar para Zócalo (predeterminado: {PUERTO_ZOCALO_PREDETERMINADO})"
         ),
     )
     analizador.add_argument(

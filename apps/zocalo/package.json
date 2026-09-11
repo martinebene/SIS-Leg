@@ -1,0 +1,26 @@
+{
+  "name": "@sis-leg/zocalo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt generate",
+    "dev": "nuxt dev",
+    "lint": "eslint .",
+    "prepare": "nuxt prepare",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "@sis-leg/api-client": "workspace:*",
+    "@sis-leg/frontend-shared": "workspace:*",
+    "nuxt": "4.5.2",
+    "vue": "3.5.41",
+    "vue-router": "5.2.0"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "1.17.0",
+    "@tailwindcss/vite": "4.3.3",
+    "eslint": "10.8.1",
+    "tailwindcss": "4.3.3"
+  }
+}

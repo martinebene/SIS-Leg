@@ -56,6 +56,8 @@ def crear_checkout_minimo(raiz: Path) -> None:
         "apps/simulador/.output/public/_nuxt/app.js": "s",
         "apps/tecnico/.output/public/index.html": "<!doctype html>Apoyo Técnico",
         "apps/tecnico/.output/public/_nuxt/app.js": "t",
+        "apps/zocalo/.output/public/index.html": "<!doctype html>Zócalo",
+        "apps/zocalo/.output/public/_nuxt/app.js": "z",
         "manual/index.html": '<!doctype html><html lang="es"><body>SIS-Leg</body></html>',
         "deploy/__init__.py": "",
         "deploy/herramienta_despliegue.py": "# herramienta",
@@ -449,6 +451,7 @@ def crear_release_preparada(gestor: GestorDespliegue, sha: str) -> Path:
         "web/recinto/index.html",
         "web/simulador/index.html",
         "web/tecnico/index.html",
+        "web/zocalo/index.html",
         "web/manual/index.html",
         "deploy/systemd/sis-leg-backend.service",
         "deploy/systemd/sis-leg-device-bridge.service",
@@ -1234,6 +1237,26 @@ def test_configuracion_nginx_expone_apoyo_tecnico_en_la_red() -> None:
     inicio = nginx.index("location /tecnico/ {")
     bloque = nginx[inicio : nginx.index("}", inicio)]
     assert "try_files $uri $uri/ /tecnico/index.html;" in bloque
+    assert "root /opt/sis-leg/current/web;" in bloque
+    assert "deny" not in bloque
+    assert "allow" not in bloque
+
+
+def test_configuracion_nginx_expone_el_zocalo_para_obs() -> None:
+    """El Zócalo se abre como Browser Source desde el equipo de transmisión (WP-099).
+
+    Es una superficie pública de solo lectura que se consume desde otro puesto de la LAN,
+    igual que ``/recinto/`` y ``/tecnico/``: no lleva ``deny all`` ni autenticación. Sin
+    este bloque la release podría contener la SPA y aun así nadie podría abrirla, que es
+    exactamente el fallo que esta prueba impide que llegue a una transmisión en vivo.
+    """
+
+    raiz = Path(__file__).resolve().parents[1]
+    nginx = (raiz / "deploy/nginx/sis-leg.conf").read_text(encoding="utf-8")
+
+    inicio = nginx.index("location /zocalo/ {")
+    bloque = nginx[inicio : nginx.index("}", inicio)]
+    assert "try_files $uri $uri/ /zocalo/index.html;" in bloque
     assert "root /opt/sis-leg/current/web;" in bloque
     assert "deny" not in bloque
     assert "allow" not in bloque

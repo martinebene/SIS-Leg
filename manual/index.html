@@ -422,8 +422,10 @@
           <p>
             El sistema está pensado para un operador único en el puesto de Moderación, una
             pantalla proyectada en el recinto y, opcionalmente, un puesto de Apoyo Técnico en otro
-            equipo de la red local. Las personas que integran el cuerpo intervienen únicamente a
-            través de la botonera física instalada en su banca.
+            equipo de la red local. Si la sesión se transmite, el equipo de transmisión puede sumar
+            además el zócalo, que es una placa lista para superponer sobre el video. Las personas
+            que integran el cuerpo intervienen únicamente a través de la botonera física instalada
+            en su banca.
           </p>
 
           <h3>1.1 Partes del sistema</h3>
@@ -460,6 +462,15 @@
                   <td>
                     Indicador de transmisión, avisos sobre las pantallas, biblioteca de avisos
                     precargados, reemplazo de botoneras y consulta de eventos.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Zócalo para transmisión</td>
+                  <td><code>/zocalo/</code></td>
+                  <td>
+                    Placa de sólo lectura sobre fondo verde, pensada para incorporarse a la
+                    transmisión en vivo. Muestra la votación, el tema y el estado. No tiene ningún
+                    control.
                   </td>
                 </tr>
                 <tr>
@@ -2557,7 +2568,7 @@ curl --fail http://127.0.0.1/manual/</code></pre>
           <h3>13.1 Navegador</h3>
 
           <p>
-            Las cuatro pantallas funcionan en cualquier navegador de escritorio actualizado. Reciben
+            Todas las pantallas funcionan en cualquier navegador de escritorio actualizado. Reciben
             las novedades por una conexión permanente con el servidor, así que conviene evitar
             extensiones o proxies que corten conexiones inactivas.
           </p>
@@ -2584,6 +2595,14 @@ curl --fail http://127.0.0.1/manual/</code></pre>
             todos los botones alcanzables, y el recinto conserva la franja de votación, el quórum y la
             lista de pedidos sin recortes ni desplazamiento general. Para el puesto de Apoyo Técnico
             se mantiene 1366×768 como mínimo recomendado.
+          </p>
+
+          <p>
+            El zócalo de transmisión se comprueba en <strong>1280×720</strong> y en
+            <strong>1920×1080</strong>. Su geometría es proporcional: la placa ocupa siempre
+            alrededor de cuatro quintos del ancho y un quinto del alto de la ventana, sea cual sea
+            esa medida. Conviene que el tamaño de la fuente del navegador esté en su valor normal,
+            porque un zoom aplicado a mano agranda los textos dentro de una placa que no crece.
           </p>
 
           <h3>13.3 El equipo del recinto</h3>
@@ -2639,7 +2658,49 @@ chromium --autoplay-policy=no-user-gesture-required http://&lt;servidor&gt;/tecn
             </li>
           </ul>
 
-          <h3>13.5 Cómo verificarlo</h3>
+          <h3>13.5 El zócalo en el programa de transmisión</h3>
+
+          <p>
+            El zócalo es una página común: se agrega al programa de transmisión como una fuente de
+            tipo navegador apuntada a <code>/zocalo/</code> del mismo servidor que usan las demás
+            pantallas. No pide usuario ni contraseña y no tiene ningún botón: sólo muestra, en vivo,
+            la misma votación, el mismo tema y el mismo estado que la Pantalla del Recinto.
+          </p>
+
+          <ol>
+            <li>
+              Crear en el programa de transmisión una fuente de navegador con la dirección
+              <code>http://&lt;servidor&gt;/zocalo/</code>.
+            </li>
+            <li>
+              Fijar el ancho y el alto de la fuente en la medida del video, normalmente 1920×1080 o
+              1280×720. La placa se ubica sola abajo a la izquierda, con un margen propio.
+            </li>
+            <li>
+              Agregar a esa fuente un filtro de clave cromática con el color verde. El fondo de la
+              página es verde puro y uniforme, así que desaparece por completo y queda a la vista
+              únicamente la placa.
+            </li>
+            <li>
+              Comprobar durante una prueba que los tres renglones se actualicen solos al abrir y
+              cerrar una votación, sin tocar nada en la fuente.
+            </li>
+          </ol>
+
+          <div class="nota">
+            <strong>Por qué el fondo es verde</strong>
+            El verde no es decorativo: es el color que el filtro del programa de transmisión
+            recorta. Por eso la placa no usa ningún verde en su interior y no conviene superponerle
+            otros filtros de color, que podrían abrirle agujeros.
+          </div>
+
+          <p>
+            Si la placa aparece pero no cambia, el problema es de conexión con el servidor y se
+            diagnostica igual que en cualquier otra pantalla. Si el fondo verde no se recorta, el
+            filtro de clave cromática no está aplicado o está configurado con otro color.
+          </p>
+
+          <h3>13.6 Cómo verificarlo</h3>
 
           <ol>
             <li>

@@ -215,8 +215,8 @@ mantiene separado y solo se publica cuando existe resultado final auditado.
 
 Las fotografías de banca no viajan dentro de los frontends: son **configuración
 local de la instalación** y viven en una única ubicación física runtime,
-`config/assets/bancas/`. El backend las publica en su propia API para que las
-cuatro SPA resuelvan exactamente el mismo archivo:
+`config/assets/bancas/`. El backend las publica en su propia API para que
+todas las superficies que las dibujan resuelvan exactamente el mismo archivo:
 
 ```text
 GET /api/v1/recursos/imagenes-concejales/{nombre_archivo}

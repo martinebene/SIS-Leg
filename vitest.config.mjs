@@ -16,8 +16,8 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./apps/moderacion/tests/setup_dom.ts'],
     include: ['packages/**/*.test.ts', 'apps/**/*.test.ts'],
-    // Recinto, Simulador y Apoyo Técnico usan el entorno cliente/Nuxt de su configuración
-    // dedicada.
+    // Recinto, Simulador, Apoyo Técnico y Zócalo usan el entorno cliente/Nuxt de su
+    // configuración dedicada.
     // Excluir estas carpetas evita que una prueba se ejecute antes
     // con este runner raíz de Node y termine compilando los SFC como SSR.
     exclude: [
@@ -26,6 +26,7 @@ export default defineConfig({
       'apps/recinto/tests/**',
       'apps/simulador/tests/**',
       'apps/tecnico/tests/**',
+      'apps/zocalo/tests/**',
     ],
   },
 })
