@@ -68,7 +68,7 @@ que recorre estos archivos y falla si alguien reintroduce cualquiera de esas dep
 
 **Actualizar SIS-Leg**, en este orden: lock global, guard institucional de no sesión/no preparación,
 resolución del SHA público de `main`, idempotencia, descarga verificada, preflight, preparación,
-compuerta de configuración y recién entonces la acción que corresponda:
+**revalidación de `main`**, compuerta de configuración y recién entonces la acción que corresponda:
 
 - con el sistema anterior activo: fija `target-release` y **no conmuta**; el recinto sigue atendido
   por el sistema que estaba;
@@ -79,23 +79,69 @@ compuerta de configuración y recién entonces la acción que corresponda:
   no reinicia nada;
 - si `current` y `target-release` divergen de forma no resoluble, aborta sin mutar.
 
+La revalidación de `main` existe porque las releases públicas son inmutables: la del SHA anterior
+sigue descargándose con normalidad aunque `main` haya avanzado mientras tanto. Sin volver a
+preguntar, una actualización lenta podría terminar declarando como objetivo una versión que ya dejó
+de ser la vigente, con una autorización tomada minutos antes. Si se detecta esa carrera, la release
+ya preparada **queda en disco** —preparar es aditivo y no toca lo que está en servicio— pero no se
+activa ni se declara como objetivo.
+
 El paquete descargado se guarda en `/opt/sis-leg/descargas/` sólo mientras dura la operación: una vez
 preparada la release se descarta, porque pesa cientos de megabytes y ya es redundante. Si la
 preparación falla, en cambio, queda en disco para diagnóstico. No se borra ninguna release, registro
 ni respaldo.
 
-**Cambiar a SIS-Leg**: lee y valida `target-release` con las siete comprobaciones, aplica el guard,
-retira el sistema anterior con *disable-first*, activa la release con la herramienta canónica,
-habilita las unidades sólo después del health y verifica el estado final. Ante cualquier falla
-posterior al inicio de la retirada ejecuta el rollback externo completo. No borra releases,
-configuración ni registros.
+**Cambiar a SIS-Leg**: lee y valida `target-release` con las ocho comprobaciones —incluida la
+identidad de árbol—, aplica el guard, retira el sistema anterior con *disable-first* verificado,
+activa la release con la herramienta canónica, habilita las unidades sólo después del health y
+verifica el estado final. Ante cualquier falla posterior al inicio de la retirada ejecuta el rollback
+externo completo. No borra releases, configuración ni registros.
 
-**Cambiar a Legacy**: idempotente e independiente de versión. Retira SIS-Leg bridge primero, deja
-`current` liberado para que una reactivación futura funcione, deshabilita el vhost sin borrarlo y
-devuelve el sistema anterior a servicio. No usa recuperación destructiva automática ante estados
+**Cambiar a Legacy**: idempotente e independiente de versión, y además la operación de **salida
+segura** del host. Eso gobierna dos propiedades:
+
+- **no depende de `target-release`**. Volver al sistema anterior es version-agnóstico, así que un
+  objetivo corrupto se diagnostica y se informa, pero no puede bloquear la vuelta atrás. Lo que sí
+  falla cerrado ante un target inválido es lo que lo consume: actualizar y cambiar a SIS-Leg;
+- **si el sistema anterior no vuelve a servicio**, se restaura el SIS-Leg que estaba sano en lugar de
+  dejar el host inerte. Si tampoco esa restauración funciona, se informan los dos errores y se exige
+  intervención humana: no se simula ningún estado bueno ni se reintenta en silencio.
+
+Por lo demás retira SIS-Leg bridge primero, deja `current` liberado para que una reactivación futura
+funcione y deshabilita el vhost sin borrarlo. No usa recuperación destructiva automática ante estados
 ambiguos.
 
 En todas las transiciones se comprueba que **nunca** haya dos device bridges activos.
+
+### *Disable-first* verificable
+
+Las retiradas deshabilitan las unidades del sistema saliente **antes** de detenerlas, para que un
+reinicio en el peor momento no las devuelva a la vida. El `disable` se ejecuta tolerando su código de
+salida —systemd responde distinto según la versión y el estado de la unidad—, pero después se
+comprueba `is-enabled` y se aborta si alguna sigue habilitada. El aborto ocurre antes de detener nada
+y restaura la habilitación previa: el host queda como estaba.
+
+La misma exigencia gobierna la clasificación del estado formal. `ESTABLE_LEGACY` y `ESTABLE_SISLEG`
+requieren que el sistema que no manda esté además **deshabilitado**, no solamente apagado: un host
+con las unidades del otro sistema todavía `enabled` está a un reinicio de tener los dos peleando por
+el mismo puerto y los mismos numpads.
+
+### Historial operativo
+
+Cuando se invoca con `--registro`, cada operación anexa una línea JSON con `flush` y `fsync`, en los
+**cuatro** desenlaces: éxito, cancelación, falla y falla con rollback. Un historial que sólo conserva
+los éxitos es exactamente el que no sirve el día que hay que reconstruir qué pasó.
+
+Cada línea registra la hora local de inicio, la operación, el estado formal previo y posterior, si
+hubo mutación, el código de salida, el desenlace del rollback, el diagnóstico del error y, para una
+actualización, la trazabilidad del canal público: commit, árbol, etiqueta, nombre y checksum SHA-256
+del paquete, y el run, el intento y el job de CI que lo produjeron. **No hay secretos**: el
+consumidor no se autentica contra nada, así que no existe ningún token que registrar, y una prueba
+automática comprueba que el historial no contenga patrones de credenciales.
+
+Si el propio historial no se puede escribir, la falla se informa de forma explícita por la salida de
+error y el resultado de la operación **no se altera**: una conmutación que dejó el recinto
+funcionando no se convierte en un fracaso porque el archivo de historial esté en un disco lleno.
 
 ### Compuerta de configuración
 
@@ -129,7 +175,11 @@ Pasos previstos, en orden:
 
 1. **inventario read-only del host**: estado formal, releases presentes, `target-release`, contenido
    y permisos actuales de los wrappers, y comparación contra lo preparado;
-2. ejecutar `deploy/instalador_host.py ... plan` y revisar la salida completa;
+2. ejecutar `deploy/instalador_host.py ... plan` y revisar la salida completa. El plan compara
+   **contenido y metadata**: un destino sólo se declara sin cambio cuando los bytes, el modo y el
+   propietario son los declarados. Un archivo con el contenido correcto pero con permisos o dueño
+   equivocados aparece como corrección de metadata, que se aplica sin reescribir el archivo y sin
+   generar un respaldo redundante;
 3. sólo entonces, con autorización explícita, `aplicar --confirmar`, que respalda cada wrapper
    reemplazado antes de escribirlo;
 4. verificar los componentes instalados **sin** ejecutar ninguna conmutación ni actualización: WP-101B
@@ -167,6 +217,13 @@ WP-101A **no** modifica `manual/index.html`, y la evaluación fue explícita: ha
 los componentes, quien opera el sistema sigue usando exactamente los mismos tres botones, con el
 mismo comportamiento visible. Lo que cambió es interno —de dónde sale el código que ejecutan— y eso
 no es información útil para el uso ni para el soporte.
+
+La evaluación se repitió al corregir la auditoría previa a la integración, con el mismo resultado.
+Las correcciones —idempotencia por metadata del aplicador, historial completo con evidencia,
+revalidación de `main`, independencia de la vuelta a Legacy respecto de un target corrupto, rollback
+a SIS-Leg, *disable-first* verificable e identidad de árbol— endurecen un mecanismo que todavía no
+está instalado en ninguna máquina. Ninguna de ellas cambia lo que ve o hace hoy quien opera el
+sistema, así que el manual sigue sin requerir actualización.
 
 Cuando WP-101B instale el mecanismo nuevo habrá que volver a evaluar el manual: ahí sí cambia qué ve
 la persona en pantalla durante una actualización, y esa evaluación corresponde a ese trabajo.

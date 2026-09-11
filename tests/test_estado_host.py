@@ -7,7 +7,7 @@ Qué demuestran estas pruebas
   y que cualquier mezcla no reconocida cae en ``ESTADO_INCONSISTENTE``;
 - que el lock global impide dos operaciones simultáneas y no se queda esperando;
 - que ``target-release`` sólo puede apuntar a una release realmente preparada, y
-  que las siete comprobaciones del contrato están todas presentes;
+  que las ocho comprobaciones del contrato están todas presentes, incluida la identidad de árbol;
 - que el guard institucional del sistema anterior falla cerrado.
 
 Ninguna prueba usa systemd, Nginx, red ni ``/opt/sis-leg``: el ejecutor, la sonda
@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import escribir_release_json_de_prueba
 
 from deploy.estado_host import (
     ESTABLE_LEGACY,
@@ -40,6 +41,7 @@ from deploy.estado_host import (
     InspectorEstadoHost,
     escribir_target_release,
     leer_target_release,
+    leer_target_release_tolerante,
     lock_operacion_global,
     validar_release_objetivo,
 )
@@ -51,6 +53,9 @@ from deploy.herramienta_despliegue import (
 
 SHA = "a" * 40
 SHA_OTRO = "b" * 40
+# Árbol Git que declaran las releases de fantasía de esta suite.
+SHA_ARBOL = "c" * 40
+SHA_ARBOL_OTRO = "d" * 40
 
 
 class EjecutorSystemdFalso:
@@ -84,14 +89,30 @@ class EjecutorSystemdFalso:
         return ResultadoComando(0)
 
 
-def crear_release_preparada(raiz: Path, sha: str, *, commit_en_marcador: str | None = None) -> Path:
-    """Materializa ``releases/<SHA>`` con su marcador, como lo dejaría ``preparar``."""
+def crear_release_preparada(
+    raiz: Path,
+    sha: str,
+    *,
+    commit_en_marcador: str | None = None,
+    arbol_en_marcador: str | None = SHA_ARBOL,
+    arbol_en_manifest: str | None = SHA_ARBOL,
+) -> Path:
+    """Materializa ``releases/<SHA>`` con su marcador, como lo dejaría ``preparar``.
+
+    Los dos parámetros de árbol permiten fabricar los casos que exige la octava
+    comprobación del contrato: marcador sin ``tree_sha``, con un árbol inválido,
+    con uno que no coincide con el manifest, o el caso válido.
+    ``arbol_en_manifest=None`` deja la release sin ``release.json``.
+    """
 
     release = raiz / "releases" / sha
     release.mkdir(parents=True)
-    (release / MARCADOR_PREPARADA).write_text(
-        json.dumps({"commit_sha": commit_en_marcador or sha}), encoding="utf-8"
-    )
+    marcador: dict[str, str] = {"commit_sha": commit_en_marcador or sha}
+    if arbol_en_marcador is not None:
+        marcador["tree_sha"] = arbol_en_marcador
+    (release / MARCADOR_PREPARADA).write_text(json.dumps(marcador), encoding="utf-8")
+    if arbol_en_manifest is not None:
+        escribir_release_json_de_prueba(release, sha, arbol_en_manifest)
     return release
 
 
@@ -229,6 +250,56 @@ def test_legacy_activo_pero_no_habilitado_es_inconsistente(tmp_path: Path) -> No
         puertos={PUERTO_BACKEND},
     )
     assert inspector.clasificar() == ESTADO_INCONSISTENTE
+
+
+def test_legacy_estable_exige_que_sisleg_este_deshabilitado(tmp_path: Path) -> None:
+    """Con SIS-Leg apagado pero todavía ``enabled``, el host no es estable.
+
+    Es el riesgo exacto que *disable-first* busca eliminar: un reinicio en ese
+    estado levantaría los dos sistemas a la vez sobre el mismo puerto y los
+    mismos numpads.
+    """
+
+    inspector = crear_inspector(
+        tmp_path,
+        activas=UNIDADES_LEGACY | {"nginx.service"},
+        habilitadas=UNIDADES_LEGACY | UNIDADES_SISLEG,
+        vhost_legacy=True,
+        vhost_sisleg=False,
+        puertos={PUERTO_BACKEND},
+    )
+    assert inspector.clasificar() == ESTADO_INCONSISTENTE
+
+
+def test_sisleg_estable_exige_que_legacy_este_deshabilitado(tmp_path: Path) -> None:
+    """La coherencia enabled/disabled se exige en los dos sentidos."""
+
+    inspector = crear_inspector(
+        tmp_path,
+        activas=UNIDADES_SISLEG | {"nginx.service"},
+        habilitadas=UNIDADES_SISLEG | UNIDADES_LEGACY,
+        vhost_legacy=False,
+        vhost_sisleg=True,
+        puertos={PUERTO_BACKEND, PUERTO_BRIDGE_SISLEG},
+        release_actual=SHA,
+    )
+    assert inspector.clasificar() == ESTADO_INCONSISTENTE
+
+
+def test_exigir_unidades_deshabilitadas_detecta_un_disable_no_efectivo(tmp_path: Path) -> None:
+    """La comprobación posterior al ``disable`` nombra exactamente qué quedó mal."""
+
+    inspector = crear_inspector(
+        tmp_path,
+        activas=set(),
+        habilitadas={SERVICIO_BRIDGE_LEGACY},
+        vhost_legacy=False,
+        vhost_sisleg=False,
+        puertos=set(),
+    )
+    inspector.exigir_unidades_deshabilitadas([SERVICIO_BACKEND_LEGACY])
+    with pytest.raises(ErrorEstadoHost, match=SERVICIO_BRIDGE_LEGACY):
+        inspector.exigir_unidades_deshabilitadas([SERVICIO_BACKEND_LEGACY, SERVICIO_BRIDGE_LEGACY])
 
 
 def test_sisleg_activo_sin_current_es_inconsistente(tmp_path: Path) -> None:
@@ -407,6 +478,94 @@ def test_validar_release_objetivo_devuelve_la_ruta_canonica(tmp_path: Path) -> N
     raiz = tmp_path / "opt/sis-leg"
     release = crear_release_preparada(raiz, SHA)
     assert validar_release_objetivo(raiz, SHA) == release
+
+
+# ---------------------------------------------------------------------------
+# Octava comprobación: identidad de árbol
+# ---------------------------------------------------------------------------
+
+
+def test_un_marcador_sin_tree_sha_no_demuestra_la_identidad_del_arbol(tmp_path: Path) -> None:
+    """Comprobación 8: el commit no alcanza para identificar el contenido."""
+
+    raiz = tmp_path / "opt/sis-leg"
+    crear_release_preparada(raiz, SHA, arbol_en_marcador=None)
+    with pytest.raises(ErrorEstadoHost, match="identidad de árbol"):
+        escribir_target_release(raiz, SHA)
+    assert not (raiz / "target-release").exists()
+
+
+def test_un_tree_sha_invalido_se_rechaza_antes_de_mirar_el_manifest(tmp_path: Path) -> None:
+    """Un árbol abreviado o con basura no es un árbol Git y no se interpreta."""
+
+    raiz = tmp_path / "opt/sis-leg"
+    crear_release_preparada(raiz, SHA, arbol_en_marcador="no-es-un-arbol")
+    with pytest.raises(ErrorEstadoHost, match="tree SHA Git válido"):
+        escribir_target_release(raiz, SHA)
+
+
+def test_un_tree_sha_divergente_del_manifest_se_rechaza(tmp_path: Path) -> None:
+    """Marcador y ``release.json`` tienen que declarar exactamente el mismo árbol.
+
+    Es el caso que detecta una release manipulada después de instalada: alguien
+    pudo reescribir el marcador, pero el manifest que viajó dentro del paquete
+    público sigue declarando el árbol real.
+    """
+
+    raiz = tmp_path / "opt/sis-leg"
+    crear_release_preparada(raiz, SHA, arbol_en_marcador=SHA_ARBOL_OTRO)
+    with pytest.raises(ErrorEstadoHost, match="declara el árbol"):
+        escribir_target_release(raiz, SHA)
+
+
+def test_una_release_sin_manifest_no_puede_demostrar_su_arbol(tmp_path: Path) -> None:
+    """Sin ``release.json`` no hay contra qué contrastar el marcador."""
+
+    raiz = tmp_path / "opt/sis-leg"
+    crear_release_preparada(raiz, SHA, arbol_en_manifest=None)
+    with pytest.raises(ErrorEstadoHost, match="release.json"):
+        escribir_target_release(raiz, SHA)
+
+
+def test_un_tree_sha_coherente_supera_la_octava_comprobacion(tmp_path: Path) -> None:
+    """El caso válido: marcador y manifest declaran el mismo árbol."""
+
+    raiz = tmp_path / "opt/sis-leg"
+    release = crear_release_preparada(raiz, SHA)
+    assert validar_release_objetivo(raiz, SHA) == release
+    assert escribir_target_release(raiz, SHA).read_text(encoding="utf-8") == f"{SHA}\n"
+
+
+# ---------------------------------------------------------------------------
+# Independencia entre la clasificación y un target corrupto
+# ---------------------------------------------------------------------------
+
+
+def test_un_target_corrupto_no_impide_clasificar_el_host(tmp_path: Path) -> None:
+    """Saber qué sistema está en servicio no depende de qué release se activaría.
+
+    Si un ``target-release`` ilegible bloqueara la clasificación, también
+    bloquearía la vuelta al sistema anterior, que es la operación que nunca
+    puede quedar impedida por un archivo que ni siquiera va a consumir.
+    """
+
+    inspector = inspector_sisleg(tmp_path)
+    (inspector.raiz / "target-release").write_text("no-es-un-sha\n", encoding="utf-8")
+
+    evidencia = inspector.evidencia()
+
+    assert inspector.clasificar(evidencia) == ESTABLE_SISLEG
+    assert evidencia.target_release is None
+    assert evidencia.target_release_diagnostico is not None
+    assert "SHA de release válido" in evidencia.target_release_diagnostico
+
+
+def test_la_lectura_tolerante_no_inventa_un_diagnostico_cuando_todo_esta_bien(
+    tmp_path: Path,
+) -> None:
+    """Sin objetivo declarado no hay error: simplemente todavía no hay uno."""
+
+    assert leer_target_release_tolerante(tmp_path / "opt/sis-leg") == (None, None)
 
 
 # ---------------------------------------------------------------------------

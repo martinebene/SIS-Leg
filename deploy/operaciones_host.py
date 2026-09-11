@@ -42,6 +42,7 @@ temporales.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import sys
@@ -49,6 +50,7 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 # Producción invoca este módulo como script suelto desde la release preparada
 # (``python3.14 /opt/sis-leg/releases/<SHA>/deploy/operaciones_host.py ...``), con
@@ -87,6 +89,7 @@ from deploy.estado_host import (  # noqa: E402 - raíz preparada arriba
     InspectorEstadoHost,
     escribir_target_release,
     leer_target_release,
+    leer_target_release_tolerante,
     lock_operacion_global,
     validar_release_objetivo,
 )
@@ -104,6 +107,18 @@ from deploy.herramienta_despliegue import (  # noqa: E402 - raíz preparada arri
 OPERACION_ACTUALIZAR = "actualizar"
 OPERACION_CAMBIAR_A_SISLEG = "cambiar-a-sis-leg"
 OPERACION_CAMBIAR_A_LEGACY = "cambiar-a-legacy"
+
+# Desenlaces posibles de una operación. El historial del host los registra
+# siempre: «no hice nada porque la persona canceló» y «fallé y revertí» son tan
+# relevantes para el soporte como un éxito.
+ESTADO_EXITO = "EXITO"
+ESTADO_CANCELADA = "CANCELADA"
+ESTADO_FALLA = "FALLA"
+
+# Desenlace del rollback, cuando la operación llegó a mutar algo.
+ROLLBACK_NO_APLICA = "NO_APLICA"
+ROLLBACK_EXITOSO = "EXITOSO"
+ROLLBACK_FALLIDO = "FALLIDO"
 
 
 class ErrorOperacionHost(RuntimeError):
@@ -133,6 +148,33 @@ class PlanOperacion:
     acciones_previstas: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class EvidenciaPublica:
+    """Trazabilidad del canal público de WP-100, sin ningún dato sensible.
+
+    Todo lo que contiene es información ya publicada: el commit y el árbol de la
+    release, su etiqueta, el nombre del paquete con su checksum SHA-256 y el run
+    y el job de CI que la produjeron. No hay tokens, credenciales, URLs firmadas
+    ni encabezados de autenticación, porque el consumidor no usa ninguno: la
+    actualización se hace sin autenticarse.
+
+    Existe para que el historial del host permita responder, meses después y sin
+    acceso a la máquina, de dónde salió exactamente la versión instalada.
+    """
+
+    commit_sha: str
+    tree_sha: str
+    tag: str
+    paquete: str
+    paquete_sha256: str | None
+    ci_run_id: int
+    ci_run_numero: int
+    ci_run_intento: int
+    ci_workflow: str
+    ci_job_id: int
+    ci_job_nombre: str
+
+
 @dataclass(slots=True)
 class ResultadoOperacion:
     """Qué ocurrió realmente, apto para registrar en el historial del host.
@@ -140,6 +182,19 @@ class ResultadoOperacion:
     ``muto`` distingue el caso idempotente —no había nada que hacer— del caso en
     que el host efectivamente cambió. Los historiales del host registran ambos,
     porque «no hice nada y por qué» también es evidencia.
+
+    Atributos que existen específicamente para el historial:
+        estado: desenlace (``EXITO``, ``CANCELADA`` o ``FALLA``).
+        exit_code: el mismo código que devuelve el proceso, para poder cruzar el
+            historial con los registros del escritorio.
+        timestamp: hora local de inicio de la operación, con precisión de
+            segundos, igual que la auditoría institucional.
+        rollback: desenlace de la reversión cuando la hubo.
+        error: diagnóstico de la falla, si la hubo.
+        diagnostico_target: por qué no se pudo leer ``target-release``, cuando la
+            operación pudo continuar igual por ser version-agnóstica.
+        evidencia_publica: :class:`EvidenciaPublica` serializada, cuando la
+            operación consumió el canal público.
     """
 
     operacion: str
@@ -150,6 +205,13 @@ class ResultadoOperacion:
     target_final: str | None
     muto: bool
     mensaje: str
+    estado: str = ESTADO_EXITO
+    exit_code: int = 0
+    timestamp: str | None = None
+    rollback: str = ROLLBACK_NO_APLICA
+    error: str | None = None
+    diagnostico_target: str | None = None
+    evidencia_publica: dict[str, Any] | None = None
     acciones: list[str] = field(default_factory=lambda: [])
     configuracion_incorporada: list[str] = field(default_factory=lambda: [])
 
@@ -168,8 +230,38 @@ class SnapshotLegacy:
     bridge_habilitado: bool
 
 
+@dataclass(frozen=True, slots=True)
+class SnapshotSisLeg:
+    """Lo mínimo para devolver SIS-Leg exactamente a donde estaba.
+
+    Se captura **antes** de retirar SIS-Leg para volver al sistema anterior. Si
+    esa vuelta falla a mitad de camino, este snapshot es lo único que permite
+    reconstruir el sistema que estaba sano: qué release estaba en servicio y si
+    sus unidades arrancaban solas.
+
+    ``release`` es ``None`` cuando no había una release identificable; en ese
+    caso no hay nada que restaurar y el rollback no puede intentarse.
+    """
+
+    release: str | None
+    backend_habilitado: bool
+    bridge_habilitado: bool
+
+
 # ``Callable`` para pedir confirmación humana. Devuelve ``True`` para continuar.
 Confirmador = Callable[[PlanOperacion], bool]
+
+
+def marca_temporal_local() -> str:
+    """Hora local con precisión de segundos, igual que la auditoría institucional.
+
+    Se usa hora local y no UTC porque el historial lo lee la misma persona que
+    operó el host, y tiene que poder cruzarlo con lo que recuerda de la sesión.
+    El desplazamiento horario queda incluido en la cadena ISO, así que el dato
+    sigue siendo interpretable sin ambigüedad desde cualquier otro lugar.
+    """
+
+    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 class OperadorHost:
@@ -200,6 +292,7 @@ class OperadorHost:
         obtener_release: Callable[[Path], ReleaseDescargada] | None = None,
         preflight: Callable[[], None] | None = None,
         durmiente: Callable[[float], None] | None = None,
+        reloj: Callable[[], str] = marca_temporal_local,
         ruta_lock: Path = RUTA_LOCK_OPERACION,
         ruta_vhost_legacy: Path = RUTA_VHOST_LEGACY,
         ruta_vhost_legacy_disponible: Path = RUTA_VHOST_LEGACY_DISPONIBLE,
@@ -225,6 +318,7 @@ class OperadorHost:
         # real ya tiene sus propias pruebas en el motor canónico.
         self.preflight = preflight or self.gestor.preflight
         self.durmiente = durmiente or time.sleep
+        self.reloj = reloj
         self.ruta_lock = ruta_lock
         self.ruta_vhost_legacy = ruta_vhost_legacy
         self.ruta_vhost_legacy_disponible = ruta_vhost_legacy_disponible
@@ -234,6 +328,11 @@ class OperadorHost:
         # ``actualizar`` y lo consume la frontera real del canal público, de modo
         # que nunca se descargue un SHA distinto del que la operación resolvió.
         self._sha_en_curso: str | None = None
+        # Último resultado construido, incluso si la operación después falló. Es
+        # lo que permite que la CLI registre en el historial una falla o una
+        # cancelación con el mismo detalle que un éxito: sin esta referencia, una
+        # excepción se llevaría consigo todo lo que ya se sabía de la operación.
+        self.ultimo_resultado: ResultadoOperacion | None = None
 
     # ------------------------------------------------------------------
     # Fronteras hacia el canal público
@@ -264,10 +363,85 @@ class OperadorHost:
     # Utilidades comunes
     # ------------------------------------------------------------------
 
+    def _nuevo_resultado(
+        self,
+        operacion: str,
+        estado: str,
+        *,
+        target_previo: str | None,
+        diagnostico_target: str | None = None,
+    ) -> ResultadoOperacion:
+        """Crea el resultado de la operación y lo deja accesible para el historial.
+
+        Se registra en ``ultimo_resultado`` en el mismo momento en que se crea,
+        y no al terminar: si la operación falla a mitad de camino, la CLI todavía
+        tiene que poder anexar al historial el estado inicial, lo que ya se hizo
+        y por qué se cortó.
+        """
+
+        resultado = ResultadoOperacion(
+            operacion=operacion,
+            estado_inicial=estado,
+            estado_final=estado,
+            sha_objetivo=None,
+            target_previo=target_previo,
+            target_final=target_previo,
+            muto=False,
+            mensaje="",
+            timestamp=self.reloj(),
+            diagnostico_target=diagnostico_target,
+        )
+        self.ultimo_resultado = resultado
+        return resultado
+
     def _systemctl(self, *argumentos: str, comprobar: bool = True) -> None:
         """Única puerta hacia systemd. Nunca se arma una línea de shell."""
 
         self.ejecutor.ejecutar(["systemctl", *argumentos], comprobar=comprobar)
+
+    def _deshabilitar_verificando(
+        self, unidades: Sequence[str], resultado: ResultadoOperacion, descripcion: str
+    ) -> None:
+        """Deshabilita las unidades de un sistema y **demuestra** que quedaron así.
+
+        Entradas:
+            unidades: unidades del sistema que sale de servicio.
+            resultado: se anota la acción realizada.
+            descripcion: cómo nombrar al sistema saliente en los mensajes.
+
+        Errores:
+            ErrorOperacionHost si alguna unidad sigue habilitada después del
+            ``disable``.
+
+        Éste es el corazón verificable de *disable-first*. Se deshabilita antes
+        de detener para que un reinicio en el peor momento no reviva el sistema
+        saliente, pero un ``disable`` que falla en silencio dejaría exactamente
+        el riesgo que la regla pretende eliminar. Por eso se comprueba el efecto
+        y se aborta **antes** de detener nada: en ese punto el host todavía está
+        entero y no hace falta ningún rollback.
+
+        Si la comprobación falla se vuelven a habilitar las unidades que sí
+        habían quedado deshabilitadas. Un aborto por precondición no debería
+        dejar el host peor de como estaba: lo que se pretendía era una
+        conmutación completa, no deshabilitar media unidad y abandonar.
+        """
+
+        habilitadas_previamente = [
+            unidad for unidad in unidades if self.inspector.esta_habilitada(unidad)
+        ]
+        for unidad in unidades:
+            self._systemctl("disable", unidad, comprobar=False)
+        try:
+            self.inspector.exigir_unidades_deshabilitadas(unidades)
+        except ErrorEstadoHost as error:
+            for unidad in habilitadas_previamente:
+                self._systemctl("enable", unidad, comprobar=False)
+            raise ErrorOperacionHost(
+                f"No se pudo demostrar el disable-first de {descripcion}: {error} "
+                "Se restauró la habilitación previa de las unidades y no se detuvo ningún "
+                "servicio."
+            ) from error
+        resultado.acciones.append(f"disable-first verificado de {descripcion}")
 
     def _esperar(
         self,
@@ -376,6 +550,25 @@ class OperadorHost:
         )
         os.replace(self.ruta_vhost_sisleg, destino)
 
+    def _rehabilitar_vhost_sisleg(self) -> None:
+        """Deshace :meth:`_deshabilitar_vhost_sisleg` durante un rollback.
+
+        Se usa sólo al restaurar SIS-Leg después de una vuelta fallida al sistema
+        anterior. Si la activación posterior vuelve a escribir el vhost desde la
+        release, este paso resulta redundante pero inofensivo; si por cualquier
+        motivo no lo hiciera, deja el archivo exactamente como estaba.
+        """
+
+        deshabilitado = self.ruta_vhost_sisleg.with_name(
+            self.ruta_vhost_sisleg.name + SUFIJO_VHOST_DESHABILITADO
+        )
+        if not deshabilitado.is_file():
+            return
+        if self.ruta_vhost_sisleg.exists():
+            deshabilitado.unlink()
+            return
+        os.replace(deshabilitado, self.ruta_vhost_sisleg)
+
     # ------------------------------------------------------------------
     # Retiradas ordenadas
     # ------------------------------------------------------------------
@@ -383,8 +576,9 @@ class OperadorHost:
     def _retirar_legacy(self, resultado: ResultadoOperacion) -> SnapshotLegacy:
         """Retira el sistema anterior en el único orden seguro conocido.
 
-        1. ``disable`` de las dos unidades **antes** de detenerlas, para que un
-           reinicio no las devuelva a la vida;
+        1. ``disable`` de las dos unidades **antes** de detenerlas, comprobando
+           que realmente quedaron deshabilitadas, para que un reinicio no las
+           devuelva a la vida;
         2. detener el bridge y comprobar que quedó inactivo;
         3. detener el backend y comprobar que liberó ``:8000``;
         4. retirar el vhost publicado.
@@ -396,9 +590,11 @@ class OperadorHost:
 
         backend_habilitado = self.inspector.esta_habilitada(SERVICIO_BACKEND_LEGACY)
         bridge_habilitado = self.inspector.esta_habilitada(SERVICIO_BRIDGE_LEGACY)
-        self._systemctl("disable", SERVICIO_BRIDGE_LEGACY, comprobar=False)
-        self._systemctl("disable", SERVICIO_BACKEND_LEGACY, comprobar=False)
-        resultado.acciones.append("disable-first de las unidades del sistema anterior")
+        self._deshabilitar_verificando(
+            (SERVICIO_BRIDGE_LEGACY, SERVICIO_BACKEND_LEGACY),
+            resultado,
+            "las unidades del sistema anterior",
+        )
 
         self._systemctl("stop", SERVICIO_BRIDGE_LEGACY)
         self._esperar(
@@ -436,9 +632,9 @@ class OperadorHost:
         una reactivación futura fallaría en silencio.
         """
 
-        self._systemctl("disable", SERVICIO_BRIDGE, comprobar=False)
-        self._systemctl("disable", SERVICIO_BACKEND, comprobar=False)
-        resultado.acciones.append("disable-first de las unidades de SIS-Leg")
+        self._deshabilitar_verificando(
+            (SERVICIO_BRIDGE, SERVICIO_BACKEND), resultado, "las unidades de SIS-Leg"
+        )
 
         self._systemctl("stop", SERVICIO_BRIDGE, comprobar=False)
         self._esperar(
@@ -505,16 +701,7 @@ class OperadorHost:
 
         with lock_operacion_global(self.ruta_lock):
             estado = self.inspector.clasificar()
-            resultado = ResultadoOperacion(
-                operacion=OPERACION_ACTUALIZAR,
-                estado_inicial=estado,
-                estado_final=estado,
-                sha_objetivo=None,
-                target_previo=None,
-                target_final=None,
-                muto=False,
-                mensaje="",
-            )
+            resultado = self._nuevo_resultado(OPERACION_ACTUALIZAR, estado, target_previo=None)
             self._exigir_estado_operativo(estado, OPERACION_ACTUALIZAR)
             self._guard_institucional(estado)
             resultado.acciones.append(f"guard institucional superado en estado {estado}")
@@ -554,6 +741,7 @@ class OperadorHost:
                 acciones_previstas=self._acciones_previstas_actualizar(estado),
             )
             if confirmador is not None and not confirmador(plan):
+                resultado.estado = ESTADO_CANCELADA
                 resultado.mensaje = "Actualización cancelada por la persona operadora."
                 return resultado
 
@@ -573,6 +761,10 @@ class OperadorHost:
             resultado.acciones.append(f"release {sha_objetivo} preparada")
             resultado.muto = True
             self._descartar_descarga(release_descargada, resultado)
+
+            # Última compuerta antes de cualquier mutación que decida qué versión
+            # usa el host. Desde acá hasta el final ya no se consulta la red.
+            self._revalidar_sha_publico(sha_objetivo, resultado)
 
             self._aplicar_contrato_configuracion(release, resultado)
 
@@ -594,6 +786,46 @@ class OperadorHost:
                     f"{estado}. Se requiere diagnóstico humano."
                 )
             return resultado
+
+    def _revalidar_sha_publico(self, sha_congelado: str, resultado: ResultadoOperacion) -> None:
+        """Vuelve a resolver ``main`` y aborta si avanzó durante la operación.
+
+        Entradas:
+            sha_congelado: el SHA que la operación resolvió al empezar y que
+                autorizó toda la descarga y la preparación.
+            resultado: se anota la revalidación superada.
+
+        Errores:
+            ErrorOperacionHost si ``main`` avanzó o si no se puede volver a
+            resolver.
+
+        ¿Por qué hace falta? Las releases públicas son inmutables: la del SHA
+        anterior sigue existiendo y descargándose con normalidad aunque ``main``
+        haya avanzado. Sin esta revalidación, una actualización lenta podría
+        terminar instalando y declarando como objetivo una versión que ya dejó de
+        ser la vigente, con una autorización tomada minutos antes.
+
+        Qué queda cuando se detecta la carrera: la release nueva ya preparada se
+        conserva en ``releases/`` porque preparar es aditivo y no toca lo que
+        está en servicio; sirve de diagnóstico y de caché para el próximo
+        intento. Lo que **no** ocurre es activarla ni declararla como objetivo:
+        el host sigue exactamente en la versión en la que estaba.
+        """
+
+        try:
+            sha_vigente = self._resolver_sha_publico()
+        except (ErrorActualizadorPublico, ErrorDespliegue, OSError) as error:
+            raise ErrorOperacionHost(
+                "No se pudo revalidar la versión pública de main antes de aplicar el cambio; "
+                f"no se activó ni se fijó ninguna release: {error}"
+            ) from error
+        if sha_vigente != sha_congelado:
+            raise ErrorOperacionHost(
+                f"main avanzó de {sha_congelado} a {sha_vigente} mientras corría la "
+                "actualización. La release preparada queda disponible para el próximo intento, "
+                "pero no se activó ni se declaró como objetivo con una autorización vencida."
+            )
+        resultado.acciones.append(f"main revalidado: sigue en {sha_congelado}")
 
     def _exigir_estado_resoluble(
         self, estado: str, release_actual: str | None, target_previo: str | None
@@ -659,8 +891,43 @@ class OperadorHost:
             raise ErrorOperacionHost(
                 f"El canal público devolvió {release.commit_sha} en lugar de {sha}."
             )
+        resultado.evidencia_publica = asdict(self._evidencia_publica(release))
         resultado.acciones.append(f"release pública {sha} descargada y verificada sin credenciales")
         return release
+
+    def _evidencia_publica(self, release: ReleaseDescargada) -> EvidenciaPublica:
+        """Extrae del canal público lo que el historial debe conservar.
+
+        Se toma el checksum del sidecar y no se recalcula: es el mismo valor que
+        el motor canónico ya verificó contra el paquete, y leerlo acá no repite
+        ninguna validación. Si el sidecar no se pudiera leer, el campo queda en
+        ``None`` en lugar de romper la operación: la evidencia es importante,
+        pero no es la razón por la que se está actualizando el host.
+        """
+
+        return EvidenciaPublica(
+            commit_sha=release.commit_sha,
+            tree_sha=release.tree_sha,
+            tag=release.tag,
+            paquete=release.paquete.name,
+            paquete_sha256=self._checksum_declarado(release.sidecar),
+            ci_run_id=release.run_ci.identificador,
+            ci_run_numero=release.run_ci.numero,
+            ci_run_intento=release.run_ci.intento,
+            ci_workflow=release.run_ci.workflow,
+            ci_job_id=release.job_ci.identificador,
+            ci_job_nombre=release.job_ci.nombre,
+        )
+
+    @staticmethod
+    def _checksum_declarado(sidecar: Path) -> str | None:
+        """Primer campo del sidecar SHA-256, o ``None`` si no se puede leer."""
+
+        try:
+            primera_palabra = sidecar.read_text(encoding="ascii").split()
+        except (OSError, UnicodeDecodeError):
+            return None
+        return primera_palabra[0] if primera_palabra else None
 
     def _descartar_descarga(
         self, release: ReleaseDescargada, resultado: ResultadoOperacion
@@ -743,6 +1010,8 @@ class OperadorHost:
                 escribir_target_release(self.raiz, target_previo)
                 resultado.acciones.append("target-release anterior restaurado")
             resultado.target_final = target_previo
+            resultado.rollback = self._desenlace_rollback_en_caliente(target_previo)
+            resultado.estado_final = self.inspector.clasificar()
             raise ErrorOperacionHost(
                 "Falló la actualización en caliente de SIS-Leg; el motor canónico restauró la "
                 f"release anterior y se conservó el target previo: {error}"
@@ -754,6 +1023,23 @@ class OperadorHost:
         )
         resultado.mensaje = f"SIS-Leg actualizado y en servicio en la release {sha_objetivo}."
 
+    def _desenlace_rollback_en_caliente(self, target_previo: str | None) -> str:
+        """Observa si el motor canónico realmente devolvió la release anterior.
+
+        No se confía en que el rollback haya funcionado sólo porque se ejecutó:
+        se mira el host. Queda ``EXITOSO`` si SIS-Leg volvió a quedar estable en
+        la release previa, y ``FALLIDO`` en cualquier otro caso, incluido el de
+        no poder observarlo. El historial guarda ese dato porque es lo primero
+        que necesita saber quien atiende el host después de una falla.
+        """
+
+        try:
+            estable = self.inspector.clasificar() == ESTABLE_SISLEG
+            volvio = self._release_actual() == target_previo
+        except (ErrorEstadoHost, ErrorDespliegue, OSError):
+            return ROLLBACK_FALLIDO
+        return ROLLBACK_EXITOSO if estable and volvio else ROLLBACK_FALLIDO
+
     # ------------------------------------------------------------------
     # Operación 2: cambiar a SIS-Leg
     # ------------------------------------------------------------------
@@ -762,7 +1048,7 @@ class OperadorHost:
         """Conmuta del sistema anterior a SIS-Leg leyendo ``target-release``.
 
         Nunca contiene un SHA: la release a activar sale de ``target-release`` y
-        se valida con las siete comprobaciones antes de tocar nada. Si ya está
+        se valida con las ocho comprobaciones antes de tocar nada. Si ya está
         activo SIS-Leg, la operación es idempotente y no muta.
 
         Ante cualquier falla posterior al inicio de la retirada del sistema
@@ -772,15 +1058,10 @@ class OperadorHost:
 
         with lock_operacion_global(self.ruta_lock):
             estado = self.inspector.clasificar()
-            resultado = ResultadoOperacion(
-                operacion=OPERACION_CAMBIAR_A_SISLEG,
-                estado_inicial=estado,
-                estado_final=estado,
-                sha_objetivo=None,
-                target_previo=leer_target_release(self.raiz),
-                target_final=leer_target_release(self.raiz),
-                muto=False,
-                mensaje="",
+            # Lectura estricta a propósito: esta operación **consume** el
+            # objetivo, así que un archivo corrupto tiene que detenerla.
+            resultado = self._nuevo_resultado(
+                OPERACION_CAMBIAR_A_SISLEG, estado, target_previo=leer_target_release(self.raiz)
             )
             if estado == ESTABLE_SISLEG:
                 resultado.sha_objetivo = self._release_actual()
@@ -814,6 +1095,7 @@ class OperadorHost:
                 ),
             )
             if confirmador is not None and not confirmador(plan):
+                resultado.estado = ESTADO_CANCELADA
                 resultado.mensaje = "Conmutación cancelada por la persona operadora."
                 return resultado
 
@@ -857,10 +1139,12 @@ class OperadorHost:
                     f"El rollback dejó el host en {estado} y no en {ESTABLE_LEGACY}."
                 )
         except Exception as error_rollback:  # noqa: BLE001 - se reportan ambos errores
+            resultado.rollback = ROLLBACK_FALLIDO
             raise ErrorOperacionHost(
                 f"Falló la conmutación ({error_original}) y también el rollback al sistema "
                 f"anterior ({error_rollback}). Se requiere intervención humana."
             ) from error_rollback
+        resultado.rollback = ROLLBACK_EXITOSO
         resultado.estado_final = ESTABLE_LEGACY
         raise ErrorOperacionHost(
             f"Falló la conmutación a SIS-Leg y se restauró el sistema anterior: {error_original}"
@@ -877,20 +1161,34 @@ class OperadorHost:
         existe recuperación automática desde estados ambiguos, y no se borra
         ninguna release ni configuración de SIS-Leg: el sistema nuevo queda listo
         para volver a activarse.
+
+        Es además la operación de **salida segura** del host, y eso gobierna dos
+        decisiones de diseño:
+
+        - no depende de ``target-release``. Volver al sistema anterior es
+          version-agnóstico, así que un objetivo corrupto se diagnostica y se
+          informa, pero no puede bloquear la vuelta atrás;
+        - si el sistema anterior no logra volver a servicio después de haber
+          retirado SIS-Leg, se intenta restaurar el SIS-Leg que estaba sano en
+          lugar de dejar el host inerte.
         """
 
         with lock_operacion_global(self.ruta_lock):
             estado = self.inspector.clasificar()
-            resultado = ResultadoOperacion(
-                operacion=OPERACION_CAMBIAR_A_LEGACY,
-                estado_inicial=estado,
-                estado_final=estado,
-                sha_objetivo=None,
-                target_previo=leer_target_release(self.raiz),
-                target_final=leer_target_release(self.raiz),
-                muto=False,
-                mensaje="",
+            # Lectura tolerante a propósito: esta operación **no consume** el
+            # objetivo, sólo lo informa. Ver la explicación en el docstring.
+            objetivo, diagnostico_objetivo = leer_target_release_tolerante(self.raiz)
+            resultado = self._nuevo_resultado(
+                OPERACION_CAMBIAR_A_LEGACY,
+                estado,
+                target_previo=objetivo,
+                diagnostico_target=diagnostico_objetivo,
             )
+            if diagnostico_objetivo is not None:
+                resultado.acciones.append(
+                    "target-release ilegible; se continúa porque volver al sistema anterior "
+                    f"no depende de él: {diagnostico_objetivo}"
+                )
             if estado == ESTABLE_LEGACY:
                 resultado.mensaje = "El sistema anterior ya estaba activo; no se modificó nada."
                 return resultado
@@ -913,6 +1211,7 @@ class OperadorHost:
                 ),
             )
             if confirmador is not None and not confirmador(plan):
+                resultado.estado = ESTADO_CANCELADA
                 resultado.mensaje = "Conmutación cancelada por la persona operadora."
                 return resultado
 
@@ -921,20 +1220,101 @@ class OperadorHost:
                 backend_habilitado=True,
                 bridge_habilitado=True,
             )
+            # Se captura la identidad restaurable de SIS-Leg **antes** de tocarlo:
+            # después de retirarlo ya no hay de dónde leer qué release estaba en
+            # servicio ni si sus unidades arrancaban solas.
+            snapshot_sisleg = SnapshotSisLeg(
+                release=resultado.sha_objetivo,
+                backend_habilitado=self.inspector.esta_habilitada(SERVICIO_BACKEND),
+                bridge_habilitado=self.inspector.esta_habilitada(SERVICIO_BRIDGE),
+            )
+            # La retirada de SIS-Leg queda fuera del bloque protegido a
+            # propósito: su propio disable-first aborta antes de detener nada, y
+            # si fallara más adelante el host quedaría a medio retirar, que es un
+            # estado que exige diagnóstico humano y no una restauración a ciegas.
+            # Lo que sí se protege es la vuelta del sistema anterior, porque ahí
+            # SIS-Leg ya salió de servicio y hay algo concreto que restaurar.
             self._retirar_sisleg(resultado)
             resultado.muto = True
-            self._levantar_legacy(snapshot, resultado)
-
-            estado_final = self.inspector.clasificar()
-            if estado_final != ESTABLE_LEGACY:
-                raise ErrorOperacionHost(
-                    f"La conmutación terminó en {estado_final} y no en {ESTABLE_LEGACY}. "
-                    "Se requiere diagnóstico humano; no se ejecuta ninguna recuperación "
-                    "automática."
-                )
-            resultado.estado_final = estado_final
+            try:
+                self._levantar_legacy(snapshot, resultado)
+                estado_final = self.inspector.clasificar()
+                if estado_final != ESTABLE_LEGACY:
+                    raise ErrorOperacionHost(
+                        f"La conmutación terminó en {estado_final} y no en {ESTABLE_LEGACY}."
+                    )
+            except Exception as error_original:  # noqa: BLE001 - se contiene y se restaura
+                self._rollback_a_sisleg(snapshot_sisleg, resultado, error_original)
+            resultado.estado_final = ESTABLE_LEGACY
             resultado.mensaje = "Sistema anterior activo; SIS-Leg queda preparado para volver."
             return resultado
+
+    def _rollback_a_sisleg(
+        self,
+        snapshot: SnapshotSisLeg,
+        resultado: ResultadoOperacion,
+        error_original: Exception,
+    ) -> None:
+        """Devuelve SIS-Leg a servicio cuando el sistema anterior no pudo volver.
+
+        Entradas:
+            snapshot: identidad y habilitación del SIS-Leg que estaba sano.
+            resultado: se anotan las acciones y el desenlace del rollback.
+            error_original: la falla que obligó a revertir.
+
+        Errores:
+            ErrorOperacionHost siempre. Si el rollback funcionó, informa la falla
+            original y que el host volvió a SIS-Leg; si además falló el rollback,
+            informa los dos errores y exige intervención humana.
+
+        ¿Por qué existe? Porque pasar de un sistema sano a un host inerte sería
+        el peor desenlace posible de una operación que existe para dar seguridad.
+        Si el sistema anterior no arranca o no supera su health, lo correcto no
+        es quedarse a mitad de camino, sino devolver el recinto al sistema que
+        hasta hace un minuto estaba atendiendo.
+
+        El orden respeta la invariante de exclusión: primero se retira el sistema
+        anterior a medio levantar —con su disable-first verificado— y recién
+        entonces se reactiva SIS-Leg, de modo que nunca haya dos bridges vivos.
+        """
+
+        if snapshot.release is None:
+            resultado.rollback = ROLLBACK_FALLIDO
+            raise ErrorOperacionHost(
+                f"Falló la vuelta al sistema anterior ({error_original}) y no había una "
+                "release de SIS-Leg identificable para restaurar. Se requiere intervención "
+                "humana; no se ejecuta ninguna recuperación automática a ciegas."
+            ) from error_original
+
+        try:
+            self._retirar_legacy(resultado)
+            self._rehabilitar_vhost_sisleg()
+            self.gestor.activar(snapshot.release)
+            self.inspector.exigir_maximo_un_bridge()
+            if snapshot.backend_habilitado:
+                self._systemctl("enable", SERVICIO_BACKEND, comprobar=False)
+            if snapshot.bridge_habilitado:
+                self._systemctl("enable", SERVICIO_BRIDGE, comprobar=False)
+            resultado.acciones.append(f"SIS-Leg restaurado en la release {snapshot.release}")
+            estado = self.inspector.clasificar()
+            if estado != ESTABLE_SISLEG:
+                raise ErrorOperacionHost(
+                    f"El rollback dejó el host en {estado} y no en {ESTABLE_SISLEG}."
+                )
+        except Exception as error_rollback:  # noqa: BLE001 - se reportan ambos errores
+            resultado.rollback = ROLLBACK_FALLIDO
+            raise ErrorOperacionHost(
+                f"Falló la vuelta al sistema anterior ({error_original}) y también la "
+                f"restauración de SIS-Leg ({error_rollback}). El host quedó en un estado que "
+                "exige intervención humana inmediata: ningún sistema puede darse por activo "
+                "y no se intenta ninguna recuperación automática adicional."
+            ) from error_rollback
+        resultado.rollback = ROLLBACK_EXITOSO
+        resultado.estado_final = ESTABLE_SISLEG
+        raise ErrorOperacionHost(
+            "Falló la vuelta al sistema anterior y se restauró SIS-Leg en la release "
+            f"{snapshot.release}: {error_original}"
+        ) from error_original
 
 
 # --------------------------------------------------------------------------
@@ -988,15 +1368,57 @@ def crear_parser() -> argparse.ArgumentParser:
 
 
 def _anexar_registro(ruta: Path, resultado: ResultadoOperacion) -> None:
-    """Anexa una línea JSON al historial del host, sin datos sensibles."""
+    """Anexa una línea JSON al historial del host, sin datos sensibles.
+
+    Se escribe una línea por operación, en formato JSON Lines, con ``flush`` y
+    ``fsync`` antes de cerrar. El criterio es el mismo de la auditoría
+    institucional: un historial que sólo llega al buffer del sistema operativo
+    no es evidencia, porque una caída se lleva justamente el registro de lo que
+    estaba pasando cuando el host se cayó.
+    """
 
     ruta.parent.mkdir(parents=True, exist_ok=True)
     with ruta.open("a", encoding="utf-8") as archivo:
         archivo.write(json.dumps(asdict(resultado), ensure_ascii=False, sort_keys=True) + "\n")
+        archivo.flush()
+        os.fsync(archivo.fileno())
+
+
+def registrar_en_historial(ruta: Path | None, resultado: ResultadoOperacion) -> bool:
+    """Anexa el resultado al historial sin dejar que su falla altere la operación.
+
+    Resultado: ``True`` si el historial se persistió; ``False`` si no se pudo.
+
+    ¿Por qué no propaga el error? Porque falsearía el desenlace: una conmutación
+    que dejó el recinto funcionando no se convierte en un fracaso porque el
+    archivo de historial esté en un disco lleno, y una que falló no se convierte
+    en un éxito porque su registro sí se haya escrito. La falla del registro se
+    informa por separado y de forma explícita —nunca se silencia— y el resultado
+    impreso deja constancia de que ese registro no quedó persistido.
+    """
+
+    if ruta is None:
+        return True
+    try:
+        _anexar_registro(ruta, resultado)
+    except OSError as error:
+        print(
+            f"Advertencia: no se pudo anexar el historial en {ruta}: {error}. "
+            "El resultado de la operación se informa igual y no se altera.",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 def main(argumentos: Sequence[str] | None = None) -> int:
-    """Ejecuta una operación y traduce cualquier falla a exit code estable 1."""
+    """Ejecuta una operación, registra su desenlace y devuelve el exit code.
+
+    El historial se anexa en los cuatro desenlaces —éxito, cancelación, falla y
+    falla con rollback— y no sólo cuando todo salió bien. Un historial que
+    únicamente conserva los éxitos es exactamente el que no sirve el día que hay
+    que reconstruir qué pasó.
+    """
 
     opciones = crear_parser().parse_args(argumentos)
     operador = OperadorHost(opciones.raiz)
@@ -1016,12 +1438,52 @@ def main(argumentos: Sequence[str] | None = None) -> int:
         ErrorActualizadorPublico,
         OSError,
     ) as error:
+        resultado = resultado_de_falla(operador, opciones.comando, error)
+        persistido = registrar_en_historial(opciones.registro, resultado)
         print(f"Error: {error}", file=sys.stderr)
-        return 1
+        if not persistido:
+            print("Error: además, el historial no pudo persistirse.", file=sys.stderr)
+        return resultado.exit_code
+    salida = asdict(resultado)
     if opciones.registro is not None:
-        _anexar_registro(opciones.registro, resultado)
-    print(json.dumps(asdict(resultado), ensure_ascii=False, indent=2, sort_keys=True))
-    return 0
+        # Se informa junto al resultado si el historial quedó realmente escrito:
+        # quien lea la salida no debería tener que suponerlo.
+        salida["registro_persistido"] = registrar_en_historial(opciones.registro, resultado)
+    print(json.dumps(salida, ensure_ascii=False, indent=2, sort_keys=True))
+    return resultado.exit_code
+
+
+def resultado_de_falla(
+    operador: OperadorHost, comando: str, error: Exception
+) -> ResultadoOperacion:
+    """Completa el resultado que hay que registrar cuando la operación falló.
+
+    Si la operación llegó a construir su resultado, se lo reutiliza: conserva el
+    estado inicial, las acciones ya ejecutadas, la evidencia pública y el
+    desenlace del rollback. Si falló antes de llegar a construirlo —por ejemplo
+    porque otra operación tenía el lock— se arma uno mínimo, porque incluso ese
+    intento fallido merece quedar en el historial.
+    """
+
+    resultado = operador.ultimo_resultado
+    if resultado is None:
+        resultado = ResultadoOperacion(
+            operacion=comando,
+            estado_inicial="DESCONOCIDO",
+            estado_final="DESCONOCIDO",
+            sha_objetivo=None,
+            target_previo=None,
+            target_final=None,
+            muto=False,
+            mensaje="",
+            timestamp=marca_temporal_local(),
+        )
+    resultado.estado = ESTADO_FALLA
+    resultado.exit_code = 1
+    resultado.error = str(error)
+    if not resultado.mensaje:
+        resultado.mensaje = f"La operación {resultado.operacion} falló y no se completó."
+    return resultado
 
 
 if __name__ == "__main__":

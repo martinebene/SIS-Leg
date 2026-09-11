@@ -19,6 +19,7 @@ lugar de ejecutarse.
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -27,6 +28,7 @@ import pytest
 
 from deploy.herramienta_despliegue import ResultadoComando
 from deploy.instalador_host import (
+    ACCION_AJUSTAR_METADATA,
     ACCION_CREAR,
     ACCION_REEMPLAZAR,
     ACCION_SIN_CAMBIO,
@@ -78,12 +80,27 @@ def crear_release(tmp_path: Path) -> Path:
     return release
 
 
-def crear_instalador(tmp_path: Path) -> tuple[InstaladorHost, EjecutorChownFalso, Path]:
-    """Arma el aplicador sobre un host simulado y devuelve sus piezas."""
+def crear_instalador(
+    tmp_path: Path,
+    *,
+    uids: dict[str, int] | None = None,
+    gids: dict[str, int] | None = None,
+) -> tuple[InstaladorHost, EjecutorChownFalso, Path]:
+    """Arma el aplicador sobre un host simulado y devuelve sus piezas.
+
+    Los identificadores de usuario y grupo se inyectan porque la suite no corre
+    como root ni tiene las cuentas del host institucional. Por defecto, tanto
+    ``root`` como ``operador`` resuelven al usuario que ejecuta las pruebas: así
+    los archivos que el aplicador escribe quedan, en la simulación, con el
+    propietario declarado, y la idempotencia puede demostrarse de verdad. Los
+    escenarios de metadata divergente pasan mapas distintos.
+    """
 
     release = crear_release(tmp_path)
     ejecutor = EjecutorChownFalso()
     home = tmp_path / "home/operador"
+    tabla_uid = uids if uids is not None else {"root": os.getuid(), "operador": os.getuid()}
+    tabla_gid = gids if gids is not None else {"root": os.getgid(), "operador": os.getgid()}
     instalador = InstaladorHost(
         release,
         raiz_respaldos=tmp_path / "respaldos",
@@ -92,6 +109,8 @@ def crear_instalador(tmp_path: Path) -> tuple[InstaladorHost, EjecutorChownFalso
         directorio_binarios=tmp_path / "usr/local/bin",
         ejecutor=ejecutor,
         reloj=lambda: time.gmtime(0),
+        resolutor_uid=tabla_uid.get,
+        resolutor_gid=tabla_gid.get,
     )
     return instalador, ejecutor, home
 
@@ -173,10 +192,17 @@ def test_un_wrapper_existente_se_respalda_antes_de_reemplazarse(tmp_path: Path) 
 
 
 def test_aplicar_dos_veces_no_reescribe_lo_que_ya_esta_igual(tmp_path: Path) -> None:
-    """Idempotencia: la segunda aplicación no toca nada ni genera respaldos."""
+    """Idempotencia: la segunda aplicación no toca nada ni genera respaldos.
 
-    instalador, _, _ = crear_instalador(tmp_path)
+    La idempotencia sólo puede declararse cuando coinciden las dos cosas,
+    contenido y metadata. Acá las dos coinciden: el aplicador escribió los
+    archivos y los identificadores declarados resuelven al usuario que corre la
+    suite, así que no queda nada por corregir.
+    """
+
+    instalador, ejecutor, _ = crear_instalador(tmp_path)
     instalador.aplicar(confirmado=True)
+    ejecutor.llamadas.clear()
 
     plan = instalador.planificar()
     assert [entrada.accion for entrada in plan] == [ACCION_SIN_CAMBIO] * 4
@@ -184,7 +210,88 @@ def test_aplicar_dos_veces_no_reescribe_lo_que_ya_esta_igual(tmp_path: Path) -> 
     resultado = instalador.aplicar(confirmado=True)
     assert resultado.instalados == ()
     assert resultado.respaldados == ()
+    assert resultado.metadata_ajustada == ()
     assert len(resultado.sin_cambio) == 4
+    assert ejecutor.llamadas == []
+
+
+def test_bytes_iguales_con_modo_inseguro_no_se_declaran_sin_cambio(tmp_path: Path) -> None:
+    """El contenido correcto con permisos incorrectos sigue siendo una instalación mala.
+
+    Es el escenario que vuelve peligrosa la comparación por contenido a secas:
+    ``sisleg-operacion`` es la entrada privilegiada del host, así que dejarla
+    escribible por el usuario operador equivaldría a regalar la ejecución
+    privilegiada, aunque el texto del archivo sea exactamente el publicado.
+    """
+
+    instalador, ejecutor, _ = crear_instalador(tmp_path)
+    instalador.aplicar(confirmado=True)
+    entrada_privilegiada = tmp_path / "usr/local/bin/sisleg-operacion"
+    os.chmod(entrada_privilegiada, 0o777)
+    ejecutor.llamadas.clear()
+
+    plan = instalador.planificar()
+    entrada = next(entrada for entrada in plan if entrada.destino == str(entrada_privilegiada))
+    assert entrada.accion == ACCION_AJUSTAR_METADATA
+    assert "0777" in entrada.motivo
+
+    resultado = instalador.aplicar(confirmado=True)
+
+    assert resultado.metadata_ajustada == (str(entrada_privilegiada),)
+    assert resultado.instalados == ()
+    assert resultado.respaldados == ()
+    assert oct(entrada_privilegiada.stat().st_mode & 0o777) == "0o755"
+    assert [llamada[2] for llamada in ejecutor.llamadas] == ["root:root"]
+
+
+def test_bytes_iguales_con_propietario_distinto_no_se_declaran_sin_cambio(
+    tmp_path: Path,
+) -> None:
+    """Un UID o un GID que no son los declarados también exigen corrección."""
+
+    instalador, ejecutor, home = crear_instalador(tmp_path)
+    instalador.aplicar(confirmado=True)
+    ejecutor.llamadas.clear()
+
+    # Se reconstruye el aplicador declarando identidades que el host simulado no
+    # tiene: es la forma de reproducir, sin privilegios, un archivo cuyo dueño
+    # quedó distinto del declarado.
+    otro_uid = os.getuid() + 1
+    otro_gid = os.getgid() + 1
+    instalador, ejecutor, home = crear_instalador(
+        tmp_path,
+        uids={"root": otro_uid, "operador": otro_uid},
+        gids={"root": otro_gid, "operador": otro_gid},
+    )
+
+    plan = instalador.planificar()
+
+    assert [entrada.accion for entrada in plan] == [ACCION_AJUSTAR_METADATA] * 4
+    assert all("UID" in entrada.motivo and "GID" in entrada.motivo for entrada in plan)
+
+    resultado = instalador.aplicar(confirmado=True)
+
+    assert len(resultado.metadata_ajustada) == 4
+    assert resultado.instalados == ()
+    assert resultado.respaldados == ()
+    assert len(ejecutor.llamadas) == 4
+    assert all(llamada[1] == "--no-dereference" for llamada in ejecutor.llamadas)
+    for nombre in ("actualizar-sisleg.sh", "control-cambiar-sisleg.sh"):
+        assert (home / ".local/bin" / nombre).is_file()
+
+
+def test_un_propietario_que_no_se_puede_resolver_no_se_da_por_bueno(tmp_path: Path) -> None:
+    """Sin poder demostrar el dueño declarado, el aplicador corrige en vez de suponer."""
+
+    instalador, _, _ = crear_instalador(tmp_path)
+    instalador.aplicar(confirmado=True)
+
+    instalador, _, _ = crear_instalador(tmp_path, uids={}, gids={})
+
+    plan = instalador.planificar()
+
+    assert [entrada.accion for entrada in plan] == [ACCION_AJUSTAR_METADATA] * 4
+    assert all("no se pudo resolver" in entrada.motivo for entrada in plan)
 
 
 def test_un_destino_que_es_enlace_simbolico_se_rechaza(tmp_path: Path) -> None:

@@ -35,9 +35,11 @@ sin escribir un solo byte. Aplicar exige una confirmación explícita.
 from __future__ import annotations
 
 import argparse
+import grp
 import hashlib
 import json
 import os
+import pwd
 import stat
 import sys
 import time
@@ -68,6 +70,34 @@ NOMBRE_ENTRADA_PRIVILEGIADA = "sisleg-operacion"
 ACCION_CREAR = "CREAR"
 ACCION_REEMPLAZAR = "REEMPLAZAR"
 ACCION_SIN_CAMBIO = "SIN_CAMBIO"
+# Corrige propietario y permisos sin reescribir el contenido. Existe porque un
+# archivo con los bytes correctos pero con el modo o el dueño equivocados no
+# está bien instalado: la entrada privilegiada del host debe ser inescribible
+# para el usuario operador, y eso es una propiedad del archivo, no de su texto.
+ACCION_AJUSTAR_METADATA = "AJUSTAR_METADATA"
+
+
+def uid_de_usuario(usuario: str) -> int | None:
+    """UID declarado por el sistema, o ``None`` si ese usuario no existe acá.
+
+    Devolver ``None`` en lugar de fallar permite planificar sobre una máquina
+    que no tiene todavía las cuentas institucionales —por ejemplo al revisar el
+    plan antes de aplicarlo— sin inventar un propietario.
+    """
+
+    try:
+        return pwd.getpwnam(usuario).pw_uid
+    except KeyError:
+        return None
+
+
+def gid_de_grupo(grupo: str) -> int | None:
+    """GID declarado por el sistema, o ``None`` si ese grupo no existe acá."""
+
+    try:
+        return grp.getgrnam(grupo).gr_gid
+    except KeyError:
+        return None
 
 
 class ErrorInstaladorHost(RuntimeError):
@@ -134,12 +164,19 @@ class EntradaPlanInstalacion:
 
 @dataclass(frozen=True, slots=True)
 class ResultadoInstalacion:
-    """Qué se instaló realmente y dónde quedaron los respaldos."""
+    """Qué se instaló realmente y dónde quedaron los respaldos.
+
+    ``metadata_ajustada`` lista los destinos cuyo contenido ya era correcto pero
+    cuyo propietario o permisos hubo que corregir. Se informa aparte de
+    ``instalados`` porque son dos hechos distintos y el segundo, en un host
+    productivo, suele ser el síntoma de una intervención manual previa.
+    """
 
     directorio_respaldos: str | None
     instalados: tuple[str, ...]
     respaldados: tuple[str, ...]
     sin_cambio: tuple[str, ...]
+    metadata_ajustada: tuple[str, ...] = ()
 
 
 def sha256_de(ruta: Path) -> str:
@@ -163,6 +200,10 @@ class InstaladorHost:
         ejecutor: frontera auditable para ``chown``.
         reloj: fuente de la marca temporal del directorio de respaldos; se
             inyecta para que las pruebas sean deterministas.
+        resolutor_uid / resolutor_gid: traducen el usuario y el grupo declarados
+            a identificadores numéricos para poder compararlos con lo que hay en
+            disco. Se inyectan porque la suite corre sin las cuentas del host
+            institucional y sin privilegios para crearlas.
 
     Todo lo que el aplicador toca está declarado en :meth:`componentes`. No hay
     escritura posible fuera de esa lista, y la suite comprueba explícitamente que
@@ -179,6 +220,8 @@ class InstaladorHost:
         directorio_binarios: Path = DIRECTORIO_BINARIOS_SISTEMA,
         ejecutor: EjecutorComandos | None = None,
         reloj: Callable[[], time.struct_time] = time.gmtime,
+        resolutor_uid: Callable[[str], int | None] = uid_de_usuario,
+        resolutor_gid: Callable[[str], int | None] = gid_de_grupo,
     ) -> None:
         self.release = release
         self.usuario_operador = usuario_operador
@@ -187,6 +230,8 @@ class InstaladorHost:
         self.raiz_respaldos = raiz_respaldos or (home_operador / "sisleg-respaldos-wrappers")
         self.ejecutor = ejecutor or EjecutorSubprocess()
         self.reloj = reloj
+        self.resolutor_uid = resolutor_uid
+        self.resolutor_gid = resolutor_gid
 
     def componentes(self) -> tuple[ComponenteInstalable, ...]:
         """Declara el conjunto completo y cerrado de archivos a instalar.
@@ -268,6 +313,49 @@ class InstaladorHost:
             )
         return origen
 
+    def _diferencias_de_metadata(
+        self, componente: ComponenteInstalable, inventario: EntradaInventario
+    ) -> list[str]:
+        """Enumera en castellano qué parte de la metadata no es la declarada.
+
+        Resultado: lista vacía cuando modo, usuario y grupo son demostrablemente
+        los correctos; en cualquier otro caso, una descripción por diferencia.
+
+        Un propietario que no se puede resolver cuenta como diferencia y no como
+        coincidencia. La razón es la de siempre en este módulo: no se declara
+        correcto lo que no se pudo demostrar. Aplicar ``chown`` y ``chmod`` de
+        más es inocuo; dar por bueno un binario privilegiado con el dueño
+        equivocado, no.
+        """
+
+        diferencias: list[str] = []
+        modo_declarado = f"{componente.modo:04o}"
+        if inventario.modo != modo_declarado:
+            diferencias.append(f"modo {inventario.modo} en lugar de {modo_declarado}")
+
+        uid_declarado = self.resolutor_uid(componente.usuario)
+        if uid_declarado is None:
+            diferencias.append(
+                f"no se pudo resolver el usuario declarado {componente.usuario} para comprobar "
+                "el propietario"
+            )
+        elif inventario.usuario_uid != uid_declarado:
+            diferencias.append(
+                f"UID {inventario.usuario_uid} en lugar de {uid_declarado} ({componente.usuario})"
+            )
+
+        gid_declarado = self.resolutor_gid(componente.grupo)
+        if gid_declarado is None:
+            diferencias.append(
+                f"no se pudo resolver el grupo declarado {componente.grupo} para comprobar el "
+                "grupo propietario"
+            )
+        elif inventario.grupo_gid != gid_declarado:
+            diferencias.append(
+                f"GID {inventario.grupo_gid} en lugar de {gid_declarado} ({componente.grupo})"
+            )
+        return diferencias
+
     def planificar(self) -> tuple[EntradaPlanInstalacion, ...]:
         """Calcula el plan completo sin escribir absolutamente nada.
 
@@ -277,6 +365,11 @@ class InstaladorHost:
         Es el modo que WP-101B debe ejecutar primero sobre el host real: permite
         comparar el estado instalado hoy contra lo que preparó WP-101A antes de
         pedir ninguna autorización de escritura.
+
+        Un destino sólo se declara ``SIN_CAMBIO`` cuando coinciden **las dos**
+        cosas: el contenido y la metadata declarada. Que los bytes sean los
+        correctos no alcanza, porque el permiso y el propietario son parte de lo
+        que hace segura a la entrada privilegiada del host.
         """
 
         marca = self._marca_temporal()
@@ -293,15 +386,27 @@ class InstaladorHost:
             elif not inventario.existe:
                 accion = ACCION_CREAR
                 motivo = f"{componente.destino} no existe y se creará desde la release."
-            elif inventario.sha256 == sha256_de(origen):
-                accion = ACCION_SIN_CAMBIO
-                motivo = f"{componente.destino} ya contiene exactamente la versión de la release."
-            else:
+            elif inventario.sha256 != sha256_de(origen):
                 accion = ACCION_REEMPLAZAR
                 motivo = (
                     f"{componente.destino} existe con otro contenido; se respaldará antes de "
                     "reemplazarlo."
                 )
+            else:
+                diferencias = self._diferencias_de_metadata(componente, inventario)
+                if diferencias:
+                    accion = ACCION_AJUSTAR_METADATA
+                    motivo = (
+                        f"{componente.destino} ya contiene la versión de la release, pero su "
+                        f"metadata no es la declarada: {'; '.join(diferencias)}. Se corregirán "
+                        "permisos y propietario sin reescribir el contenido."
+                    )
+                else:
+                    accion = ACCION_SIN_CAMBIO
+                    motivo = (
+                        f"{componente.destino} ya contiene exactamente la versión de la release, "
+                        "con el propietario y los permisos declarados."
+                    )
             plan.append(
                 EntradaPlanInstalacion(
                     componente=componente.origen_en_release,
@@ -336,11 +441,13 @@ class InstaladorHost:
                 productivo requiere una decisión consciente y una compuerta
                 humana previa.
 
-        Resultado: :class:`ResultadoInstalacion` con lo instalado, lo respaldado
-        y lo que ya estaba igual.
+        Resultado: :class:`ResultadoInstalacion` con lo instalado, lo respaldado,
+        lo que sólo necesitó corrección de metadata y lo que ya estaba igual.
 
         Efectos laterales: crea el directorio de respaldos, copia los archivos
-        de forma atómica y fija modo y propietario declarados.
+        de forma atómica y fija modo y propietario declarados. Sobre un destino
+        cuyo contenido ya era el de la release pero cuya metadata no lo era,
+        corrige permisos y propietario sin reescribir el archivo.
 
         Errores:
             ErrorInstaladorHost si falta confirmación, si algún destino es un
@@ -365,6 +472,7 @@ class InstaladorHost:
         instalados: list[str] = []
         respaldados: list[str] = []
         sin_cambio: list[str] = []
+        metadata_ajustada: list[str] = []
 
         # Compuerta previa: se rechazan **todos** los destinos inválidos antes de
         # escribir el primero. Descubrir un enlace simbólico a mitad de la
@@ -380,6 +488,12 @@ class InstaladorHost:
             if entrada.accion == ACCION_SIN_CAMBIO:
                 sin_cambio.append(str(componente.destino))
                 continue
+            if entrada.accion == ACCION_AJUSTAR_METADATA:
+                # No se respalda: el contenido ya es el de la release, así que la
+                # copia de seguridad sería idéntica al archivo que va a quedar.
+                self._aplicar_metadata(componente)
+                metadata_ajustada.append(str(componente.destino))
+                continue
             if entrada.accion == ACCION_REEMPLAZAR:
                 directorio_respaldos.mkdir(parents=True, exist_ok=True)
                 respaldo = directorio_respaldos / componente.destino.name
@@ -393,6 +507,32 @@ class InstaladorHost:
             instalados=tuple(instalados),
             respaldados=tuple(respaldados),
             sin_cambio=tuple(sin_cambio),
+            metadata_ajustada=tuple(metadata_ajustada),
+        )
+
+    def _aplicar_metadata(self, componente: ComponenteInstalable) -> None:
+        """Fija modo y propietario declarados sobre un destino que ya existe.
+
+        Se usa tanto al terminar una instalación como para corregir un archivo
+        cuyo contenido ya era correcto. El ``chown`` pasa por el ejecutor
+        auditable con ``--no-dereference`` para que nunca pueda aplicar
+        privilegios a través de un enlace.
+        """
+
+        destino = componente.destino
+        try:
+            os.chmod(destino, componente.modo)
+        except OSError as error:
+            raise ErrorInstaladorHost(
+                f"No se pudieron fijar los permisos de {destino}: {error}"
+            ) from error
+        self.ejecutor.ejecutar(
+            [
+                "chown",
+                "--no-dereference",
+                f"{componente.usuario}:{componente.grupo}",
+                str(destino),
+            ]
         )
 
     def _instalar_atomico(self, origen: Path, componente: ComponenteInstalable) -> None:
@@ -415,14 +555,10 @@ class InstaladorHost:
             raise ErrorInstaladorHost(f"No se pudo instalar {destino}: {error}") from error
         finally:
             temporal.unlink(missing_ok=True)
-        self.ejecutor.ejecutar(
-            [
-                "chown",
-                "--no-dereference",
-                f"{componente.usuario}:{componente.grupo}",
-                str(destino),
-            ]
-        )
+        # Se vuelve a fijar la metadata sobre el destino final y no sólo sobre el
+        # temporal: así queda un único camino que deja modo y propietario
+        # exactos, compartido con la corrección de metadata.
+        self._aplicar_metadata(componente)
 
 
 def plan_como_json(plan: Sequence[EntradaPlanInstalacion]) -> list[dict[str, object]]:

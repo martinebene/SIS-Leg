@@ -1,5 +1,9 @@
 """Fixtures y ayudas compartidas para las pruebas de configuración y padrón (WP-003).
 
+Desde WP-101A centraliza además la construcción de ``release.json`` de fantasía,
+que varias suites de despliegue necesitan para materializar releases preparadas
+capaces de demostrar su identidad de árbol.
+
 Este archivo centraliza tres cosas que los dos archivos de prueba repiten:
 
 - el texto del ``system.toml`` canónico y las líneas que los tests reemplazan
@@ -15,7 +19,10 @@ persona real (restricción del WP-003 sobre fixtures versionados).
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sis_leg_backend.configuracion.cargar_configuracion import cargar_configuracion_sistema
@@ -106,6 +113,85 @@ NOMBRES_FANTASIA: tuple[tuple[str, str], ...] = (
     ("Laura", "Pereyra"),
     ("Marcos", "Torres"),
 )
+
+
+def manifest_release_de_prueba(sha_commit: str, sha_arbol: str) -> dict[str, Any]:
+    """Arma un ``release.json`` canónico para una release de fantasía (WP-101A).
+
+    Entradas:
+        sha_commit: commit que la release dice representar; debe coincidir con
+            el nombre del directorio ``releases/<SHA>``.
+        sha_arbol: árbol Git que la release dice representar.
+
+    Resultado: el manifest completo, con la forma exacta que exige
+    ``deploy.herramienta_despliegue.validar_manifest``.
+
+    ¿Por qué vive acá? Porque desde WP-101A la identidad de una release
+    preparada se demuestra comparando el marcador contra su ``release.json``, y
+    varias suites necesitan materializar releases de fantasía que superen esa
+    comprobación. Tenerlo en un solo lugar evita que tres copias del mismo
+    manifest se desincronicen del validador canónico.
+
+    Los checksums del inventario son deterministas y **deliberadamente
+    ficticios**: se derivan del nombre de cada ruta. El validador canónico no
+    mira el filesystem al leer un manifest, así que no hace falta fabricar
+    archivos reales para las rutas inventariadas.
+    """
+
+    rutas_inventariadas = (
+        "app/pyproject.toml",
+        "app/uv.lock",
+        "app/apps/backend/pyproject.toml",
+        "app/services/device-bridge/pyproject.toml",
+        "web/moderacion/index.html",
+        "web/recinto/index.html",
+        "web/simulador/index.html",
+        "web/tecnico/index.html",
+        "web/zocalo/index.html",
+        "web/manual/index.html",
+        "deploy/systemd/sis-leg-backend.service",
+        "deploy/systemd/sis-leg-device-bridge.service",
+        "deploy/nginx/sis-leg.conf",
+        "deploy/herramienta_despliegue.py",
+        "deploy/validar_configuracion.py",
+        "deploy/contrato_configuracion.json",
+    )
+    return {
+        "formato": "sis-leg-release",
+        "version_formato": 1,
+        "commit_sha": sha_commit,
+        "tree_sha": sha_arbol,
+        "python": "3.14",
+        "spas": {
+            "moderacion": "web/moderacion/index.html",
+            "recinto": "web/recinto/index.html",
+            "simulador": "web/simulador/index.html",
+            "tecnico": "web/tecnico/index.html",
+            "zocalo": "web/zocalo/index.html",
+        },
+        "manual": "web/manual/index.html",
+        "paquetes_python": ["sis-leg-backend", "sis-leg-device-bridge"],
+        "archivos": [
+            {
+                "ruta": ruta,
+                "sha256": hashlib.sha256(ruta.encode("utf-8")).hexdigest(),
+                "tamano": len(ruta),
+            }
+            for ruta in rutas_inventariadas
+        ],
+    }
+
+
+def escribir_release_json_de_prueba(release: Path, sha_commit: str, sha_arbol: str) -> Path:
+    """Deja el ``release.json`` canónico en la raíz de una release de fantasía."""
+
+    destino = release / "release.json"
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(
+        json.dumps(manifest_release_de_prueba(sha_commit, sha_arbol), sort_keys=True),
+        encoding="utf-8",
+    )
+    return destino
 
 
 @pytest.fixture

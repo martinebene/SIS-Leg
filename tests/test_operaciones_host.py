@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import escribir_release_json_de_prueba
 
 from deploy.actualizador_publico import (
     ErrorActualizadorPublico,
@@ -59,7 +60,13 @@ from deploy.herramienta_despliegue import (
     GestorDespliegue,
     ResultadoComando,
 )
-from deploy.operaciones_host import ErrorOperacionHost, OperadorHost, PlanOperacion
+from deploy.operaciones_host import (
+    ErrorOperacionHost,
+    OperadorHost,
+    PlanOperacion,
+    registrar_en_historial,
+    resultado_de_falla,
+)
 from scripts.empaquetar_produccion import construir_paquete
 
 RAIZ_REPOSITORIO = Path(__file__).resolve().parents[1]
@@ -67,6 +74,11 @@ RAIZ_REPOSITORIO = Path(__file__).resolve().parents[1]
 SHA_VIEJO = "a" * 40
 SHA_NUEVO = "b" * 40
 SHA_ARBOL = "c" * 40
+# Tercera cabeza de ``main``: representa un avance ocurrido **mientras** corría
+# una actualización que ya había congelado ``SHA_NUEVO``.
+SHA_MAS_NUEVO = "d" * 40
+# Hora fija que inyecta la suite para que el historial sea comparable.
+MARCA_TEMPORAL_FIJA = "2026-09-11T20:00:00-03:00"
 
 UNIDADES_LEGACY = (SERVICIO_BACKEND_LEGACY, SERVICIO_BRIDGE_LEGACY)
 UNIDADES_SISLEG = (SERVICIO_BACKEND, SERVICIO_BRIDGE)
@@ -208,7 +220,13 @@ class HostSimulado:
         self.habilitadas = set(habilitadas)
         self.llamadas: list[list[str]] = []
         self.historia_bridges: list[tuple[bool, bool]] = []
-        self.fallar_en: str | None = None
+        # Fragmentos de comando que deben fallar. Es una colección y no un único
+        # patrón porque las pruebas de doble falla necesitan romper primero la
+        # vuelta al sistema anterior y después la restauración de SIS-Leg.
+        self.fallas: tuple[str, ...] = ()
+        # Unidades cuyo ``disable`` se acepta pero no surte efecto. Reproduce el
+        # caso peligroso: systemd responde sin error y la unidad sigue habilitada.
+        self.disable_inefectivo: frozenset[str] = frozenset()
 
     def _registrar_bridges(self) -> None:
         self.historia_bridges.append(
@@ -226,10 +244,12 @@ class HostSimulado:
         args = [str(valor) for valor in argumentos]
         self.llamadas.append(args)
 
-        if self.fallar_en is not None and self.fallar_en in " ".join(args):
-            if comprobar:
-                raise ErrorDespliegue(f"Falla simulada en {self.fallar_en}")
-            return ResultadoComando(1, "", "falla simulada")
+        linea = " ".join(args)
+        for patron in self.fallas:
+            if patron in linea:
+                if comprobar:
+                    raise ErrorDespliegue(f"Falla simulada en {patron}")
+                return ResultadoComando(1, "", "falla simulada")
 
         # Sonda de versión del Python base que usa ``preparar``.
         if len(args) >= 3 and args[1] == "-c" and "sys.version_info" in args[2]:
@@ -270,7 +290,7 @@ class HostSimulado:
                 self.activas.discard(unidad)
             elif accion == "enable":
                 self.habilitadas.add(unidad)
-            elif accion == "disable":
+            elif accion == "disable" and unidad not in self.disable_inefectivo:
                 self.habilitadas.discard(unidad)
         self._registrar_bridges()
         return ResultadoComando(0)
@@ -312,7 +332,14 @@ def crear_release_preparada(gestor: GestorDespliegue, sha: str) -> Path:
         (RAIZ_REPOSITORIO / RUTA_CONTRATO_EN_RELEASE).read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    (release / MARCADOR_PREPARADA).write_text(json.dumps({"commit_sha": sha}), encoding="utf-8")
+    # Identidad de árbol (WP-101A I002): el marcador y el ``release.json`` deben
+    # declarar el mismo árbol o la release no puede activarse ni fijarse como
+    # objetivo. Las releases de fantasía tienen que cumplirlo igual que las
+    # reales, porque si no la comprobación no estaría probada por nadie.
+    escribir_release_json_de_prueba(release, sha, SHA_ARBOL)
+    (release / MARCADOR_PREPARADA).write_text(
+        json.dumps({"commit_sha": sha, "tree_sha": SHA_ARBOL}), encoding="utf-8"
+    )
     return release
 
 
@@ -435,12 +462,22 @@ class EscenarioHost:
         self,
         *,
         sha_publico: str | None = None,
+        shas_publicos: Sequence[str] | None = None,
         release: ReleaseDescargada | None = None,
         error_canal: Exception | None = None,
     ) -> OperadorHost:
-        """Construye el operador con el canal público reemplazado por un doble."""
+        """Construye el operador con el canal público reemplazado por un doble.
+
+        ``shas_publicos`` entrega una respuesta distinta por consulta: sirve para
+        reproducir que ``main`` avanzó mientras la actualización estaba en curso.
+        La última respuesta se repite si alguien vuelve a preguntar.
+        """
+
+        respuestas = list(shas_publicos) if shas_publicos is not None else []
 
         def resolver() -> str:
+            if respuestas:
+                return respuestas.pop(0) if len(respuestas) > 1 else respuestas[0]
             if sha_publico is None:
                 raise ErrorActualizadorPublico("no hay versión publicada")
             return sha_publico
@@ -461,6 +498,7 @@ class EscenarioHost:
             obtener_release=obtener,
             preflight=self.preflight_simulado,
             durmiente=lambda segundos: None,
+            reloj=lambda: MARCA_TEMPORAL_FIJA,
             ruta_lock=self.tmp_path / "operacion.lock",
             ruta_vhost_legacy=self.ruta_vhost_legacy,
             ruta_vhost_legacy_disponible=self.ruta_vhost_disponible,
@@ -711,7 +749,7 @@ def test_actualizar_revierte_a_la_release_anterior_si_falla_la_activacion(
     operador = escenario.operador(
         sha_publico=SHA_NUEVO, release=release_descargada(paquete, sidecar, SHA_NUEVO)
     )
-    escenario.host.fallar_en = "restart sis-leg-device-bridge.service"
+    escenario.host.fallas = ("restart sis-leg-device-bridge.service",)
 
     with pytest.raises(ErrorOperacionHost, match="restauró la release anterior"):
         operador.actualizar()
@@ -929,7 +967,7 @@ def test_cambiar_a_sisleg_restaura_el_sistema_anterior_si_falla_la_activacion(
 
     escenario = escenario_legacy(tmp_path)
     operador = escenario.operador()
-    escenario.host.fallar_en = f"restart {SERVICIO_BACKEND}"
+    escenario.host.fallas = (f"restart {SERVICIO_BACKEND}",)
 
     with pytest.raises(ErrorOperacionHost, match="se restauró el sistema anterior"):
         operador.cambiar_a_sis_leg()
@@ -1025,6 +1063,348 @@ def test_la_release_preparada_incluye_el_zocalo_como_superficie_verificable(
 
     assert (escenario.gestor.releases / SHA_NUEVO / "web/zocalo/index.html").is_file()
     assert URL_NGINX_ZOCALO in SUPERFICIES_NGINX
+
+
+# ---------------------------------------------------------------------------
+# Revalidación de main durante la actualización
+# ---------------------------------------------------------------------------
+
+
+def test_actualizar_aborta_si_main_avanza_con_legacy_activo(tmp_path: Path) -> None:
+    """Una release pública inmutable sigue descargándose aunque ``main`` avance.
+
+    Por eso no alcanza con confiar en que el canal público fallaría: hay que
+    volver a preguntar por la cabeza de ``main`` antes de fijar el objetivo. Si
+    avanzó, la autorización con la que empezó la operación está vencida.
+    """
+
+    escenario = escenario_legacy(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        shas_publicos=(SHA_NUEVO, SHA_MAS_NUEVO),
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+    )
+
+    with pytest.raises(ErrorOperacionHost, match="main avanzó"):
+        operador.actualizar()
+
+    # El objetivo y el sistema en servicio quedan exactamente como estaban.
+    assert leer_target_release(escenario.raiz) == SHA_VIEJO
+    assert SERVICIO_BACKEND_LEGACY in escenario.host.activas
+    assert not escenario.gestor.current.exists()
+    # La release preparada se conserva: preparar es aditivo y sirve de caché y
+    # de diagnóstico para el próximo intento.
+    assert (escenario.gestor.releases / SHA_NUEVO / MARCADOR_PREPARADA).is_file()
+
+
+def test_actualizar_aborta_si_main_avanza_con_sisleg_activo(tmp_path: Path) -> None:
+    """Con SIS-Leg en servicio, la carrera tampoco puede activar la release vencida."""
+
+    escenario = escenario_sisleg(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        shas_publicos=(SHA_NUEVO, SHA_MAS_NUEVO),
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+    )
+
+    with pytest.raises(ErrorOperacionHost, match="main avanzó"):
+        operador.actualizar()
+
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert leer_target_release(escenario.raiz) == SHA_VIEJO
+    assert escenario.config_intacta()
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+
+
+# ---------------------------------------------------------------------------
+# disable-first verificable
+# ---------------------------------------------------------------------------
+
+
+def test_cambiar_a_sisleg_aborta_si_el_disable_del_sistema_anterior_no_surte_efecto(
+    tmp_path: Path,
+) -> None:
+    """Un ``disable`` que responde sin error pero no deshabilita detiene la conmutación.
+
+    Se aborta **antes** de detener nada: en ese punto el host sigue entero, así
+    que no hace falta ningún rollback y el recinto ni se entera.
+    """
+
+    escenario = escenario_legacy(tmp_path)
+    escenario.host.disable_inefectivo = frozenset({SERVICIO_BRIDGE_LEGACY})
+    operador = escenario.operador()
+
+    with pytest.raises(ErrorOperacionHost, match="disable-first"):
+        operador.cambiar_a_sis_leg()
+
+    # El host queda exactamente como estaba: ningún servicio detenido y la
+    # habilitación previa restaurada.
+    assert escenario.inspector.clasificar() == ESTABLE_LEGACY
+    assert SERVICIO_BACKEND_LEGACY in escenario.host.activas
+    assert SERVICIO_BRIDGE_LEGACY in escenario.host.activas
+    assert SERVICIO_BACKEND_LEGACY in escenario.host.habilitadas
+    assert escenario.ruta_vhost_legacy.is_symlink()
+    assert not escenario.gestor.current.exists()
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+
+
+def test_cambiar_a_legacy_aborta_si_el_disable_de_sisleg_no_surte_efecto(
+    tmp_path: Path,
+) -> None:
+    """La misma exigencia gobierna la retirada de SIS-Leg."""
+
+    escenario = escenario_sisleg(tmp_path)
+    escenario.host.disable_inefectivo = frozenset({SERVICIO_BACKEND})
+    operador = escenario.operador()
+
+    with pytest.raises(ErrorOperacionHost, match="disable-first"):
+        operador.cambiar_a_legacy()
+
+    assert escenario.inspector.clasificar() == ESTABLE_SISLEG
+    assert SERVICIO_BACKEND in escenario.host.activas
+    assert SERVICIO_BRIDGE in escenario.host.activas
+    assert SERVICIO_BRIDGE in escenario.host.habilitadas
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+
+
+# ---------------------------------------------------------------------------
+# Salida segura hacia el sistema anterior
+# ---------------------------------------------------------------------------
+
+
+def corromper_target(escenario: EscenarioHost) -> None:
+    """Deja ``target-release`` ilegible, como lo dejaría una escritura a mano."""
+
+    (escenario.raiz / "target-release").write_text("no-es-un-sha\n", encoding="utf-8")
+
+
+def test_cambiar_a_legacy_funciona_aunque_el_target_este_corrupto(tmp_path: Path) -> None:
+    """Volver al sistema anterior es version-agnóstico y no consume el objetivo.
+
+    Un ``target-release`` corrupto es un problema real y se informa, pero no
+    puede impedir la operación de salida segura del host.
+    """
+
+    escenario = escenario_sisleg(tmp_path)
+    corromper_target(escenario)
+    operador = escenario.operador()
+
+    resultado = operador.cambiar_a_legacy()
+
+    assert resultado.estado_final == ESTABLE_LEGACY
+    assert resultado.diagnostico_target is not None
+    assert "SHA de release válido" in resultado.diagnostico_target
+    assert any("target-release ilegible" in accion for accion in resultado.acciones)
+    # El archivo corrupto se conserva tal cual para que alguien lo diagnostique.
+    assert (escenario.raiz / "target-release").read_text(encoding="utf-8") == "no-es-un-sha\n"
+    assert escenario.config_intacta()
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+
+
+def test_cambiar_a_sisleg_sigue_fallando_cerrado_con_un_target_corrupto(
+    tmp_path: Path,
+) -> None:
+    """Lo que **consume** el objetivo no puede tolerarlo corrupto."""
+
+    escenario = escenario_legacy(tmp_path)
+    corromper_target(escenario)
+    operador = escenario.operador()
+
+    with pytest.raises(Exception, match="SHA de release válido"):
+        operador.cambiar_a_sis_leg()
+
+    assert SERVICIO_BACKEND_LEGACY in escenario.host.activas
+    assert escenario.ruta_vhost_legacy.is_symlink()
+
+
+def test_cambiar_a_legacy_restaura_sisleg_si_el_sistema_anterior_no_vuelve(
+    tmp_path: Path,
+) -> None:
+    """Fail-safe: nunca se pasa de un sistema sano a un host inerte.
+
+    Si el sistema anterior no logra volver a servicio después de haber retirado
+    SIS-Leg, se restaura el SIS-Leg que estaba atendiendo el recinto.
+    """
+
+    escenario = escenario_sisleg(tmp_path)
+    operador = escenario.operador()
+    escenario.host.fallas = (f"start {SERVICIO_BACKEND_LEGACY}",)
+
+    with pytest.raises(ErrorOperacionHost, match="se restauró SIS-Leg"):
+        operador.cambiar_a_legacy()
+
+    assert escenario.inspector.clasificar() == ESTABLE_SISLEG
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert SERVICIO_BACKEND in escenario.host.activas
+    assert SERVICIO_BRIDGE in escenario.host.activas
+    assert SERVICIO_BACKEND_LEGACY not in escenario.host.habilitadas
+    assert not escenario.ruta_vhost_legacy.exists()
+    assert escenario.config_intacta()
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "EXITOSO"
+
+
+def test_una_doble_falla_reporta_ambos_errores_y_exige_intervencion_humana(
+    tmp_path: Path,
+) -> None:
+    """Si tampoco se puede restaurar SIS-Leg, no se simula ningún estado bueno."""
+
+    escenario = escenario_sisleg(tmp_path)
+    operador = escenario.operador()
+    escenario.host.fallas = (
+        f"start {SERVICIO_BACKEND_LEGACY}",
+        f"restart {SERVICIO_BACKEND}",
+    )
+
+    with pytest.raises(ErrorOperacionHost, match="intervención humana inmediata") as excepcion:
+        operador.cambiar_a_legacy()
+
+    mensaje = str(excepcion.value)
+    assert SERVICIO_BACKEND_LEGACY in mensaje
+    assert SERVICIO_BACKEND in mensaje
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "FALLIDO"
+    # Ni siquiera en la doble falla se permiten dos bridges a la vez.
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+
+
+# ---------------------------------------------------------------------------
+# Historial operativo
+# ---------------------------------------------------------------------------
+
+
+def leer_historial(ruta: Path) -> list[dict[str, Any]]:
+    """Lee el historial JSON Lines que anexa la CLI."""
+
+    return [json.loads(linea) for linea in ruta.read_text(encoding="utf-8").splitlines()]
+
+
+def test_el_historial_de_una_actualizacion_exitosa_conserva_la_evidencia_publica(
+    tmp_path: Path,
+) -> None:
+    """Timestamp, estado, exit code y trazabilidad del canal público, sin secretos."""
+
+    escenario = escenario_legacy(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        sha_publico=SHA_NUEVO, release=release_descargada(paquete, sidecar, SHA_NUEVO)
+    )
+    historial = tmp_path / "registros/operaciones.jsonl"
+
+    resultado = operador.actualizar()
+    assert registrar_en_historial(historial, resultado) is True
+
+    (registro,) = leer_historial(historial)
+    assert registro["estado"] == "EXITO"
+    assert registro["exit_code"] == 0
+    assert registro["timestamp"] == MARCA_TEMPORAL_FIJA
+    assert registro["estado_inicial"] == ESTABLE_LEGACY
+    assert registro["estado_final"] == ESTABLE_LEGACY
+    assert registro["rollback"] == "NO_APLICA"
+    evidencia = registro["evidencia_publica"]
+    assert evidencia["commit_sha"] == SHA_NUEVO
+    assert evidencia["tree_sha"] == SHA_ARBOL
+    assert evidencia["ci_run_id"] == 1
+    assert evidencia["ci_run_numero"] == 1
+    assert evidencia["ci_run_intento"] == 1
+    assert evidencia["ci_job_id"] == 2
+    assert evidencia["paquete"] == paquete.name
+    assert evidencia["paquete_sha256"] is not None and len(evidencia["paquete_sha256"]) == 64
+    for patron in PATRONES_CREDENCIALES:
+        assert re.search(patron, historial.read_text(encoding="utf-8")) is None
+
+
+def test_el_historial_registra_una_cancelacion(tmp_path: Path) -> None:
+    """«No hice nada porque me dijeron que no» también es evidencia."""
+
+    escenario = escenario_legacy(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        sha_publico=SHA_NUEVO, release=release_descargada(paquete, sidecar, SHA_NUEVO)
+    )
+    historial = tmp_path / "registros/operaciones.jsonl"
+
+    resultado = operador.actualizar(confirmador=lambda plan: False)
+    registrar_en_historial(historial, resultado)
+
+    (registro,) = leer_historial(historial)
+    assert registro["estado"] == "CANCELADA"
+    assert registro["exit_code"] == 0
+    assert registro["muto"] is False
+    assert leer_target_release(escenario.raiz) == SHA_VIEJO
+
+
+def test_el_historial_registra_una_falla_con_su_rollback(tmp_path: Path) -> None:
+    """El caso que la implementación anterior no registraba: la operación que falló."""
+
+    escenario = escenario_sisleg(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        sha_publico=SHA_NUEVO, release=release_descargada(paquete, sidecar, SHA_NUEVO)
+    )
+    escenario.host.fallas = (f"restart {SERVICIO_BRIDGE}",)
+    historial = tmp_path / "registros/operaciones.jsonl"
+
+    with pytest.raises(ErrorOperacionHost) as excepcion:
+        operador.actualizar()
+
+    resultado = resultado_de_falla(operador, "actualizar", excepcion.value)
+    assert registrar_en_historial(historial, resultado) is True
+
+    (registro,) = leer_historial(historial)
+    assert registro["estado"] == "FALLA"
+    assert registro["exit_code"] == 1
+    assert registro["rollback"] == "EXITOSO"
+    assert registro["estado_final"] == ESTABLE_SISLEG
+    assert registro["target_final"] == SHA_VIEJO
+    assert registro["error"]
+    assert registro["evidencia_publica"]["commit_sha"] == SHA_NUEVO
+    assert registro["timestamp"] == MARCA_TEMPORAL_FIJA
+
+
+def test_una_falla_que_ocurre_antes_de_conocer_el_estado_igual_se_registra(
+    tmp_path: Path,
+) -> None:
+    """Incluso un intento que ni siquiera llegó a clasificar el host deja rastro."""
+
+    escenario = escenario_legacy(tmp_path)
+    operador = escenario.operador()
+    historial = tmp_path / "registros/operaciones.jsonl"
+
+    resultado = resultado_de_falla(operador, "actualizar", RuntimeError("lock tomado"))
+    registrar_en_historial(historial, resultado)
+
+    (registro,) = leer_historial(historial)
+    assert registro["estado"] == "FALLA"
+    assert registro["estado_inicial"] == "DESCONOCIDO"
+    assert registro["error"] == "lock tomado"
+    assert registro["exit_code"] == 1
+
+
+def test_un_historial_que_no_se_puede_escribir_no_falsea_la_operacion(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """El registro es importante, pero no es la razón por la que se actualiza el host.
+
+    Una conmutación que dejó el recinto funcionando no puede convertirse en un
+    fracaso porque el archivo de historial no se pudo escribir; y la falla del
+    registro tampoco puede silenciarse.
+    """
+
+    escenario = escenario_legacy(tmp_path)
+    operador = escenario.operador()
+    resultado = operador.cambiar_a_legacy()
+    bloqueo = tmp_path / "bloqueo"
+    bloqueo.write_text("no soy un directorio", encoding="utf-8")
+
+    assert registrar_en_historial(bloqueo / "operaciones.jsonl", resultado) is False
+
+    capturado = capsys.readouterr()
+    assert "no se pudo anexar el historial" in capturado.err
+    assert resultado.estado == "EXITO"
+    assert resultado.exit_code == 0
 
 
 PATRONES_CREDENCIALES = (

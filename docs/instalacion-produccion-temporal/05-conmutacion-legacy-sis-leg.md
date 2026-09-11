@@ -95,10 +95,14 @@ Antes de escribir ese archivo se exige, en este orden:
 4. `readlink -f` resuelve exactamente a esa ruta —sin traversal;
 5. el marcador existe y es un archivo regular;
 6. el marcador parsea como JSON;
-7. `marker.commit_sha == <SHA>`.
+7. `marker.commit_sha == <SHA>`;
+8. `marker.tree_sha` es un árbol Git válido y coincide con el que declara el `release.json` que viajó
+   dentro del paquete público.
 
-Recién entonces se reemplaza atómicamente. Estas siete comprobaciones no estaban completas en la
-primera implementación y fueron una de las correcciones exigidas por la auditoría 5I.
+Recién entonces se reemplaza atómicamente. Las primeras siete comprobaciones no estaban completas en
+la implementación original y fueron una de las correcciones exigidas por la auditoría 5I. La octava
+la agregó el mecanismo versionado de WP-101A: el commit por sí solo no identifica el contenido, y sin
+comparar el árbol una release manipulada después de instalada podía activarse igual.
 
 ## Secuencia Legacy → SIS-Leg
 

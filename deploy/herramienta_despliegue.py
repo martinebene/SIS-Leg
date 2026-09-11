@@ -330,6 +330,84 @@ def inspeccionar_manifest_paquete(paquete: Path, sha_solicitado: str) -> dict[st
     return manifest
 
 
+def leer_manifest_release_preparada(release: Path) -> dict[str, Any]:
+    """Lee y valida el ``release.json`` que quedó dentro de una release extraída.
+
+    Entradas:
+        release: directorio ``releases/<SHA>`` de una release ya preparada.
+
+    Resultado: el manifest completo, validado por :func:`validar_manifest` contra
+    el SHA que nombra al directorio.
+
+    Efectos laterales: ninguno.
+
+    Errores:
+        ErrorDespliegue si el manifest falta, es un enlace, no es JSON legible o
+        no supera la validación canónica.
+
+    ¿Por qué existe? Porque la identidad de una release preparada no puede
+    apoyarse solamente en su marcador: el marcador lo escribe el propio host al
+    terminar de preparar, mientras que ``release.json`` viajó firmado dentro del
+    paquete público. Comparar uno contra otro es lo que permite detectar una
+    release manipulada después de instalada. Se reutiliza exactamente el mismo
+    :func:`validar_manifest` que usan el canal público y la extracción, para que
+    no exista un segundo motor de validación con criterios propios.
+    """
+
+    ruta = release / "release.json"
+    if ruta.is_symlink() or not ruta.is_file():
+        raise ErrorDespliegue(
+            f"La release {release.name} no conserva un release.json regular en su raíz."
+        )
+    try:
+        datos: Any = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ErrorDespliegue(
+            f"El release.json de {release.name} no es JSON legible: {error}"
+        ) from error
+    if not isinstance(datos, dict):
+        raise ErrorDespliegue(f"El release.json de {release.name} debe ser un objeto JSON.")
+    manifest = cast(dict[str, Any], datos)
+    validar_manifest(manifest, release.name)
+    return manifest
+
+
+def validar_identidad_arbol(release: Path, datos_marcador: Mapping[str, Any]) -> str:
+    """Exige que el marcador declare un ``tree_sha`` coherente con ``release.json``.
+
+    Entradas:
+        release: directorio de la release preparada.
+        datos_marcador: contenido ya parseado del marcador de preparación.
+
+    Resultado: el tree SHA demostrado, de 40 hexadecimales.
+
+    Efectos laterales: ninguno.
+
+    Errores:
+        ErrorDespliegue si el marcador no declara un tree SHA válido, si el
+        manifest no supera la validación canónica o si los dos árboles difieren.
+
+    El commit por sí solo no identifica el contenido: dos preparaciones del mismo
+    commit sobre paquetes distintos declararían el mismo ``commit_sha``. El árbol
+    sí identifica el contenido exacto, y por eso WP-101A exige comprobarlo antes
+    de activar una release o de fijarla como objetivo.
+    """
+
+    tree_marcador = datos_marcador.get("tree_sha")
+    if not isinstance(tree_marcador, str) or SHA_RE.fullmatch(tree_marcador) is None:
+        raise ErrorDespliegue(
+            f"El marcador de la release {release.name} no declara un tree SHA Git válido."
+        )
+    manifest = leer_manifest_release_preparada(release)
+    tree_manifest = manifest["tree_sha"]
+    if tree_manifest != tree_marcador:
+        raise ErrorDespliegue(
+            f"El marcador de la release {release.name} declara el árbol {tree_marcador} "
+            f"mientras que su release.json declara {tree_manifest}."
+        )
+    return tree_marcador
+
+
 def extraer_paquete_seguro(paquete: Path, destino: Path, sha_solicitado: str) -> dict[str, Any]:
     """Extrae solo archivos regulares exactos y comprueba su contenido.
 
@@ -632,6 +710,11 @@ class GestorDespliegue:
         if marcador.is_file():
             datos = json.loads(marcador.read_text(encoding="utf-8"))
             if datos.get("commit_sha") == sha:
+                # Reaprovechar una release ya preparada exige demostrar también
+                # su identidad de árbol: el commit no distingue dos contenidos
+                # distintos del mismo SHA, y ésta es la rama que evita repetir la
+                # descarga y la extracción verificada.
+                validar_identidad_arbol(destino, datos)
                 return destino
             raise ErrorDespliegue("La release existente tiene un marcador incompatible.")
         if destino.exists():
@@ -1304,7 +1387,13 @@ class GestorDespliegue:
         self.activar(sha)
 
     def _validar_release_preparada(self, release: Path) -> None:
-        """Exige directorio canónico, marcador y estructura antes de activar."""
+        """Exige directorio canónico, marcador, identidad de árbol y estructura.
+
+        La identidad de árbol se comprueba acá y no sólo al preparar porque una
+        release puede quedar meses en disco entre su preparación y su activación:
+        lo que se activa tiene que seguir siendo, demostrablemente, el mismo
+        contenido publicado.
+        """
 
         try:
             release.resolve().relative_to(self.releases.resolve())
@@ -1316,6 +1405,7 @@ class GestorDespliegue:
         datos = json.loads(marcador.read_text(encoding="utf-8"))
         if datos.get("commit_sha") != release.name:
             raise ErrorDespliegue("El marcador preparado no coincide con el directorio SHA.")
+        validar_identidad_arbol(release, datos)
         self._validar_estructura_release(release)
 
     def estado(self) -> dict[str, Any]:

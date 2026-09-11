@@ -25,7 +25,7 @@ diagnóstico y de exclusión mutua; las mutaciones reales viven en
 ``deploy/herramienta_despliegue.py`` y ``deploy/actualizador_publico.py``.
 
 La única excepción es :func:`escribir_target_release`, que sí escribe un archivo
-—pero sólo después de demostrar, con siete comprobaciones, que el SHA que va a
+—pero sólo después de demostrar, con ocho comprobaciones, que el SHA que va a
 escribir corresponde a una release realmente preparada y validada.
 
 Todas las fronteras privilegiadas (systemd, sockets, filesystem del host) son
@@ -64,6 +64,7 @@ from deploy.herramienta_despliegue import (  # noqa: E402 - raíz preparada arri
     EjecutorSubprocess,
     ErrorDespliegue,
     resolver_enlace_release,
+    validar_identidad_arbol,
     validar_sha,
 )
 
@@ -198,7 +199,18 @@ class EvidenciaEstado:
         puerto_backend_ocupado: alguien escucha en ``:8000``.
         puerto_bridge_ocupado: alguien escucha en ``:8765``.
         release_actual: SHA al que apunta ``current``, o ``None``.
-        target_release: contenido validado de ``target-release``, o ``None``.
+        target_release: contenido validado de ``target-release``, o ``None``
+            cuando no existe **o** cuando existe pero está corrupto.
+        target_release_diagnostico: por qué no se pudo leer el objetivo, cuando
+            el archivo existe pero es inválido. Es ``None`` en el caso normal.
+
+    ¿Por qué el target corrupto no rompe la evidencia? Porque identificar qué
+    sistema está atendiendo el recinto no depende de qué release debería
+    activarse en el futuro. Si un ``target-release`` ilegible impidiera
+    clasificar el host, también impediría la salida segura hacia el sistema
+    anterior, que es justamente la operación que nunca puede quedar bloqueada.
+    El diagnóstico se conserva y se muestra; simplemente no se confunde con un
+    hecho del estado actual.
     """
 
     legacy_backend_activo: bool
@@ -216,6 +228,7 @@ class EvidenciaEstado:
     puerto_bridge_ocupado: bool
     release_actual: str | None
     target_release: str | None
+    target_release_diagnostico: str | None = None
 
 
 def puerto_ocupado(puerto: int, *, tiempo_espera: float = 0.5) -> bool:
@@ -318,6 +331,7 @@ class InspectorEstadoHost:
             # inconsistencia; se registra como «sin release actual» y la
             # clasificación la tratará como estado no operativo.
             actual = None
+        objetivo, diagnostico_objetivo = leer_target_release_tolerante(self.raiz)
         return EvidenciaEstado(
             legacy_backend_activo=self._es_activo(SERVICIO_BACKEND_LEGACY),
             legacy_bridge_activo=self._es_activo(SERVICIO_BRIDGE_LEGACY),
@@ -333,7 +347,8 @@ class InspectorEstadoHost:
             puerto_backend_ocupado=self.sonda_puerto(PUERTO_BACKEND),
             puerto_bridge_ocupado=self.sonda_puerto(PUERTO_BRIDGE_SISLEG),
             release_actual=actual.name if actual is not None else None,
-            target_release=leer_target_release(self.raiz),
+            target_release=objetivo,
+            target_release_diagnostico=diagnostico_objetivo,
         )
 
     # -- clasificación ---------------------------------------------------------
@@ -345,12 +360,25 @@ class InspectorEstadoHost:
         exige que **todo** el conjunto sea coherente, no sólo que el sistema
         esperado esté vivo. Cualquier otra combinación es
         ``ESTADO_INCONSISTENTE``, que no habilita ninguna mutación.
+
+        Un estado estable exige además que el sistema que **no** manda esté
+        deshabilitado, y no solamente apagado. Un host con Legacy en servicio
+        pero con las unidades de SIS-Leg todavía ``enabled`` está a un reinicio
+        de tener los dos sistemas peleando por el mismo puerto y por los mismos
+        numpads: eso es exactamente lo que la regla *disable-first* existe para
+        impedir, así que no puede declararse estable.
         """
 
         datos = evidencia if evidencia is not None else self.evidencia()
 
         sisleg_apagado = not datos.sisleg_backend_activo and not datos.sisleg_bridge_activo
         legacy_apagado = not datos.legacy_backend_activo and not datos.legacy_bridge_activo
+        sisleg_deshabilitado = (
+            not datos.sisleg_backend_habilitado and not datos.sisleg_bridge_habilitado
+        )
+        legacy_deshabilitado = (
+            not datos.legacy_backend_habilitado and not datos.legacy_bridge_habilitado
+        )
 
         if (
             datos.legacy_backend_activo
@@ -358,6 +386,7 @@ class InspectorEstadoHost:
             and datos.legacy_backend_habilitado
             and datos.legacy_bridge_habilitado
             and sisleg_apagado
+            and sisleg_deshabilitado
             and datos.vhost_legacy_publicado
             and not datos.vhost_sisleg_publicado
             and datos.nginx_activo
@@ -372,6 +401,7 @@ class InspectorEstadoHost:
             and datos.sisleg_backend_habilitado
             and datos.sisleg_bridge_habilitado
             and legacy_apagado
+            and legacy_deshabilitado
             and datos.vhost_sisleg_publicado
             and not datos.vhost_legacy_publicado
             and datos.nginx_activo
@@ -390,6 +420,33 @@ class InspectorEstadoHost:
             return INERTE_SEGURO
 
         return ESTADO_INCONSISTENTE
+
+    def exigir_unidades_deshabilitadas(self, unidades: Sequence[str]) -> None:
+        """Demuestra que un ``disable`` previo fue realmente efectivo.
+
+        Entradas:
+            unidades: nombres de unidades de systemd que deberían haber quedado
+                deshabilitadas.
+
+        Efectos laterales: ninguno; sólo consulta ``is-enabled``.
+
+        Errores:
+            ErrorEstadoHost si alguna sigue habilitada.
+
+        Las retiradas ejecutan ``systemctl disable`` sin exigir código de salida
+        cero, porque una unidad enmascarada o ya deshabilitada devuelve códigos
+        distintos según la versión de systemd. Tolerar el código de salida sólo
+        es aceptable si después se comprueba el efecto: sin esta comprobación,
+        un ``disable`` que falló en silencio dejaría el sistema saliente listo
+        para volver a arrancar en el próximo reinicio.
+        """
+
+        habilitadas = [unidad for unidad in unidades if self._es_habilitado(unidad)]
+        if habilitadas:
+            raise ErrorEstadoHost(
+                "Estas unidades debían quedar deshabilitadas y siguen habilitadas: "
+                f"{', '.join(habilitadas)}. Se detiene la operación antes de continuar."
+            )
 
     def exigir_maximo_un_bridge(self) -> None:
         """Falla cerrado si los dos device bridges están activos a la vez.
@@ -476,8 +533,30 @@ def leer_target_release(raiz: Path) -> str | None:
         raise ErrorEstadoHost(f"{ruta} no contiene un SHA de release válido: {error}") from error
 
 
+def leer_target_release_tolerante(raiz: Path) -> tuple[str | None, str | None]:
+    """Lee el objetivo sin convertir un archivo corrupto en un bloqueo.
+
+    Resultado: una tupla ``(sha, diagnostico)``. En el caso normal el
+    diagnóstico es ``None``; si el archivo existe pero es inválido, el SHA es
+    ``None`` y el diagnóstico explica por qué.
+
+    ¿Cuándo usar esta lectura y cuándo la estricta? La estricta
+    (:func:`leer_target_release`) gobierna todo lo que **usa** el objetivo:
+    actualizar y cambiar a SIS-Leg fallan cerrado si no pueden confiar en él.
+    Esta versión tolerante gobierna lo que sólo **informa** sobre él: la
+    evidencia del estado y el regreso al sistema anterior, que son
+    version-agnósticos y no deben depender de un archivo que ni siquiera van a
+    consumir.
+    """
+
+    try:
+        return leer_target_release(raiz), None
+    except ErrorEstadoHost as error:
+        return None, str(error)
+
+
 def validar_release_objetivo(raiz: Path, sha: str) -> Path:
-    """Aplica las siete comprobaciones exigidas antes de confiar en un SHA.
+    """Aplica las ocho comprobaciones exigidas antes de confiar en un SHA.
 
     Entradas:
         raiz: raíz de la instalación (``/opt/sis-leg`` en producción).
@@ -488,7 +567,7 @@ def validar_release_objetivo(raiz: Path, sha: str) -> Path:
 
     Efectos laterales: ninguno.
 
-    Las siete comprobaciones, en orden y sin atajos:
+    Las ocho comprobaciones, en orden y sin atajos:
 
     1. formato: 40 hexadecimales en minúscula;
     2. ``releases/<SHA>`` existe;
@@ -496,12 +575,18 @@ def validar_release_objetivo(raiz: Path, sha: str) -> Path:
     4. resuelve exactamente a esa ruta, sin traversal;
     5. el marcador de release preparada existe y es un archivo regular;
     6. el marcador parsea como JSON;
-    7. ``marcador.commit_sha == <SHA>``.
+    7. ``marcador.commit_sha == <SHA>``;
+    8. ``marcador.tree_sha`` es un árbol Git válido y coincide con el que
+       declara el ``release.json`` que viajó dentro del paquete público.
 
     Ninguna es decorativa: un ``target-release`` manipulado sería una vía
     directa para activar contenido arbitrario, y la implementación original en
-    el host llegó a producción sin las siete. Ese fue uno de los hallazgos que
-    la auditoría de WP-029 obligó a corregir.
+    el host llegó a producción sin varias de ellas. Ese fue uno de los hallazgos
+    que la auditoría de WP-029 obligó a corregir.
+
+    La octava se delega en :func:`validar_identidad_arbol`, del motor canónico,
+    en lugar de releerse acá: la identidad de una release se valida en un único
+    lugar del producto, no en dos implementaciones que podrían divergir.
     """
 
     try:
@@ -536,6 +621,12 @@ def validar_release_objetivo(raiz: Path, sha: str) -> Path:
         raise ErrorEstadoHost(
             f"El marcador de la release {sha_validado} no declara ese mismo commit_sha."
         )
+    try:
+        validar_identidad_arbol(release, cast(dict[str, Any], datos))
+    except ErrorDespliegue as error:
+        raise ErrorEstadoHost(
+            f"La release {sha_validado} no demuestra su identidad de árbol: {error}"
+        ) from error
     return release
 
 
