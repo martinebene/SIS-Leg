@@ -21,7 +21,14 @@
  * WP-040 suma `contenidoConScrollPropio` para paneles que necesitan mantener controles
  * fijos y desplazar solamente una colección interna. En ese modo el contenedor exterior
  * nunca scrollea: el componente hijo debe declarar de forma explícita cuál de sus áreas
- * usa `overflow-y-auto`. Esto permite que Q2 mantenga accesible la acción de quitar.
+ * usa `overflow-y-auto`. Esto permite que Q2 conserve siempre visibles sus avisos y errores
+ * mientras sólo se desplaza el listado de puntos.
+ *
+ * El slot `acciones` dibuja los controles propios de cada panel dentro del encabezado, a
+ * continuación del badge. Al vivir en un `flex items-center`, esos controles no agregan alto
+ * mientras no superen la altura del badge; es responsabilidad de cada panel respetar esa
+ * medida. WP-102 usa esta vía para la acción `Quitar Orden del Día` de Q2 sin tocar la
+ * geometría común de los cuatro cuadrantes.
  */
 
 defineProps<{

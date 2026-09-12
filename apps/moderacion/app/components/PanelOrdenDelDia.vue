@@ -35,6 +35,16 @@
  * colección. Se conserva sólo una confirmación humana breve, con la misma caducidad que el
  * acuse de copia, para que el operador perciba que el comando fue aceptado incluso si el
  * snapshot todavía no llegó. Los errores reales siguen siendo siempre visibles.
+ *
+ * WP-102 reubica la acción de descarte: deja de ocupar una fila propia en el cuerpo y pasa a
+ * la barra de título del panel, a la derecha del badge de cantidad, usando el slot `acciones`
+ * que `PanelContenedor` ya ofrecía. El cambio es puramente de ubicación: misma capacidad
+ * autoritativa, mismo comando, mismo estado transitorio y los mismos motivos de
+ * indisponibilidad, que siguen escribiéndose en el cuerpo porque son texto explicativo y no
+ * entran en una barra de una sola línea. Para no aumentar el alto de la cabecera, el botón
+ * copia exactamente la caja vertical del badge (`text-xs` + `py-0.5` + borde de 1 px): dentro
+ * de un `flex items-center`, el alto del encabezado lo fija el hijo más alto, así que igualar
+ * esa medida garantiza que aparecer o desaparecer no mueva un solo píxel.
  */
 
 import { computed, ref } from 'vue'
@@ -207,6 +217,25 @@ function seleccionarPunto(punto: PuntoOrdenDelDiaProyectado): void {
     :badge="puntosOrdenDelDia.length ? `${puntosOrdenDelDia.length} puntos` : 'Sin cargar'"
     :contenido-con-scroll-propio="true"
   >
+    <!--
+      WP-102: única acción del cuadrante, ahora en la barra de título y después del badge.
+      El slot `acciones` de `PanelContenedor` la dibuja dentro del mismo contenedor flex que
+      el badge, de modo que el orden visual queda título -> cantidad de puntos -> Quitar.
+      Sólo existe con una colección cargada, igual que antes.
+    -->
+    <template #acciones>
+      <button
+        v-if="tieneOrdenDelDia"
+        type="button"
+        data-testid="btn-quitar-orden-dia"
+        class="shrink-0 rounded-full border border-rose-700 bg-rose-950 px-2.5 py-0.5 text-xs font-semibold text-rose-200 disabled:opacity-40"
+        :disabled="!puedeDescartar"
+        @click="descartarOrdenDelDia"
+      >
+        {{ descartando ? 'Quitando...' : 'Quitar Orden del Día' }}
+      </button>
+    </template>
+
     <div class="relative flex h-full min-h-0 flex-col gap-2 text-sm text-slate-300">
       <!--
         Acuse flotante de la copia asistencial. Al estar superpuesto y sin participar del
@@ -289,32 +318,27 @@ function seleccionarPunto(punto: PuntoOrdenDelDiaProyectado): void {
       </div>
 
       <!--
-        La acción queda fuera del listado scrolleable. Durante el request no se oculta
-        nada: solo un snapshot vacío puede reemplazar esta vista por la carga compacta.
+        WP-102: el cuerpo ya no reserva una fila para la acción; sólo escribe, cuando existen,
+        los motivos por los que el descarte está impedido. El bloque desaparece por completo
+        si no hay nada que explicar, así que la lista recupera ese alto. Durante el request no
+        se oculta nada: solo un snapshot vacío puede reemplazar esta vista por la carga compacta.
       -->
       <div v-if="tieneOrdenDelDia" class="flex min-h-0 flex-1 flex-col gap-2">
-        <div class="flex shrink-0 items-start justify-between gap-3">
-          <div class="min-w-0">
-            <p v-if="!conectado" class="text-[11px] text-amber-300">
-              Los comandos quedan deshabilitados hasta recuperar la conexión confirmada.
-            </p>
-            <p
-              v-for="motivo in motivosDescartar"
-              :key="`descartar-${motivo}`"
-              class="text-[11px] text-amber-300"
-            >
-              {{ motivo }}
-            </p>
-          </div>
-          <button
-            type="button"
-            data-testid="btn-quitar-orden-dia"
-            class="shrink-0 rounded-lg border border-rose-700 bg-rose-950 px-3 py-1.5 text-xs font-semibold text-rose-200 disabled:opacity-40"
-            :disabled="!puedeDescartar"
-            @click="descartarOrdenDelDia"
+        <div
+          v-if="!conectado || motivosDescartar.length > 0"
+          data-testid="avisos-descarte-orden-dia"
+          class="min-w-0 shrink-0"
+        >
+          <p v-if="!conectado" class="text-[11px] text-amber-300">
+            Los comandos quedan deshabilitados hasta recuperar la conexión confirmada.
+          </p>
+          <p
+            v-for="motivo in motivosDescartar"
+            :key="`descartar-${motivo}`"
+            class="text-[11px] text-amber-300"
           >
-            {{ descartando ? 'Quitando...' : 'Quitar Orden del Día' }}
-          </button>
+            {{ motivo }}
+          </p>
         </div>
 
         <div data-testid="lista-orden-dia" class="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
