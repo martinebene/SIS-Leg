@@ -555,6 +555,37 @@ def leer_target_release_tolerante(raiz: Path) -> tuple[str | None, str | None]:
         return None, str(error)
 
 
+def eliminar_target_release(raiz: Path) -> bool:
+    """Deja la instalación sin ningún objetivo declarado.
+
+    Resultado: ``True`` si había un archivo y se borró; ``False`` si ya no había
+    nada que borrar.
+
+    Efectos laterales: elimina ``<raiz>/target-release``.
+
+    Errores:
+        ErrorEstadoHost si el archivo existe y no se puede borrar.
+
+    Existe únicamente para poder **restaurar la ausencia**. Un host puede tener
+    SIS-Leg en servicio sin haber declarado nunca un objetivo, y si una
+    actualización falla después de escribir uno, dejarlo escrito sería inventar
+    un estado que el host no tenía. Restaurar exactamente lo anterior incluye
+    restaurar el hecho de que no había nada.
+
+    No valida nada porque no hay nada que validar: borrar el objetivo nunca
+    puede activar contenido arbitrario. La comprobación estricta vive en
+    :func:`escribir_target_release`, que es la operación peligrosa.
+    """
+
+    ruta = ruta_target_release(raiz)
+    try:
+        existia = ruta.exists() or ruta.is_symlink()
+        ruta.unlink(missing_ok=True)
+    except OSError as error:
+        raise ErrorEstadoHost(f"No se pudo eliminar {ruta}: {error}") from error
+    return existia
+
+
 def validar_release_objetivo(raiz: Path, sha: str) -> Path:
     """Aplica las ocho comprobaciones exigidas antes de confiar en un SHA.
 

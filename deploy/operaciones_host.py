@@ -87,10 +87,12 @@ from deploy.estado_host import (  # noqa: E402 - raíz preparada arriba
     SUFIJO_VHOST_DESHABILITADO,
     ErrorEstadoHost,
     InspectorEstadoHost,
+    eliminar_target_release,
     escribir_target_release,
     leer_target_release,
     leer_target_release_tolerante,
     lock_operacion_global,
+    ruta_target_release,
     validar_release_objetivo,
 )
 from deploy.herramienta_despliegue import (  # noqa: E402 - raíz preparada arriba
@@ -304,6 +306,7 @@ class OperadorHost:
         preflight: Callable[[], None] | None = None,
         durmiente: Callable[[float], None] | None = None,
         reloj: Callable[[], str] = marca_temporal_local,
+        escritor_target: Callable[[Path, str], Path] = escribir_target_release,
         ruta_lock: Path = RUTA_LOCK_OPERACION,
         ruta_vhost_legacy: Path = RUTA_VHOST_LEGACY,
         ruta_vhost_legacy_disponible: Path = RUTA_VHOST_LEGACY_DISPONIBLE,
@@ -330,6 +333,13 @@ class OperadorHost:
         self.preflight = preflight or self.gestor.preflight
         self.durmiente = durmiente or time.sleep
         self.reloj = reloj
+        # Frontera hacia la escritura del objetivo. El valor por omisión es
+        # exactamente la función canónica con sus ocho comprobaciones: no se
+        # duplica ni se relaja nada. Se inyecta sólo para que la suite pueda
+        # reproducir de forma determinista una falla de escritura —disco lleno,
+        # permisos, reemplazo atómico— que en una máquina real no se puede
+        # provocar a voluntad.
+        self.escritor_target = escritor_target
         self.ruta_lock = ruta_lock
         self.ruta_vhost_legacy = ruta_vhost_legacy
         self.ruta_vhost_legacy_disponible = ruta_vhost_legacy_disponible
@@ -831,7 +841,7 @@ class OperadorHost:
             self._aplicar_contrato_configuracion(release, resultado)
 
             if estado == ESTABLE_LEGACY:
-                escribir_target_release(self.raiz, sha_objetivo)
+                self.escritor_target(self.raiz, sha_objetivo)
                 resultado.target_final = sha_objetivo
                 resultado.acciones.append("target-release actualizado atómicamente")
                 resultado.mensaje = (
@@ -1075,52 +1085,158 @@ class OperadorHost:
         La activación es version-agnóstica: no hay ningún SHA escrito en el
         código, sólo el que resolvió el canal público. El motor canónico ya
         implementa el switch atómico de ``current``, el health, la convergencia
-        de Nginx y el rollback a la release anterior; acá sólo se encadena y se
-        restaura ``target-release`` si algo falló.
+        de Nginx y el rollback a la release anterior; acá sólo se encadena.
 
-        ``target-release`` se escribe **después** del éxito, nunca antes: si se
-        escribiera primero, una activación fallida dejaría el host declarando
-        como objetivo una release que no está en servicio.
+        **Activar y fijar el objetivo son una sola transacción operacional.**
+        Son dos hechos que tienen que contar la misma historia: qué release está
+        en servicio y cuál debería activarse. Si el segundo falla después de que
+        el primero salió bien, el host queda con ``current`` y ``target-release``
+        divergentes, y la próxima actualización —correctamente— lo interpreta
+        como ambiguo y se bloquea. Una falla del último paso administrativo no
+        puede convertir una actualización sana en un host incoherente, así que
+        cualquier falla posterior al inicio de la activación revierte las dos
+        cosas.
+
+        ``target-release`` se escribe **después** de la activación, nunca antes:
+        si se escribiera primero, una activación fallida dejaría el host
+        declarando como objetivo una release que no está en servicio.
         """
 
         try:
             self.gestor.activar(sha_objetivo)
-        except (ErrorDespliegue, ErrorConfiguracionLocal, OSError) as error:
-            actual = leer_target_release(self.raiz)
-            if actual != target_previo and target_previo is not None:
-                escribir_target_release(self.raiz, target_previo)
-                resultado.acciones.append("target-release anterior restaurado")
-            resultado.target_final = target_previo
-            resultado.rollback = self._desenlace_rollback_en_caliente(release_previa)
-            resultado.estado_final = self._estado_observado()
-            raise ErrorOperacionHost(
-                self._diagnostico_actualizacion_fallida(release_previa, resultado, error)
-            ) from error
-        escribir_target_release(self.raiz, sha_objetivo)
+            resultado.acciones.append(f"release {sha_objetivo} activada con health completo")
+            self.escritor_target(self.raiz, sha_objetivo)
+        except (ErrorDespliegue, ErrorConfiguracionLocal, ErrorEstadoHost, OSError) as error:
+            self._revertir_actualizacion_en_caliente(
+                release_previa, target_previo, resultado, error
+            )
         resultado.target_final = sha_objetivo
-        resultado.acciones.append(
-            "release nueva activada con health completo y target-release actualizado"
-        )
+        resultado.acciones.append("target-release actualizado")
         resultado.mensaje = f"SIS-Leg actualizado y en servicio en la release {sha_objetivo}."
 
-    def _desenlace_rollback_en_caliente(self, release_previa: str | None) -> str:
-        """Clasifica el rollback del motor canónico por lo que se observa en el host.
+    def _revertir_actualizacion_en_caliente(
+        self,
+        release_previa: str | None,
+        target_previo: str | None,
+        resultado: ResultadoOperacion,
+        error_original: Exception,
+    ) -> None:
+        """Deshace la transacción completa y falla diciendo qué se pudo demostrar.
+
+        Entradas:
+            release_previa: la release que estaba realmente en ``current``.
+            target_previo: el objetivo declarado antes de empezar; ``None``
+                significa que **no había ninguno**, y eso también hay que
+                restaurarlo.
+            resultado: se anotan acciones, desenlace y lo observado.
+            error_original: la falla que obligó a revertir.
+
+        Errores:
+            ErrorOperacionHost siempre.
+
+        Las dos restauraciones se intentan por separado y ninguna se salta por
+        culpa de la otra: que no se pueda volver a la release previa no es motivo
+        para dejar además el objetivo equivocado. Los errores de cada intento se
+        acumulan y se informan todos.
+
+        La clasificación no depende de si los pasos «parecieron» funcionar, sino
+        de lo que se observa después: estado formal, ``current`` y el objetivo
+        realmente presente en disco.
+        """
+
+        errores_rollback: list[str] = []
+        try:
+            self._restaurar_release_previa(release_previa, resultado)
+        except Exception as error:  # noqa: BLE001 - se acumula y se informa
+            errores_rollback.append(f"al restaurar la release previa: {error}")
+        try:
+            self._restaurar_target_previo(target_previo, resultado)
+        except Exception as error:  # noqa: BLE001 - se acumula y se informa
+            errores_rollback.append(f"al restaurar target-release: {error}")
+
+        resultado.rollback = self._desenlace_rollback_en_caliente(release_previa, target_previo)
+        resultado.estado_final = self._estado_observado()
+        resultado.target_final = self._target_observado()
+        raise ErrorOperacionHost(
+            self._diagnostico_actualizacion_fallida(
+                release_previa, target_previo, resultado, error_original, errores_rollback
+            )
+        ) from error_original
+
+    def _restaurar_release_previa(
+        self, release_previa: str | None, resultado: ResultadoOperacion
+    ) -> None:
+        """Devuelve a servicio la release que estaba activa, por el motor canónico.
+
+        No hace nada si no había release previa o si ``current`` ya volvió solo:
+        cuando la falla estuvo en la propia activación, el motor canónico ya
+        ejecutó su rollback interno y reactivar sería trabajo redundante sobre un
+        host que quizá está frágil.
+
+        La restauración se delega en ``GestorDespliegue.activar``, que es el
+        único motor de activación del producto. Acá no existe ninguna
+        implementación paralela: sólo se decide *cuándo* llamarlo.
+        """
+
+        if release_previa is None:
+            return
+        if self._release_actual() == release_previa:
+            return
+        self.gestor.activar(release_previa)
+        resultado.acciones.append(f"release previa {release_previa} reactivada por el rollback")
+
+    def _restaurar_target_previo(
+        self, target_previo: str | None, resultado: ResultadoOperacion
+    ) -> None:
+        """Deja ``target-release`` exactamente como estaba, ausencia incluida.
+
+        Si antes no había objetivo declarado, restaurar significa borrarlo: dejar
+        escrito uno que el host nunca tuvo sería inventar un estado. Si lo había,
+        se reescribe con la validación canónica completa.
+        """
+
+        if target_previo is None:
+            if eliminar_target_release(self.raiz):
+                resultado.acciones.append("target-release eliminado: antes no existía ninguno")
+            return
+        if self._target_observado() == target_previo:
+            return
+        self.escritor_target(self.raiz, target_previo)
+        resultado.acciones.append(f"target-release anterior {target_previo} restaurado")
+
+    def _target_observado(self) -> str | None:
+        """Objetivo declarado tal como se puede leer ahora, sin romper si es ilegible."""
+
+        valor, _ = leer_target_release_tolerante(self.raiz)
+        return valor
+
+    def _desenlace_rollback_en_caliente(
+        self, release_previa: str | None, target_previo: str | None
+    ) -> str:
+        """Clasifica la reversión por lo que se observa en el host, no por lo intentado.
 
         Entradas:
             release_previa: la release que estaba en ``current`` antes de
                 actualizar, o ``None`` si no había ninguna.
+            target_previo: el objetivo declarado antes de actualizar, o ``None``
+                si no había ninguno.
 
         Resultado:
             ``NO_APLICA`` cuando no había release previa que restaurar —no hubo
             rollback posible, y llamarlo fallido sería confundir a quien lea el
             historial—; ``EXITOSO`` cuando SIS-Leg volvió a quedar estable
-            exactamente en esa release previa; ``FALLIDO`` en cualquier otro
-            caso, incluido el de no poder observar el host.
+            exactamente en esa release previa **y** el objetivo quedó idéntico al
+            de antes; ``FALLIDO`` en cualquier otro caso, incluido el de no poder
+            observar el host.
 
-        Se compara contra la release realmente activa y no contra
+        La release se compara contra lo que estaba realmente activa y no contra
         ``target-release``: son cosas distintas. Un host con SIS-Leg estable y
         sin target declarado tiene un rollback perfectamente válido que, medido
         contra el target, se habría clasificado como fallido.
+
+        El objetivo se compara aparte, y la ausencia se comprueba mirando si el
+        archivo existe: un objetivo ilegible también se lee como ``None`` y no
+        puede pasar por «no había ninguno».
         """
 
         if release_previa is None:
@@ -1128,12 +1244,25 @@ class OperadorHost:
         try:
             estable = self.inspector.clasificar() == ESTABLE_SISLEG
             volvio = self._release_actual() == release_previa
+            target_restaurado = self._target_coincide(target_previo)
         except (ErrorEstadoHost, ErrorDespliegue, OSError):
             return ROLLBACK_FALLIDO
-        return ROLLBACK_EXITOSO if estable and volvio else ROLLBACK_FALLIDO
+        return ROLLBACK_EXITOSO if estable and volvio and target_restaurado else ROLLBACK_FALLIDO
+
+    def _target_coincide(self, target_previo: str | None) -> bool:
+        """``True`` si el objetivo en disco es exactamente el que había antes."""
+
+        if target_previo is None:
+            return not ruta_target_release(self.raiz).exists()
+        return self._target_observado() == target_previo
 
     def _diagnostico_actualizacion_fallida(
-        self, release_previa: str | None, resultado: ResultadoOperacion, error: Exception
+        self,
+        release_previa: str | None,
+        target_previo: str | None,
+        resultado: ResultadoOperacion,
+        error: Exception,
+        errores_rollback: Sequence[str],
     ) -> str:
         """Redacta la falla diciendo exactamente lo que se pudo demostrar.
 
@@ -1144,10 +1273,12 @@ class OperadorHost:
         quedado sin ningún sistema en servicio.
         """
 
+        objetivo_previo = target_previo if target_previo is not None else "ninguno"
         if resultado.rollback == ROLLBACK_EXITOSO:
             return (
-                "Falló la actualización en caliente de SIS-Leg; el motor canónico restauró la "
-                f"release anterior {release_previa} y se conservó el target previo: {error}"
+                "Falló la actualización en caliente de SIS-Leg; se restauró la release anterior "
+                f"{release_previa} y el target-release volvió a quedar como estaba "
+                f"({objetivo_previo}): {error}"
             )
         if resultado.rollback == ROLLBACK_NO_APLICA:
             return (
@@ -1155,11 +1286,18 @@ class OperadorHost:
                 f"restaurar. El host quedó observado en {resultado.estado_final}; se requiere "
                 f"diagnóstico humano antes de reintentar: {error}"
             )
+        detalle_rollback = (
+            f" Además falló el propio rollback ({'; '.join(errores_rollback)})."
+            if errores_rollback
+            else ""
+        )
         return (
             "Falló la actualización en caliente de SIS-Leg y no se pudo demostrar la "
-            f"restauración de la release anterior {release_previa}. El host quedó observado en "
-            f"{resultado.estado_final} con current={self._release_actual()}: se requiere "
-            f"intervención humana inmediata y no se afirma ningún estado bueno: {error}"
+            f"restauración de la release anterior {release_previa} ni del target-release previo "
+            f"({objetivo_previo}). El host quedó observado en {resultado.estado_final} con "
+            f"current={self._release_actual()} y target={self._target_observado()}: se requiere "
+            f"intervención humana inmediata y no se afirma ningún estado bueno: "
+            f"{error}.{detalle_rollback}"
         )
 
     # ------------------------------------------------------------------

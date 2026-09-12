@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -479,6 +479,7 @@ class EscenarioHost:
         shas_publicos: Sequence[str] | None = None,
         release: ReleaseDescargada | None = None,
         error_canal: Exception | None = None,
+        escritor_target: Callable[[Path, str], Path] | None = None,
     ) -> OperadorHost:
         """Construye el operador con el canal público reemplazado por un doble.
 
@@ -513,6 +514,7 @@ class EscenarioHost:
             preflight=self.preflight_simulado,
             durmiente=lambda segundos: None,
             reloj=lambda: MARCA_TEMPORAL_FIJA,
+            escritor_target=escritor_target or escribir_target_release,
             ruta_lock=self.tmp_path / "operacion.lock",
             ruta_vhost_legacy=self.ruta_vhost_legacy,
             ruta_vhost_legacy_disponible=self.ruta_vhost_disponible,
@@ -1447,6 +1449,143 @@ def test_una_doble_falla_en_caliente_no_afirma_que_se_restauro_la_release_anteri
     assert operador.ultimo_resultado is not None
     assert operador.ultimo_resultado.rollback == "FALLIDO"
     assert operador.ultimo_resultado.estado_final != ESTABLE_SISLEG
+
+
+# ---------------------------------------------------------------------------
+# Transacción entre la activación y target-release
+# ---------------------------------------------------------------------------
+
+
+def test_la_transaccion_exitosa_deja_current_y_target_en_la_release_nueva(
+    tmp_path: Path,
+) -> None:
+    """Activación y objetivo cuentan la misma historia cuando todo sale bien."""
+
+    escenario = escenario_sisleg(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        sha_publico=SHA_NUEVO, release=release_descargada(paquete, sidecar, SHA_NUEVO)
+    )
+
+    resultado = operador.actualizar()
+
+    assert escenario.gestor.current.resolve().name == SHA_NUEVO
+    assert leer_target_release(escenario.raiz) == SHA_NUEVO
+    assert resultado.estado_final == ESTABLE_SISLEG
+    assert resultado.target_final == SHA_NUEVO
+    assert resultado.rollback == "NO_APLICA"
+
+
+def test_una_falla_al_escribir_el_target_revierte_tambien_la_activacion(
+    tmp_path: Path,
+) -> None:
+    """El último paso administrativo no puede dejar el host incoherente.
+
+    La activación salió bien y la escritura del objetivo falló. Sin reversión,
+    ``current`` apuntaría a la release nueva y ``target-release`` a la anterior:
+    un estado que la próxima actualización interpreta —con razón— como ambiguo
+    y que la bloquea.
+    """
+
+    escenario = escenario_sisleg(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+
+    def escritor_que_falla(raiz: Path, sha: str) -> Path:
+        if sha == SHA_NUEVO:
+            raise OSError("no queda espacio en el dispositivo")
+        return escribir_target_release(raiz, sha)
+
+    operador = escenario.operador(
+        sha_publico=SHA_NUEVO,
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+        escritor_target=escritor_que_falla,
+    )
+
+    with pytest.raises(ErrorOperacionHost, match="se restauró la release anterior") as excepcion:
+        operador.actualizar()
+
+    assert SHA_VIEJO in str(excepcion.value)
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert leer_target_release(escenario.raiz) == SHA_VIEJO
+    assert escenario.inspector.clasificar() == ESTABLE_SISLEG
+    assert escenario.config_intacta()
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "EXITOSO"
+    assert operador.ultimo_resultado.target_final == SHA_VIEJO
+    assert operador.ultimo_resultado.estado_final == ESTABLE_SISLEG
+    # La reactivación la hizo el motor canónico, no una implementación paralela.
+    assert any(
+        f"release previa {SHA_VIEJO} reactivada" in accion
+        for accion in operador.ultimo_resultado.acciones
+    )
+
+
+def test_si_antes_no_habia_target_la_reversion_restaura_esa_ausencia(tmp_path: Path) -> None:
+    """Restaurar exactamente lo anterior incluye restaurar que no hubiera nada.
+
+    Un host puede tener SIS-Leg en servicio sin haber declarado nunca un
+    objetivo. Dejar uno escrito después de una actualización fallida sería
+    inventar un estado que esa máquina no tenía.
+    """
+
+    escenario = escenario_sisleg(tmp_path)
+    (escenario.raiz / "target-release").unlink()
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+
+    def escritor_que_falla(raiz: Path, sha: str) -> Path:
+        del raiz, sha
+        raise OSError("no queda espacio en el dispositivo")
+
+    operador = escenario.operador(
+        sha_publico=SHA_NUEVO,
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+        escritor_target=escritor_que_falla,
+    )
+
+    with pytest.raises(ErrorOperacionHost, match="volvió a quedar como estaba"):
+        operador.actualizar()
+
+    assert not (escenario.raiz / "target-release").exists()
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert escenario.inspector.clasificar() == ESTABLE_SISLEG
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "EXITOSO"
+    assert operador.ultimo_resultado.target_final is None
+
+
+def test_si_tambien_falla_la_reversion_se_informan_los_dos_errores(tmp_path: Path) -> None:
+    """Doble falla: nada se declara restaurado y se registra lo observado."""
+
+    escenario = escenario_sisleg(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+
+    def escritor_que_falla_y_rompe_el_arranque(raiz: Path, sha: str) -> Path:
+        del raiz, sha
+        # A partir de acá el backend de SIS-Leg ya no logra arrancar, así que la
+        # reactivación de la release previa también fracasa.
+        escenario.host.arranque_roto = frozenset({SERVICIO_BACKEND})
+        raise OSError("no queda espacio en el dispositivo")
+
+    operador = escenario.operador(
+        sha_publico=SHA_NUEVO,
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+        escritor_target=escritor_que_falla_y_rompe_el_arranque,
+    )
+
+    with pytest.raises(ErrorOperacionHost) as excepcion:
+        operador.actualizar()
+
+    mensaje = str(excepcion.value)
+    assert "no se pudo demostrar la restauración" in mensaje
+    assert "Además falló el propio rollback" in mensaje
+    assert "intervención humana" in mensaje
+    assert "se restauró la release anterior" not in mensaje
+    assert "current=" in mensaje and "target=" in mensaje
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "FALLIDO"
+    assert operador.ultimo_resultado.estado_final != ESTABLE_SISLEG
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
 
 
 # ---------------------------------------------------------------------------

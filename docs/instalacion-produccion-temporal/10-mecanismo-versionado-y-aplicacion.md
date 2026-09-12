@@ -73,10 +73,17 @@ resolución del SHA público de `main`, idempotencia, descarga verificada, prefl
 - con el sistema anterior activo: fija `target-release` y **no conmuta**; el recinto sigue atendido
   por el sistema que estaba;
 - con SIS-Leg activo: actualiza en caliente de release a release, sin pasar por el sistema anterior,
-  con health completo; si falla, el motor canónico revierte a la release previa y se conserva el
-  `target-release` anterior. El desenlace del rollback se clasifica por lo que se observa en el host
+  con health completo. Activar la release nueva y fijar `target-release` son **una sola transacción
+  operacional**: son dos hechos que tienen que contar la misma historia, y si el segundo fallara
+  después de que el primero salió bien, el host quedaría con `current` y objetivo divergentes, que es
+  justamente el estado que la próxima actualización interpreta como ambiguo y bloquea. Por eso
+  cualquier falla posterior al inicio de la activación revierte las dos cosas: el motor canónico
+  devuelve la release previa y el objetivo vuelve exactamente a como estaba, **ausencia incluida** si
+  antes no había ninguno. El desenlace del rollback se clasifica por lo que se observa en el host
   y contra la release que estaba realmente en `current`, no contra `target-release`: son cosas
-  distintas, y un host sano sin objetivo declarado tiene rollbacks perfectamente válidos. Si la
+  distintas, y un host sano sin objetivo declarado tiene rollbacks perfectamente válidos. Sólo se
+  declara `ROLLBACK_EXITOSO` cuando el host quedó `ESTABLE_SISLEG`, `current` volvió a la release
+  previa y el objetivo quedó idéntico al de antes. Si la
   restauración no se puede demostrar, el mensaje lo dice y exige intervención en lugar de afirmar
   que se volvió a la versión anterior;
 - si `target-release` ya es la versión pública y la release está preparada, no descarga, no prepara y
@@ -253,11 +260,15 @@ mismo comportamiento visible. Lo que cambió es interno —de dónde sale el có
 no es información útil para el uso ni para el soporte.
 
 La evaluación se repitió en cada corrección previa a la integración, con el mismo resultado. La
-última alcanzó las rutas de falla de las conmutaciones, la clasificación del rollback en caliente, el
-texto que muestra el wrapper de actualización cuando algo sale mal y el preflight del aplicador:
-todo eso ocurre dentro de un mecanismo que todavía no está instalado, y el wrapper cuyo texto cambió
-no está en el host. Cuando WP-101B lo instale habrá que explicar en el manual qué significa ese
-mensaje para quien opera.
+última alcanzó la transacción entre la activación y `target-release`: es una garantía interna de
+consistencia dentro de un mecanismo que todavía no está instalado en ninguna máquina, y no cambia
+ninguna pantalla, ningún paso ni ningún texto que vea hoy quien opera.
+
+La anterior alcanzó las rutas de falla de las conmutaciones, la clasificación del rollback en
+caliente, el texto que muestra el wrapper de actualización cuando algo sale mal y el preflight del
+aplicador: todo eso ocurre dentro del mismo mecanismo no instalado, y el wrapper cuyo texto cambió no
+está en el host. Cuando WP-101B lo instale habrá que explicar en el manual qué significa ese mensaje
+para quien opera.
 
 La evaluación anterior, con el mismo resultado, alcanzó las siete correcciones de la primera
 auditoría: idempotencia por metadata del aplicador, historial completo con evidencia,
