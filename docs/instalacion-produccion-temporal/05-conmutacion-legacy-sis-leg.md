@@ -4,6 +4,12 @@ Todo lo descrito en este documento **existe sólo en el host institucional** dur
 No está versionado en este repositorio y no forma parte del producto. Es el andamiaje que permite
 alternar entre los dos sistemas de forma segura hasta que se decida el cutover definitivo.
 
+> **Reemplazo preparado.** WP-101A versionó una implementación canónica equivalente de estas tres
+> operaciones (`deploy/estado_host.py`, `deploy/operaciones_host.py` y los wrappers de
+> `deploy/host/`), con pruebas y revisión independiente. **Todavía no está instalada**: lo que corre
+> hoy en el host es lo que describe este documento. La comparación entre ambos mecanismos y los pasos
+> pendientes están en [10 - Mecanismo versionado y su aplicación](10-mecanismo-versionado-y-aplicacion.md).
+
 ## Por qué existe
 
 `deploy/herramienta_despliegue.py activar` sabe activar una release de SIS-Leg, pero no sabe nada de
@@ -89,10 +95,14 @@ Antes de escribir ese archivo se exige, en este orden:
 4. `readlink -f` resuelve exactamente a esa ruta —sin traversal;
 5. el marcador existe y es un archivo regular;
 6. el marcador parsea como JSON;
-7. `marker.commit_sha == <SHA>`.
+7. `marker.commit_sha == <SHA>`;
+8. `marker.tree_sha` es un árbol Git válido y coincide con el que declara el `release.json` que viajó
+   dentro del paquete público.
 
-Recién entonces se reemplaza atómicamente. Estas siete comprobaciones no estaban completas en la
-primera implementación y fueron una de las correcciones exigidas por la auditoría 5I.
+Recién entonces se reemplaza atómicamente. Las primeras siete comprobaciones no estaban completas en
+la implementación original y fueron una de las correcciones exigidas por la auditoría 5I. La octava
+la agregó el mecanismo versionado de WP-101A: el commit por sí solo no identifica el contenido, y sin
+comparar el árbol una release manipulada después de instalada podía activarse igual.
 
 ## Secuencia Legacy → SIS-Leg
 

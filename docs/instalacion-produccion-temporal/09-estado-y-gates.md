@@ -71,6 +71,20 @@ independiente → compuerta humana hacia el orquestador. Sin rebase ni force-pus
 - iniciar la fase productiva posterior antes de que WP-095..WP-100 estén integrados, con CI
   post-merge verde y una compuerta humana explícita.
 
+## Preparación versionada de la adaptación productiva (WP-101)
+
+WP-101 se dividió deliberadamente en dos etapas:
+
+| Etapa | Alcance | Estado |
+| --- | --- | --- |
+| WP-101A | Versionar en desarrollo las tres operaciones de usuario y el aplicador que las instalará. | ejecutada sin tocar producción |
+| WP-101B | Aplicar esos componentes sobre el host real. | **pendiente** de acceso al equipo y de HUMAN_GATE específico |
+
+La integración de WP-101A **no** autoriza WP-101B. Antes de cualquier escritura sobre el host, el
+ORCHESTRATOR debe ordenar un inventario read-only y comparar el estado real contra lo preparado. El
+detalle está en [10 - Mecanismo versionado y su aplicación](10-mecanismo-versionado-y-aplicacion.md),
+que además enumera los datos del host que deben relevarse otra vez y no deducirse de esta carpeta.
+
 ## Estado deseado al terminar el desarrollo
 
 Una **única instalación lógica** de SIS-Leg en producción, actualizable desde el canal público

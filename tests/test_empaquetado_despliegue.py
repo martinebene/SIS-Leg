@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import escribir_release_json_de_prueba
 
 import deploy.herramienta_despliegue as modulo_despliegue
 import scripts.verificar_reproducibilidad_produccion as modulo_reproducibilidad
@@ -34,6 +35,8 @@ from scripts.verificar_reproducibilidad_produccion import ErrorReproducibilidad
 
 SHA_A = "a" * 40
 SHA_B = "b" * 40
+# Árbol Git declarado por las releases de fantasía de esta suite.
+SHA_ARBOL_DE_PRUEBA = "c" * 40
 RAIZ_REPOSITORIO = Path(__file__).resolve().parents[1]
 
 
@@ -486,8 +489,12 @@ def crear_release_preparada(gestor: GestorDespliegue, sha: str) -> Path:
         (RAIZ_REPOSITORIO / RUTA_CONTRATO_EN_RELEASE).read_text(encoding="utf-8"),
         encoding="utf-8",
     )
+    # Desde WP-101A una release preparada debe poder demostrar su identidad de
+    # árbol: el marcador declara ``tree_sha`` y ``release.json`` declara el
+    # mismo árbol. Sin las dos piezas, activarla falla cerrado.
+    escribir_release_json_de_prueba(release, sha, SHA_ARBOL_DE_PRUEBA)
     (release / modulo_despliegue.MARCADOR_PREPARADA).write_text(
-        json.dumps({"commit_sha": sha}), encoding="utf-8"
+        json.dumps({"commit_sha": sha, "tree_sha": SHA_ARBOL_DE_PRUEBA}), encoding="utf-8"
     )
     return release
 

@@ -27,6 +27,11 @@ este repositorio. Son andamios de la transición. Cuando la etapa productiva ter
 transformará en una guía general de instalación y esos andamios desaparecerán o se convertirán en
 mecanismos versionados.
 
+Ese proceso ya empezó. WP-101A dejó versionadas, revisadas y probadas las tres operaciones de usuario
+y el aplicador que las instalará, **sin tocar el host**. Los documentos 01 a 09 siguen describiendo lo
+que hay instalado hoy; el documento 10 separa explícitamente lo instalado de lo preparado y de lo
+pendiente.
+
 ## Índice
 
 | Documento | Contenido |
@@ -40,12 +45,13 @@ mecanismos versionados.
 | [07 - Cronología de la puesta en producción](07-cronologia.md) | Hitos verificados desde la preparación paralela hasta la actualización A702. |
 | [08 - Incidentes y lecciones](08-incidentes-y-lecciones.md) | Cada defecto encontrado en campo, su causa y su corrección. |
 | [09 - Estado conocido y compuertas](09-estado-y-gates.md) | Dónde está hoy la instalación, qué está autorizado y qué no. |
+| [10 - Mecanismo versionado y su aplicación](10-mecanismo-versionado-y-aplicacion.md) | Qué está instalado hoy, qué dejó versionado WP-101A y qué falta ejecutar en WP-101B. |
 
 ## Cómo leer esta carpeta
 
 Los documentos son independientes pero están ordenados de lo estructural a lo histórico. Para
 entender el sistema alcanza con 01 a 06. Para entender **por qué** está armado así, 07 y 08. Para
-saber qué se puede hacer hoy, 09.
+saber qué se puede hacer hoy, 09. Para saber qué está instalado, qué está preparado y qué falta, 10.
 
 ## Convenciones
 

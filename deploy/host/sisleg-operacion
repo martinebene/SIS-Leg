@@ -1,0 +1,57 @@
+#!/bin/sh
+# Entrada privilegiada única a las operaciones versionadas de SIS-Leg (WP-101A).
+#
+# Este archivo es deliberadamente delgado: no toma decisiones, no habla con
+# systemd, no valida releases y no conoce ningún SHA. Todo eso vive en
+# `deploy/operaciones_host.py`, que viaja dentro de cada release y está cubierto
+# por la CI del producto. Acá sólo resolvemos *qué copia* de esa herramienta hay
+# que ejecutar y le pasamos los argumentos tal cual.
+#
+# ¿Por qué hace falta resolver la copia?
+#
+# Cuando el sistema anterior está activo no existe `/opt/sis-leg/current`, así
+# que no alcanza con apuntar siempre ahí. El orden de preferencia es:
+#
+#   1. `current`, si SIS-Leg está en servicio;
+#   2. la release declarada en `target-release`, que es la que se va a activar.
+#
+# Si ninguna de las dos existe, no hay nada versionado que ejecutar y se aborta
+# sin tocar el host.
+
+set -eu
+
+RAIZ="${SIS_LEG_RAIZ:-/opt/sis-leg}"
+PYTHON="${SIS_LEG_PYTHON:-/usr/local/bin/python3.14}"
+
+if [ "$(id -u)" -ne 0 ]; then
+	echo "sisleg-operacion debe ejecutarse como root." >&2
+	exit 1
+fi
+
+resolver_release() {
+	if [ -L "${RAIZ}/current" ]; then
+		readlink -f "${RAIZ}/current"
+		return 0
+	fi
+	if [ -f "${RAIZ}/target-release" ]; then
+		objetivo="$(cat "${RAIZ}/target-release")"
+		if [ -d "${RAIZ}/releases/${objetivo}" ]; then
+			printf '%s\n' "${RAIZ}/releases/${objetivo}"
+			return 0
+		fi
+	fi
+	return 1
+}
+
+if ! RELEASE="$(resolver_release)"; then
+	echo "No hay ninguna release de SIS-Leg preparada bajo ${RAIZ}." >&2
+	exit 1
+fi
+
+HERRAMIENTA="${RELEASE}/deploy/operaciones_host.py"
+if [ ! -f "${HERRAMIENTA}" ]; then
+	echo "La release ${RELEASE} no incluye deploy/operaciones_host.py." >&2
+	exit 1
+fi
+
+exec "${PYTHON}" "${HERRAMIENTA}" --raiz "${RAIZ}" "$@"
