@@ -1936,6 +1936,88 @@ test.describe('WP-040 - Dos estados del Orden del Día', () => {
   })
 })
 
+test.describe('WP-102 - Quitar Orden del Día vive en la cabecera de Q2', () => {
+  /*
+    Evidencia geométrica del único requisito que no puede comprobarse sin motor de layout:
+    la barra de título conserva exactamente su alto cuando aparece la acción.
+
+    El recorrido mide la cabecera dos veces sobre la misma página: primero con el cuadrante
+    vacío, cuando el botón todavía no existe, y después de publicar una colección por SSE,
+    cuando ya está renderizado. Si la acción hubiese forzado a la cabecera a crecer, la
+    segunda medición sería mayor. Además se comprueba que el botón esté físicamente dentro de
+    esa cabecera, a la derecha del badge de cantidad, y que el cuerpo ya no lo contenga.
+  */
+  test('conserva el alto de la cabecera y ubica la acción a la derecha del badge en 1366×768 y 1920×1080', async ({
+    page,
+  }) => {
+    await configurarOrdenDelDiaMock(page, crearEstadoSesionCompacta())
+
+    for (const viewport of [
+      { width: 1366, height: 768 },
+      { width: 1920, height: 1080 },
+    ]) {
+      await page.setViewportSize(viewport)
+      await page.goto('/moderacion/')
+
+      const panel = page.locator('[data-testid="panel-orden-del-dia"]')
+      const cabecera = panel.locator('header').first()
+      const badge = cabecera.locator('span').first()
+      const botonQuitar = panel.locator('[data-testid="btn-quitar-orden-dia"]')
+
+      // Estado vacío: la acción no se ofrece y la cabecera ya muestra su alto de referencia.
+      await expect(panel.locator('[data-testid="input-archivo-orden-dia"]')).toBeVisible()
+      await expect(botonQuitar).toHaveCount(0)
+      await expect(badge).toHaveText('Sin cargar')
+      const cabeceraSinOrden = await cabecera.boundingBox()
+      expect(cabeceraSinOrden).not.toBeNull()
+
+      await page.evaluate(() => {
+        ;(window as Window & { publicarOrdenDelDiaLargo?: () => void }).publicarOrdenDelDiaLargo?.()
+      })
+      await expect(panel.locator('[data-testid="punto-orden-dia"]')).toHaveCount(24)
+      await expect(botonQuitar).toBeVisible()
+      await expect(botonQuitar).toHaveText('Quitar Orden del Día')
+
+      const cabeceraConOrden = await cabecera.boundingBox()
+      const cajaBadge = await badge.boundingBox()
+      const cajaBoton = await botonQuitar.boundingBox()
+      expect(cabeceraConOrden).not.toBeNull()
+      expect(cajaBadge).not.toBeNull()
+      expect(cajaBoton).not.toBeNull()
+
+      // 1 px de tolerancia por el redondeo subpíxel del navegador.
+      expect(Math.abs(cabeceraConOrden!.height - cabeceraSinOrden!.height)).toBeLessThanOrEqual(1)
+
+      // El botón entra completo dentro de la barra de título, no debajo de ella.
+      expect(cajaBoton!.y).toBeGreaterThanOrEqual(cabeceraConOrden!.y - 1)
+      expect(cajaBoton!.y + cajaBoton!.height).toBeLessThanOrEqual(
+        cabeceraConOrden!.y + cabeceraConOrden!.height + 1,
+      )
+      expect(cajaBoton!.height).toBeLessThanOrEqual(cabeceraConOrden!.height)
+
+      // Orden visual pedido por el WP: badge de cantidad primero, acción inmediatamente después.
+      await expect(badge).toHaveText('24 puntos')
+      expect(cajaBoton!.x).toBeGreaterThanOrEqual(cajaBadge!.x + cajaBadge!.width)
+
+      // El cuerpo dejó de alojar la acción y sigue sin generar scroll propio.
+      await expect(
+        panel.locator('[data-testid="cuerpo-panel"] [data-testid="btn-quitar-orden-dia"]'),
+      ).toHaveCount(0)
+      const medicionCuerpo = await panel
+        .locator('[data-testid="cuerpo-panel"]')
+        .evaluate((elemento) => ({
+          altoVisible: elemento.clientHeight,
+          altoContenido: elemento.scrollHeight,
+          overflowY: getComputedStyle(elemento).overflowY,
+        }))
+      expect(['auto', 'scroll']).not.toContain(medicionCuerpo.overflowY)
+      expect(medicionCuerpo.altoContenido).toBeLessThanOrEqual(medicionCuerpo.altoVisible + 1)
+
+      await verificarGeometriaShellCompleto(page, viewport)
+    }
+  })
+})
+
 test.describe('WP-023 - Recorrido de votación y Orden del Día', () => {
   test('selecciona un punto, confirma CA-062 y adopta EN_CURSO, EMPATADA y desempate desde SSE', async ({
     page,
