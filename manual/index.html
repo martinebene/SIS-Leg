@@ -1418,9 +1418,15 @@
                 <tr><td><code>MODERACION</code></td><td>El panel de eventos de Moderación.</td></tr>
                 <tr>
                   <td><code>RECINTO</code></td>
-                  <td>La franja de votación, tema y estado de la Pantalla del Recinto.</td>
+                  <td>
+                    La franja de votación, tema y estado de la Pantalla del Recinto y, si la
+                    transmisión usa el zócalo, también la placa del zócalo.
+                  </td>
                 </tr>
-                <tr><td><code>AMBOS</code></td><td>Las dos superficies a la vez.</td></tr>
+                <tr>
+                  <td><code>AMBOS</code></td>
+                  <td>Las superficies de <code>MODERACION</code> y de <code>RECINTO</code> a la vez.</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -2665,6 +2671,15 @@ chromium --autoplay-policy=no-user-gesture-required http://&lt;servidor&gt;/tecn
             tipo navegador apuntada a <code>/zocalo/</code> del mismo servidor que usan las demás
             pantallas. No pide usuario ni contraseña y no tiene ningún botón: sólo muestra, en vivo,
             la misma votación, el mismo tema y el mismo estado que la Pantalla del Recinto.
+          </p>
+
+          <p>
+            Cuando Apoyo Técnico publica un aviso hacia el recinto —destino <code>RECINTO</code> o
+            <code>AMBOS</code>—, la placa muestra ese aviso en lugar de los tres renglones, igual que
+            la Pantalla del Recinto. La placa no cambia de tamaño ni de lugar. Al vencer, cancelarse
+            o reemplazarse el aviso, la placa lo sigue sola y vuelve a mostrar la votación vigente:
+            no hay nada que tocar en la fuente. Un aviso dirigido sólo a <code>MODERACION</code>
+            no aparece en el zócalo.
           </p>
 
           <ol>

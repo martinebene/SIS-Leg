@@ -16,6 +16,23 @@
  * Las dos funciones son las mismas que usa la Pantalla del Recinto, de modo que las dos
  * superficies no pueden discrepar ni en el momento ni en el texto.
  *
+ * ## Avisos de Apoyo Técnico (WP-103)
+ *
+ * Cuando Apoyo Técnico publica un aviso hacia el Recinto (destino `RECINTO` o `AMBOS`), el
+ * Recinto reemplaza su franja de votación/tema/estado por ese aviso. El Zócalo es la versión
+ * para transmisión de esa misma franja, así que hace exactamente lo mismo: mientras el
+ * snapshot público trae `tecnico.aviso`, el bloque muestra el aviso **en lugar de** los tres
+ * renglones.
+ *
+ * - La fuente es la misma que usa el Recinto: `EstadoRecinto.tecnico.aviso`, dentro del mismo
+ *   snapshot que ya llega por REST/SSE. No hay endpoint, stream ni estado propio del Zócalo.
+ * - El reemplazo es real (`v-if`/`v-else`): los renglones no quedan ocultos por detrás.
+ * - Cuando el backend deja de publicar el aviso —porque venció, lo cancelaron o lo
+ *   reemplazaron—, el `computed` vuelve a `null` y los renglones reaparecen solos. La
+ *   pantalla no cronometra nada ni recuerda qué mostraba antes.
+ * - El aviso se dibuja con `AvisoSuperficie`, el mismo componente del Recinto, de modo que el
+ *   ajuste tipográfico y el recorte con `…` son idénticos en las dos superficies.
+ *
  * ## Qué no tiene
  *
  * Ningún control de operador: no hay botones, campos, enlaces ni menús. Una Browser Source
@@ -53,8 +70,22 @@ import {
   usePresentacionVotacion,
   usePresentacionVotacionPublica,
 } from '@sis-leg/frontend-shared'
+import AvisoSuperficie from '@sis-leg/frontend-shared/componentes/AvisoSuperficie.vue'
 
 const props = defineProps<{ estado: EstadoRecinto | null }>()
+
+/**
+ * Aviso de Apoyo Técnico vigente para el Recinto, o `null` si no hay ninguno.
+ *
+ * Es la misma lectura que hace la Pantalla del Recinto sobre el mismo campo del mismo
+ * snapshot. El backend ya separa las ranuras por destino: un aviso dirigido sólo a
+ * Moderación nunca viaja en `EstadoRecinto`, así que acá no se vuelve a filtrar.
+ *
+ * Tampoco se mira `expira_en` ni `segundos_restantes`: decidir que un aviso venció le
+ * corresponde al backend, que publica una revisión sin aviso cuando eso ocurre. Si la
+ * pantalla lo decidiera por su cuenta, podría ocultarlo antes o después que el Recinto.
+ */
+const avisoTecnico = computed(() => props.estado?.tecnico?.aviso ?? null)
 
 const { votacion: votacionPresentada } = usePresentacionVotacion(toRef(props, 'estado'))
 
@@ -96,29 +127,51 @@ const detalleEstado = computed(() => {
 
 <template>
   <div data-testid="lienzo-chroma" class="lienzo-chroma">
+    <!--
+      El bloque es siempre el mismo elemento, con la misma geometría, haya o no aviso: lo
+      único que cambia es su contenido. Así un aviso no puede mover, agrandar ni achicar la
+      placa que el equipo de transmisión ya encuadró.
+    -->
     <section
       data-testid="zocalo"
       class="zocalo"
-      :class="`estado-${claseEstado}`"
-      aria-label="Votación en curso"
+      :class="[`estado-${claseEstado}`, { 'zocalo-con-aviso': avisoTecnico }]"
+      :aria-label="avisoTecnico ? 'Aviso de Apoyo Técnico' : 'Votación en curso'"
     >
-      <div class="renglon">
-        <strong class="rotulo">Votación</strong>
-        <span data-testid="zocalo-votacion" class="valor">{{ resumenVotacion }}</span>
-      </div>
+      <!--
+        Reemplazo real, igual que en el Recinto: mientras hay aviso, los tres renglones no
+        existen en el DOM. Se dibuja dentro del bloque —y no sobre el croma— porque el fondo
+        del bloque es opaco: el degradado del aviso compartido se compone sobre ese azul y
+        nunca sobre el verde que recorta el filtro.
+      -->
+      <AvisoSuperficie
+        v-if="avisoTecnico"
+        :texto="avisoTecnico.texto"
+        data-testid="aviso-tecnico-zocalo"
+        rotulo="Aviso de Apoyo Técnico"
+      />
 
-      <div class="renglon">
-        <strong class="rotulo">Tema</strong>
-        <span data-testid="zocalo-tema" class="valor">{{ tema }}</span>
-      </div>
+      <template v-else>
+        <div class="renglon">
+          <strong class="rotulo">Votación</strong>
+          <span data-testid="zocalo-votacion" class="valor">{{ resumenVotacion }}</span>
+        </div>
 
-      <div class="renglon renglon-estado">
-        <strong class="rotulo">Estado</strong>
-        <span data-testid="zocalo-estado" class="valor pildora-estado">{{ estadoPrincipal }}</span>
-        <span v-if="detalleEstado" data-testid="zocalo-detalle-estado" class="detalle">
-          {{ detalleEstado }}
-        </span>
-      </div>
+        <div class="renglon">
+          <strong class="rotulo">Tema</strong>
+          <span data-testid="zocalo-tema" class="valor">{{ tema }}</span>
+        </div>
+
+        <div class="renglon renglon-estado">
+          <strong class="rotulo">Estado</strong>
+          <span data-testid="zocalo-estado" class="valor pildora-estado">{{
+            estadoPrincipal
+          }}</span>
+          <span v-if="detalleEstado" data-testid="zocalo-detalle-estado" class="detalle">
+            {{ detalleEstado }}
+          </span>
+        </div>
+      </template>
     </section>
   </div>
 </template>
@@ -184,6 +237,19 @@ const detalleEstado = computed(() => {
      alto real del bloque». Puede hacerlo sin bucle porque su alto no lo decide su
      contenido: lo fijan las unidades de viewport de arriba. */
   container-type: size;
+}
+
+/*
+  Bloque ocupado por un aviso (WP-103).
+
+  Sólo cambia la distribución **interna**: una única celda en lugar de tres renglones y sin
+  el relleno lateral, porque `AvisoSuperficie` ya trae su propio relleno y medirlo dos veces
+  le robaría espacio al texto. Posición, ancho, alto, borde y fondo opaco se heredan intactos
+  de `.zocalo`, así que la placa que ve la transmisión no cambia de tamaño ni de lugar.
+*/
+.zocalo-con-aviso {
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
 }
 
 .renglon {
