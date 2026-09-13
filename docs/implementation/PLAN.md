@@ -586,6 +586,8 @@ HUMAN_GATE aprueba dos correcciones de desarrollo independientes detectadas sin 
 | WP | Objetivo | Estado | Depende de | Agente |
 |---|---|---|---|---|
 | WP-102 | Reubicar `Quitar Orden del Día` en la cabecera de Q2 sin aumentar su altura | INTEGRADO | WP-051 | - |
-| WP-103 | Replicar en Zócalo los avisos técnicos destinados al Recinto | EN_CURSO | WP-099, WP-056 | claude |
+| WP-103 | Replicar en Zócalo los avisos técnicos destinados al Recinto | INTEGRADO | WP-099, WP-056 | - |
 
 WP-102 quedó `VERIFIED_COMPLETE`: PR #113 integrada por squash como `29b1eafeea60dce318ca462dc530b53c6a425825`, revisión independiente 0 BLOQUEANTES / 0 IMPORTANTES / 0 MENORES, auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`, CI post-merge #551 `success` 8/8 y cleanup verificado de worktree y ramas local/remota. Con ese gate satisfecho, HUMAN_GATE activa WP-103 con Claude Code / Claude Opus 5 como IMPLEMENTER y Antigravity/AGY / Gemini 3.8 Flash (High) como REVIEWER independiente. Continúa `max_concurrency=1`; WP-101B y toda mutación productiva permanecen fuera de alcance.
+
+WP-103 quedó `VERIFIED_COMPLETE`: PR #114 integrada por squash como `30b60eb6467ebd5dd5ee125dd9ce6e137ba9316b`, con tree `6732f85e1c53c815638c0763d98890271a07a1a8` idéntico al candidato revisado, revisión independiente 0 BLOQUEANTES / 0 IMPORTANTES / 0 MENORES, auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`, CI candidata #552 y post-merge #553 `success` 8/8. HUMAN_GATE verificó cleanup completo: worktree Orca/Git removido y ramas local/remota ausentes. Producción y WP-101B permanecen fuera de alcance.
