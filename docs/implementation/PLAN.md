@@ -584,7 +584,7 @@ HUMAN_GATE aprueba dos correcciones de desarrollo independientes detectadas sin 
 
 | WP | Objetivo | Estado | Depende de | Agente |
 |---|---|---|---|---|
-| WP-102 | Reubicar `Quitar Orden del Día` en la cabecera de Q2 sin aumentar su altura | EN_CURSO | WP-051 | claude |
-| WP-103 | Replicar en Zócalo los avisos técnicos destinados al Recinto | PENDIENTE | WP-099, WP-056 | claude |
+| WP-102 | Reubicar `Quitar Orden del Día` en la cabecera de Q2 sin aumentar su altura | INTEGRADO | WP-051 | - |
+| WP-103 | Replicar en Zócalo los avisos técnicos destinados al Recinto | EN_CURSO | WP-099, WP-056 | claude |
 
-WP-102 y WP-103 son materialmente independientes y por ello constituyen paralelismo lógico, pero HUMAN_GATE fija ejecución física secuencial con `max_concurrency=1`. Orden operativo: WP-102 completo primero; WP-103 sólo se activará después del cierre e integración de WP-102. IMPLEMENTER de ambos: Claude Code / Claude Opus 5. REVIEWER independiente de ambos: Antigravity/AGY / Gemini 3.8 Flash (High). La revisión independiente, la CI candidata y la auditoría sustantiva del ORCHESTRATOR siguen siendo gates obligatorios antes de cada merge.
+WP-102 quedó `VERIFIED_COMPLETE`: PR #113 integrada por squash como `29b1eafeea60dce318ca462dc530b53c6a425825`, revisión independiente 0 BLOQUEANTES / 0 IMPORTANTES / 0 MENORES, auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`, CI post-merge #551 `success` 8/8 y cleanup verificado de worktree y ramas local/remota. Con ese gate satisfecho, HUMAN_GATE activa WP-103 con Claude Code / Claude Opus 5 como IMPLEMENTER y Antigravity/AGY / Gemini 3.8 Flash (High) como REVIEWER independiente. Continúa `max_concurrency=1`; WP-101B y toda mutación productiva permanecen fuera de alcance.
