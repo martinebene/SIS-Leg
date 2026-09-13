@@ -243,6 +243,7 @@ WP-033 quedó integrado antes de continuar WP-026 y deja disponible el harness m
 | WP-090 | Corregir borde NORMAL de Q3 y contener temas largos en Q1 | INTEGRADO | WP-083, WP-048, WP-049 | codex |
 | WP-091 | Canonicalizar tipos de votación del Orden del Día con tolerancia humana | INTEGRADO | WP-016, WP-003 | codex |
 | WP-092 | Auditar inicio y fin efectivos de la transmisión EN VIVO | INTEGRADO | WP-055, WP-080, WP-081 | codex |
+| WP-099 | Agregar pantalla Zócalo para OBS | INTEGRADO | WP-097, WP-098 | - |
 | WP-087 | Endurecer migración, systemd y smoke de release antes del despliegue | BLOQUEADO | WP-029, WP-077 | claude |
 | WP-029 | Validar bridge/hardware real, regresión funcional y candidato de producción | EN_CURSO | WP-019, WP-020, WP-027, WP-028, WP-034, WP-035, WP-036, WP-037, WP-038, WP-039, WP-040, WP-041, WP-043, WP-044, WP-045, WP-046, WP-047, WP-048, WP-049, WP-050, WP-051, WP-052, WP-053, WP-054, WP-055, WP-056, WP-057, WP-058, WP-059, WP-060, WP-061, WP-062, WP-063, WP-064, WP-065, WP-066, WP-067, WP-069, WP-070, WP-071, WP-072, WP-073, WP-077, WP-078, WP-076, WP-075, WP-074, WP-079, WP-080, WP-081, WP-082, WP-083, WP-084, WP-085, WP-086, WP-088, WP-089, WP-090, WP-091, WP-092 | antigravity |
 
