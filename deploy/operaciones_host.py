@@ -64,9 +64,11 @@ from deploy.actualizador_publico import (  # noqa: E402 - raíz preparada arriba
     REPOSITORIO_PREDETERMINADO,
     ClienteHttpPublicoReal,
     ErrorActualizadorPublico,
+    IdentidadDesplegable,
     ReleaseDescargada,
     obtener_release_publica,
-    resolver_sha_main,
+    resolver_identidad_desplegable,
+    verificar_ancestro_publico,
 )
 from deploy.configuracion_local import (  # noqa: E402 - raíz preparada arriba
     ACCION_CREAR,
@@ -159,6 +161,10 @@ class PlanOperacion:
     target_actual: str | None
     sha_objetivo: str | None
     acciones_previstas: tuple[str, ...]
+    # Cabeza de ``main`` observada al decidir (WP-104). Puede diferir de
+    # ``sha_objetivo`` cuando ``main`` avanzó sólo por documentación: se muestra
+    # para que la persona vea que eso es esperado y no un error.
+    main_head_sha: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +214,10 @@ class ResultadoOperacion:
             operación pudo continuar igual por ser version-agnóstica.
         evidencia_publica: :class:`EvidenciaPublica` serializada, cuando la
             operación consumió el canal público.
+        main_head_sha: cabeza de ``main`` contra la que se resolvió la release
+            desplegable (WP-104). ``sha_objetivo`` es la release; este campo es
+            la cabeza de gobernanza, que puede estar por delante con commits
+            sólo documentales. Se registran los dos para no perder cuál era cuál.
     """
 
     operacion: str
@@ -225,6 +235,7 @@ class ResultadoOperacion:
     error: str | None = None
     diagnostico_target: str | None = None
     evidencia_publica: dict[str, Any] | None = None
+    main_head_sha: str | None = None
     acciones: list[str] = field(default_factory=lambda: [])
     configuracion_incorporada: list[str] = field(default_factory=lambda: [])
 
@@ -285,7 +296,8 @@ class OperadorHost:
     - ``gestor``: motor canónico de releases (preparar/activar/rollback/config);
     - ``inspector``: clasificación del estado formal y guards;
     - ``ejecutor``: frontera única hacia ``systemctl`` y ``nginx``;
-    - ``resolver_sha_publico`` y ``obtener_release``: canal público de WP-100;
+    - ``resolver_identidad_publica``, ``verificar_ancestro`` y ``obtener_release``:
+      canal público de WP-100 con la selección de release desplegable de WP-104;
     - ``preflight``: comprobación de prerequisitos del host;
     - ``durmiente``: espera entre reintentos, para pruebas deterministas.
 
@@ -301,7 +313,8 @@ class OperadorHost:
         gestor: GestorDespliegue | None = None,
         inspector: InspectorEstadoHost | None = None,
         ejecutor: EjecutorComandos | None = None,
-        resolver_sha_publico: Callable[[], str] | None = None,
+        resolver_identidad_publica: Callable[[], IdentidadDesplegable] | None = None,
+        verificar_ancestro: Callable[[str, str], None] | None = None,
         obtener_release: Callable[[Path], ReleaseDescargada] | None = None,
         preflight: Callable[[], None] | None = None,
         durmiente: Callable[[float], None] | None = None,
@@ -324,7 +337,13 @@ class OperadorHost:
             ruta_vhost_sisleg=ruta_vhost_sisleg,
         )
         self.repositorio = repositorio
-        self._resolver_sha_publico = resolver_sha_publico or self._resolver_sha_publico_real
+        self._resolver_identidad_publica = (
+            resolver_identidad_publica or self._resolver_identidad_publica_real
+        )
+        # ``verificar_ancestro(ancestro, descendiente)`` levanta si no puede
+        # demostrar la relación. Se inyecta por la misma razón que el resto del
+        # canal público: la suite no sale a la red.
+        self._verificar_ancestro = verificar_ancestro or self._verificar_ancestro_real
         self._obtener_release = obtener_release or self._obtener_release_real
         # ``preflight`` sondea binarios del host con ``shutil.which``; en una
         # máquina de desarrollo no hay Nginx ni systemd, así que la suite inyecta
@@ -359,18 +378,31 @@ class OperadorHost:
     # Fronteras hacia el canal público
     # ------------------------------------------------------------------
 
-    def _resolver_sha_publico_real(self) -> str:
-        """Resuelve la cabeza de ``main`` sin ninguna credencial del host."""
+    def _resolver_identidad_publica_real(self) -> IdentidadDesplegable:
+        """Resuelve cabeza de ``main`` y release desplegable sin credenciales."""
 
-        return resolver_sha_main(ClienteHttpPublicoReal(), repositorio=self.repositorio)
+        return resolver_identidad_desplegable(
+            ClienteHttpPublicoReal(), repositorio=self.repositorio
+        )
+
+    def _verificar_ancestro_real(self, ancestro: str, descendiente: str) -> None:
+        """Demuestra con la comparación Git pública que no hay regresión de versión."""
+
+        verificar_ancestro_publico(
+            ClienteHttpPublicoReal(),
+            repositorio=self.repositorio,
+            ancestro=ancestro,
+            descendiente=descendiente,
+        )
 
     def _obtener_release_real(self, destino: Path) -> ReleaseDescargada:
         """Descarga y valida la release pública del SHA que se está actualizando.
 
-        No se pasa ``sha=None``: el SHA ya fue resuelto al principio de la
-        operación y es el único autorizado. Si ``main`` avanzó mientras corría la
-        actualización, el canal público fallará al no encontrar esa publicación,
-        que es exactamente la conducta esperada.
+        No se pasa ``sha=None``: la release desplegable ya fue resuelta al
+        principio de la operación y es la única autorizada. Pedirla por SHA
+        exacto garantiza que lo descargado, validado y preparado en este intento
+        sea exactamente esa release, aunque mientras tanto aparezca otra
+        ``latest``: esa carrera la detecta después la revalidación.
         """
 
         return obtener_release_publica(
@@ -750,7 +782,7 @@ class OperadorHost:
     # ------------------------------------------------------------------
 
     def actualizar(self, *, confirmador: Confirmador | None = None) -> ResultadoOperacion:
-        """Trae la release pública de ``main`` y la deja utilizable, sin conmutar.
+        """Trae la release pública desplegable y la deja utilizable, sin conmutar.
 
         Resultado: :class:`ResultadoOperacion` con el detalle de lo ocurrido.
 
@@ -763,9 +795,15 @@ class OperadorHost:
             host en el estado en que estaba o ya restaurado.
 
         El orden es el del contrato de WP-101: lock, guard institucional,
-        resolución del SHA público, idempotencia, descarga verificada, preflight,
-        preparación, compuerta de configuración y recién entonces la acción que
-        corresponda al sistema activo.
+        resolución de la release pública desplegable, idempotencia, guard de no
+        regresión, descarga verificada, preflight, preparación, revalidación,
+        compuerta de configuración y recién entonces la acción que corresponda al
+        sistema activo.
+
+        Desde WP-104 la versión a instalar es la **release desplegable** —la
+        publicación ``latest`` demostrada como ancestro de ``main``— y no el SHA
+        exacto de la cabeza: ``main`` puede estar por delante con commits sólo
+        documentales que nunca se publican. Los dos SHAs quedan en el resultado.
 
         Actualizar y conmutar son decisiones distintas: que exista una versión
         nueva no es motivo para cambiar el sistema que está atendiendo el recinto.
@@ -779,13 +817,16 @@ class OperadorHost:
             resultado.acciones.append(f"guard institucional superado en estado {estado}")
 
             try:
-                sha_objetivo = self._resolver_sha_publico()
+                identidad = self._resolver_identidad_publica()
             except (ErrorActualizadorPublico, ErrorDespliegue, OSError) as error:
                 raise ErrorOperacionHost(
-                    f"No se pudo resolver la versión pública de main: {error}"
+                    f"No se pudo resolver la release pública desplegable de main: {error}"
                 ) from error
+            sha_objetivo = identidad.release_sha
             self._sha_en_curso = sha_objetivo
             resultado.sha_objetivo = sha_objetivo
+            resultado.main_head_sha = identidad.main_head_sha
+            resultado.acciones.append(self._describir_identidad(identidad))
 
             target_previo = leer_target_release(self.raiz)
             release_actual = self._release_actual()
@@ -795,14 +836,17 @@ class OperadorHost:
             self._exigir_estado_resoluble(estado, release_actual, target_previo)
 
             # Idempotencia. La divergencia entre ``current`` y ``target-release`` ya
-            # fue rechazada arriba, así que llegar acá con el target igual al SHA
-            # público significa que no hay absolutamente nada que hacer.
+            # fue rechazada arriba, así que llegar acá con el target igual a la
+            # release desplegable significa que no hay absolutamente nada que hacer,
+            # aunque ``main`` haya avanzado después sólo por documentación.
             if target_previo == sha_objetivo and self._release_preparada(sha_objetivo):
                 resultado.mensaje = (
                     "SIS-Leg ya está actualizado; no se descargó, preparó ni reinició nada."
                 )
                 resultado.estado_final = estado
                 return resultado
+
+            self._exigir_sin_regresion(sha_objetivo, target_previo, release_actual, resultado)
 
             plan = PlanOperacion(
                 operacion=OPERACION_ACTUALIZAR,
@@ -811,6 +855,7 @@ class OperadorHost:
                 target_actual=target_previo,
                 sha_objetivo=sha_objetivo,
                 acciones_previstas=self._acciones_previstas_actualizar(estado),
+                main_head_sha=identidad.main_head_sha,
             )
             if confirmador is not None and not confirmador(plan):
                 resultado.estado = ESTADO_CANCELADA
@@ -836,7 +881,7 @@ class OperadorHost:
 
             # Última compuerta antes de cualquier mutación que decida qué versión
             # usa el host. Desde acá hasta el final ya no se consulta la red.
-            self._revalidar_sha_publico(sha_objetivo, resultado)
+            self._revalidar_identidad_publica(identidad, resultado)
 
             self._aplicar_contrato_configuracion(release, resultado)
 
@@ -864,45 +909,122 @@ class OperadorHost:
                 )
             return resultado
 
-    def _revalidar_sha_publico(self, sha_congelado: str, resultado: ResultadoOperacion) -> None:
-        """Vuelve a resolver ``main`` y aborta si avanzó durante la operación.
+    @staticmethod
+    def _describir_identidad(identidad: IdentidadDesplegable) -> str:
+        """Texto para el historial que no confunde la cabeza de ``main`` con la release."""
+
+        if identidad.main_head_sha == identidad.release_sha:
+            return f"release pública desplegable {identidad.release_sha} (coincide con main)"
+        return (
+            f"release pública desplegable {identidad.release_sha}, ancestro demostrado de "
+            f"main {identidad.main_head_sha}"
+        )
+
+    def _exigir_sin_regresion(
+        self,
+        sha_objetivo: str,
+        target_previo: str | None,
+        release_actual: str | None,
+        resultado: ResultadoOperacion,
+    ) -> None:
+        """Aborta sin mutar si la release desplegable no es posterior a la del host.
 
         Entradas:
-            sha_congelado: el SHA que la operación resolvió al empezar y que
-                autorizó toda la descarga y la preparación.
+            sha_objetivo: release desplegable resuelta.
+            target_previo: objetivo declarado del host, si existe.
+            release_actual: release en ``current``, si SIS-Leg está activo.
+            resultado: se anota la comprobación superada.
+
+        Errores:
+            ErrorOperacionHost si no se puede demostrar que la release que el host
+            ya conoce es ancestro de la release desplegable.
+
+        ¿Por qué hace falta desde WP-104? Mientras la versión candidata era la
+        cabeza exacta de ``main``, una actualización sólo podía avanzar. ``latest``
+        es, en cambio, lo que GitHub marcó como release más reciente, y una
+        publicación tardía de un commit anterior podría quedar marcada así aunque
+        siga siendo ancestro de ``main``. Sin esta comprobación el botón
+        «Actualizar» podría **retroceder** el host a una versión vieja.
+
+        La referencia es ``target-release`` si existe —lo que el host declara que
+        debe correr— y si no, ``current``. Si no hay ninguna de las dos no hay
+        contra qué retroceder y la comprobación no aplica.
+        """
+
+        referencia = target_previo if target_previo is not None else release_actual
+        if referencia is None or referencia == sha_objetivo:
+            return
+        try:
+            self._verificar_ancestro(referencia, sha_objetivo)
+        except (ErrorActualizadorPublico, ErrorDespliegue, OSError) as error:
+            raise ErrorOperacionHost(
+                f"La release pública desplegable {sha_objetivo} no es posterior a la release "
+                f"{referencia} que el host ya declara. Instalarla podría retroceder la versión: "
+                f"se aborta sin mutar y se requiere diagnóstico humano. {error}"
+            ) from error
+        resultado.acciones.append(
+            f"sin regresión: {referencia} es ancestro de la release desplegable {sha_objetivo}"
+        )
+
+    def _revalidar_identidad_publica(
+        self, identidad_congelada: IdentidadDesplegable, resultado: ResultadoOperacion
+    ) -> None:
+        """Vuelve a resolver la release desplegable y aborta si cambió.
+
+        Entradas:
+            identidad_congelada: la identidad que la operación resolvió al empezar
+                y que autorizó toda la descarga y la preparación.
             resultado: se anota la revalidación superada.
 
         Errores:
-            ErrorOperacionHost si ``main`` avanzó o si no se puede volver a
-            resolver.
+            ErrorOperacionHost si la release desplegable cambió, o si ya no se
+            puede demostrar (sin release, ``latest`` fuera de la historia de la
+            nueva cabeza, falla de red).
 
-        ¿Por qué hace falta? Las releases públicas son inmutables: la del SHA
-        anterior sigue existiendo y descargándose con normalidad aunque ``main``
-        haya avanzado. Sin esta revalidación, una actualización lenta podría
-        terminar instalando y declarando como objetivo una versión que ya dejó de
-        ser la vigente, con una autorización tomada minutos antes.
+        ¿Por qué hace falta? Las releases públicas son inmutables: la anterior
+        sigue existiendo y descargándose con normalidad aunque aparezca una
+        nueva. Sin esta revalidación, una actualización lenta podría terminar
+        instalando y declarando como objetivo una versión que ya dejó de ser la
+        vigente, con una autorización tomada minutos antes.
 
-        Qué queda cuando se detecta la carrera: la release nueva ya preparada se
+        Qué se compara (WP-104): la **identidad desplegable**, no la cabeza de
+        ``main``. Si ``main`` avanzó sólo por documentación, la release
+        desplegable sigue siendo la misma y continuar es correcto; exigir la
+        misma cabeza haría fallar la actualización por un commit que nunca se
+        va a publicar. Si apareció una release productiva nueva, la identidad
+        cambió y se aborta antes de tocar ``target-release`` o los servicios.
+
+        Qué queda cuando se detecta la carrera: la release ya preparada se
         conserva en ``releases/`` porque preparar es aditivo y no toca lo que
         está en servicio; sirve de diagnóstico y de caché para el próximo
-        intento. Lo que **no** ocurre es activarla ni declararla como objetivo:
-        el host sigue exactamente en la versión en la que estaba.
+        intento. Lo que **no** ocurre es activarla ni declararla como objetivo, y
+        tampoco se activa la release nueva, que en este intento no se descargó
+        ni se validó.
         """
 
+        sha_congelado = identidad_congelada.release_sha
         try:
-            sha_vigente = self._resolver_sha_publico()
+            vigente = self._resolver_identidad_publica()
         except (ErrorActualizadorPublico, ErrorDespliegue, OSError) as error:
             raise ErrorOperacionHost(
-                "No se pudo revalidar la versión pública de main antes de aplicar el cambio; "
+                "No se pudo revalidar la release pública desplegable antes de aplicar el cambio; "
                 f"no se activó ni se fijó ninguna release: {error}"
             ) from error
-        if sha_vigente != sha_congelado:
+        if vigente.release_sha != sha_congelado:
             raise ErrorOperacionHost(
-                f"main avanzó de {sha_congelado} a {sha_vigente} mientras corría la "
-                "actualización. La release preparada queda disponible para el próximo intento, "
-                "pero no se activó ni se declaró como objetivo con una autorización vencida."
+                f"La release pública desplegable cambió de {sha_congelado} a "
+                f"{vigente.release_sha} (main en {vigente.main_head_sha}) mientras corría la "
+                "actualización. La release preparada queda disponible para diagnóstico, pero no "
+                "se activó ni se declaró como objetivo con una autorización vencida, y la release "
+                "nueva no se instala porque no fue descargada ni validada en este intento."
             )
-        resultado.acciones.append(f"main revalidado: sigue en {sha_congelado}")
+        if vigente.main_head_sha != identidad_congelada.main_head_sha:
+            resultado.acciones.append(
+                f"main avanzó de {identidad_congelada.main_head_sha} a {vigente.main_head_sha} "
+                f"sin cambiar la release desplegable, que sigue en {sha_congelado}"
+            )
+            return
+        resultado.acciones.append(f"release desplegable revalidada: sigue en {sha_congelado}")
 
     def _exigir_estado_resoluble(
         self, estado: str, release_actual: str | None, target_previo: str | None
@@ -1633,6 +1755,13 @@ def confirmador_interactivo(plan: PlanOperacion) -> bool:
     print(f"Release en uso: {plan.release_actual or 'ninguna'}")
     print(f"target-release actual: {plan.target_actual or 'ninguno'}")
     print(f"Release objetivo: {plan.sha_objetivo or 'no aplica'}")
+    if plan.main_head_sha is not None and plan.main_head_sha != plan.sha_objetivo:
+        # Se aclara explícitamente para que un avance documental de ``main`` no se
+        # lea como un error: es el caso normal descrito por WP-104.
+        print(
+            f"Cabeza de main: {plan.main_head_sha} (por delante de la release con cambios que "
+            "no tienen versión publicada)"
+        )
     print("Se hará:")
     for accion in plan.acciones_previstas:
         print(f"  - {accion}")
@@ -1658,7 +1787,9 @@ def crear_parser() -> argparse.ArgumentParser:
         help="Archivo de historial donde anexar el resultado. Nunca contiene secretos.",
     )
     sub = parser.add_subparsers(dest="comando", required=True)
-    sub.add_parser(OPERACION_ACTUALIZAR, help="Trae la release pública de main y la prepara.")
+    sub.add_parser(
+        OPERACION_ACTUALIZAR, help="Trae la release pública desplegable de main y la prepara."
+    )
     sub.add_parser(
         OPERACION_CAMBIAR_A_SISLEG, help="Activa la release declarada en target-release."
     )

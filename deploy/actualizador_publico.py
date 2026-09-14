@@ -23,6 +23,26 @@ Este módulo es el lado **consumidor** de ese canal. Su contrato es estricto:
 - descarga siempre a temporales y promueve sólo lo que validó;
 - no construye comandos de shell con datos que vienen de GitHub.
 
+Cabeza de ``main`` y release desplegable (WP-104)
+-------------------------------------------------
+
+Hasta WP-104 este módulo suponía que «la versión a instalar» era siempre el SHA
+exacto de la cabeza de ``main``. Esa suposición choca con DEC-019: un push a
+``main`` compuesto sólo por documentación no ejecuta CI y, por lo tanto, **nunca**
+tiene release pública. Con ``main`` en un commit documental el actualizador
+buscaba una publicación que por diseño no iba a existir y fallaba siempre.
+
+Desde WP-104 se distinguen dos identidades que antes se confundían:
+
+- ``main_head_sha``: la cabeza actual de ``main``, que puede ser documental;
+- ``release_sha``: la publicación pública ``latest`` válida, **demostrada** como
+  ancestro de esa cabeza (o idéntica a ella) mediante la API pública de
+  comparación Git.
+
+Si la publicación ``latest`` no es ancestro de ``main`` el canal falla cerrado:
+no se buscan releases más viejas para disimular una divergencia. Cuando se pide
+un SHA explícito (``--sha``) se conserva el comportamiento exacto previo.
+
 Reparto de responsabilidades
 ----------------------------
 
@@ -403,6 +423,32 @@ class ReleaseDescargada:
     metadatos: Path
     run_ci: RunCi
     job_ci: JobCi
+    # Cabeza de ``main`` contra la que se demostró la ancestralidad de esta
+    # release. Es ``None`` cuando la descarga se pidió por SHA explícito: en ese
+    # modo no se consultó ``main`` y afirmar una cabeza sería inventar un dato.
+    main_head_sha: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class IdentidadDesplegable:
+    """Qué release pública corresponde instalar y contra qué cabeza de ``main``.
+
+    Es la respuesta a «¿qué versión productiva está vigente?» desde WP-104:
+
+    - ``main_head_sha`` es la cabeza de ``main`` observada. Puede ser un commit
+      puramente documental que nunca tendrá release (DEC-019);
+    - ``release_sha`` es el commit de la publicación ``latest`` válida, ya
+      demostrado como ancestro de esa cabeza o idéntico a ella;
+    - ``tag`` es el tag determinista de esa publicación.
+
+    Los dos SHAs se guardan juntos y nunca se reemplaza uno por el otro: el
+    historial del host tiene que poder explicar por qué se instaló ``release_sha``
+    mientras ``main`` estaba en otro commit.
+    """
+
+    main_head_sha: str
+    release_sha: str
+    tag: str
 
 
 def _texto(datos: Mapping[str, Any], clave: str, contexto: str) -> str:
@@ -465,9 +511,10 @@ def resolver_sha_main(
 ) -> str:
     """Paso 1: resuelve el SHA completo actual de ``main`` por recurso público.
 
-    Se consulta el commit de la rama, no una lista de tags: el contrato dice que
-    la versión candidata es la cabeza de ``main``, y el SHA resuelto acá es el
-    único que se usará en todos los pasos siguientes.
+    Se consulta el commit de la rama, no una lista de tags. Desde WP-104 este SHA
+    es la **cabeza de gobernanza** de ``main``, no necesariamente la release a
+    instalar: si ``main`` avanzó sólo por documentación, la release desplegable
+    es un ancestro suyo (ver :func:`resolver_identidad_desplegable`).
     """
 
     _validar_repositorio(repositorio)
@@ -743,9 +790,11 @@ def resolver_publicacion(
 ) -> PublicacionPublica:
     """Paso 4 y 5: resuelve la publicación del SHA y exige nombres exactos.
 
-    Se consulta por tag y no por «última release»: pedir ``latest`` devolvería
-    lo que GitHub considere más nuevo, que no tiene por qué ser el SHA que el
-    actualizador resolvió al principio.
+    Se consulta por tag y no por «última release»: cuando el SHA ya está
+    decidido, pedir ``latest`` devolvería lo que GitHub considere más nuevo, que
+    no tiene por qué ser ese SHA. El único uso de ``latest`` es el de
+    :func:`_resolver_publicacion_desplegable`, que además demuestra su
+    ancestralidad respecto de ``main``.
 
     La publicación debe declarar exactamente los tres assets derivados del SHA.
     Un asset de más, uno de menos o un nombre repetido invalidan la publicación
@@ -757,7 +806,27 @@ def resolver_publicacion(
     tag = tag_publicacion(sha)
     url = f"https://{HOST_API}/repos/{repositorio}/releases/tags/{urllib.parse.quote(tag, safe='')}"
     datos = _objeto(cliente.obtener_json(url), url)
+    return validar_datos_publicacion(datos, sha, url)
 
+
+def validar_datos_publicacion(datos: Mapping[str, Any], sha: str, url: str) -> PublicacionPublica:
+    """Valida el JSON de una release contra el SHA que se pretende consumir.
+
+    Entradas:
+        datos: la release tal como la devolvió GitHub (por tag o como ``latest``).
+        sha: el commit que esa release debe representar.
+        url: de dónde vino la respuesta, sólo para los mensajes de error.
+
+    Resultado: la :class:`PublicacionPublica` con sus tres assets exactos.
+
+    Existe como función aparte desde WP-104 porque la misma release puede
+    obtenerse de dos formas —por tag o como ``latest``— y las dos tienen que
+    pasar exactamente por las mismas comprobaciones. Tener una sola
+    implementación impide que el camino nuevo quede más laxo que el anterior.
+    """
+
+    sha = validar_sha(sha)
+    tag = tag_publicacion(sha)
     if _texto(datos, "tag_name", url) != tag:
         raise ErrorActualizadorPublico(f"{url} devolvió un tag distinto del solicitado.")
     if datos.get("draft") is not False or datos.get("prerelease") is not False:
@@ -801,6 +870,203 @@ def resolver_publicacion(
     if faltantes:
         raise ErrorActualizadorPublico(f"La publicación {tag} no expone los assets {faltantes}.")
     return PublicacionPublica(tag=tag, commit_sha=sha, assets=encontrados)
+
+
+# --------------------------------------------------------------------------
+# Release desplegable: ``latest`` demostrada como ancestro de ``main`` (WP-104)
+# --------------------------------------------------------------------------
+#
+# ¿Por qué ``latest`` y no «la release del SHA de main»?
+# ------------------------------------------------------
+#
+# Porque ``main`` puede avanzar por commits exclusivamente documentales que, por
+# DEC-019, no ejecutan CI y nunca se publican. La versión productiva vigente es
+# entonces la última publicación válida, que queda **detrás** de la cabeza.
+#
+# ¿Por qué no alcanza con pedir ``latest``?
+# -----------------------------------------
+#
+# ``latest`` es lo que GitHub considera la release más reciente: un dato de
+# orden, no una prueba de pertenencia. Se exige además que su commit sea
+# ancestro de la cabeza actual de ``main`` —o idéntico a ella— preguntándoselo a
+# la API pública de comparación Git con los dos SHAs completos. Fechas, orden de
+# releases o prefijos de SHA no sirven como evidencia.
+#
+# Si esa prueba falla no se busca «otra release que sí sea ancestro»: una
+# ``latest`` fuera de la historia de ``main`` es una divergencia de gobernanza
+# que tiene que ver una persona, no un algoritmo que la disimule.
+
+
+def url_release_latest(repositorio: str) -> str:
+    """URL pública de la release ``latest`` (no borrador, no prerelease)."""
+
+    return f"https://{HOST_API}/repos/{repositorio}/releases/latest"
+
+
+def url_comparacion(repositorio: str, base: str, cabeza: str) -> str:
+    """URL pública de la comparación Git ``base...cabeza`` entre dos SHAs completos.
+
+    ``per_page=1`` limita la lista de commits de la respuesta: la prueba de
+    ancestralidad sólo necesita los campos de resumen, no el detalle de cada
+    commit intermedio.
+    """
+
+    return f"https://{HOST_API}/repos/{repositorio}/compare/{base}...{cabeza}?per_page=1"
+
+
+def sha_de_tag_publicacion(tag: str) -> str:
+    """Extrae el SHA de un tag ``sis-leg-<SHA>`` exigiendo la forma exacta.
+
+    Errores:
+        ErrorActualizadorPublico si el tag no tiene el prefijo del canal o si lo
+        que sigue no es un SHA completo en minúsculas.
+    """
+
+    if not tag.startswith(PREFIJO_TAG):
+        raise ErrorActualizadorPublico(
+            f"La release latest usa el tag {tag!r}, que no es un tag determinista del canal."
+        )
+    try:
+        return validar_sha(tag.removeprefix(PREFIJO_TAG))
+    except ErrorDespliegue as error:
+        raise ErrorActualizadorPublico(
+            f"La release latest usa el tag {tag!r}, que no nombra un SHA completo: {error}"
+        ) from error
+
+
+def verificar_ancestro_publico(
+    cliente: ClienteHttpPublico,
+    *,
+    repositorio: str,
+    ancestro: str,
+    descendiente: str,
+) -> None:
+    """Demuestra con la API pública que ``ancestro`` está en la historia de ``descendiente``.
+
+    Entradas:
+        cliente: frontera HTTP pública, sin credenciales.
+        repositorio: ``propietario/nombre`` ya conocido.
+        ancestro: SHA completo que debe ser ancestro (o idéntico).
+        descendiente: SHA completo que debe contenerlo en su historia.
+
+    Errores:
+        ErrorActualizadorPublico si la comparación no puede obtenerse o si no
+        demuestra la relación.
+
+    Si los dos SHAs son idénticos no se consulta la red: dos SHAs completos y
+    validados que coinciden carácter a carácter ya son la misma identidad Git.
+
+    En otro caso se consulta ``compare/ancestro...descendiente`` y se exige, todo
+    junto:
+
+    - ``status`` igual a ``ahead`` —el descendiente tiene commits que el
+      ancestro no— con ``behind_by`` en cero;
+    - ``base_commit.sha`` igual al ancestro pedido, para que la API no haya
+      resuelto otro objeto;
+    - ``merge_base_commit.sha`` igual al ancestro: es la definición Git de
+      «ancestro»; si la base común fuera otro commit, las historias divergen.
+
+    Cualquier otro ``status`` (``behind``, ``diverged``) o un campo ausente
+    falla cerrado.
+    """
+
+    ancestro = validar_sha(ancestro)
+    descendiente = validar_sha(descendiente)
+    _validar_repositorio(repositorio)
+    if ancestro == descendiente:
+        return
+
+    url = url_comparacion(repositorio, ancestro, descendiente)
+    datos = _objeto(cliente.obtener_json(url), url)
+    estado = _texto(datos, "status", url)
+    if estado != "ahead" or _entero(datos, "behind_by", url) != 0:
+        raise ErrorActualizadorPublico(
+            f"El commit {ancestro} no es ancestro de {descendiente} según la comparación Git "
+            f"pública (status={estado!r}). No se consume una release fuera de la historia de main."
+        )
+    base = _texto(_objeto(datos.get("base_commit"), f"{url}.base_commit"), "sha", url)
+    if base != ancestro:
+        raise ErrorActualizadorPublico(
+            f"La comparación Git pública resolvió la base {base} y no {ancestro}; se aborta."
+        )
+    fusion = _texto(_objeto(datos.get("merge_base_commit"), f"{url}.merge_base_commit"), "sha", url)
+    if fusion != ancestro:
+        raise ErrorActualizadorPublico(
+            f"La base común entre {ancestro} y {descendiente} es {fusion}: las historias "
+            "divergen y no se consume esa release."
+        )
+
+
+def _resolver_publicacion_desplegable(
+    cliente: ClienteHttpPublico,
+    *,
+    repositorio: str,
+    rama: str,
+) -> tuple[IdentidadDesplegable, PublicacionPublica]:
+    """Resuelve cabeza de ``main``, release ``latest`` y su ancestralidad, en ese orden.
+
+    Resultado: la identidad desplegable junto con la publicación ya validada,
+    para que la descarga use exactamente la respuesta que se validó y no vuelva
+    a pedirla.
+
+    Pasos:
+
+    1. SHA exacto de la cabeza de ``main``;
+    2. release ``latest``: si no existe (404) o GitHub responde algo inesperado,
+       falla cerrado;
+    3. el tag tiene que ser ``sis-leg-<SHA>`` y la publicación tiene que superar
+       :func:`validar_datos_publicacion` para ese SHA —``draft``/``prerelease``,
+       ``target_commitish`` coherente y tres assets exactos—;
+    4. ancestralidad demostrada contra la cabeza del paso 1.
+
+    La cabeza se lee **antes** que ``latest`` a propósito. Si entre las dos
+    consultas se publicara una release de un commit posterior, esa release no
+    sería ancestro de la cabeza ya leída y el canal fallaría cerrado: un
+    reintento posterior la resolverá. El orden inverso podría, en cambio,
+    combinar una cabeza nueva con una evidencia vieja sin notarlo.
+    """
+
+    _validar_repositorio(repositorio)
+    main_head_sha = resolver_sha_main(cliente, repositorio=repositorio, rama=rama)
+
+    url = url_release_latest(repositorio)
+    try:
+        datos = _objeto(cliente.obtener_json(url), url)
+    except ErrorActualizadorPublico as error:
+        raise ErrorActualizadorPublico(
+            f"No se pudo obtener una release pública latest de {repositorio}; sin release "
+            f"publicada no hay versión desplegable y no se modifica nada: {error}"
+        ) from error
+    release_sha = sha_de_tag_publicacion(_texto(datos, "tag_name", url))
+    publicacion = validar_datos_publicacion(datos, release_sha, url)
+
+    verificar_ancestro_publico(
+        cliente, repositorio=repositorio, ancestro=release_sha, descendiente=main_head_sha
+    )
+    identidad = IdentidadDesplegable(
+        main_head_sha=main_head_sha, release_sha=release_sha, tag=publicacion.tag
+    )
+    return identidad, publicacion
+
+
+def resolver_identidad_desplegable(
+    cliente: ClienteHttpPublico,
+    *,
+    repositorio: str = REPOSITORIO_PREDETERMINADO,
+    rama: str = RAMA_PUBLICACION,
+) -> IdentidadDesplegable:
+    """Qué release pública corresponde instalar hoy y contra qué cabeza de ``main``.
+
+    Es la consulta liviana que usa ``operaciones_host`` para decidir y, más tarde,
+    para revalidar antes de mutar: no descarga assets ni verifica CI, que es
+    trabajo de :func:`obtener_release_publica` sobre el SHA ya decidido.
+
+    Errores: los mismos que :func:`_resolver_publicacion_desplegable`, siempre
+    como ``ErrorActualizadorPublico`` y sin efectos laterales.
+    """
+
+    identidad, _ = _resolver_publicacion_desplegable(cliente, repositorio=repositorio, rama=rama)
+    return identidad
 
 
 def validar_metadatos(
@@ -911,7 +1177,10 @@ def obtener_release_publica(
     Entradas:
         destino: directorio donde quedarán paquete, sidecar y metadatos.
         cliente: frontera HTTP; las pruebas inyectan un doble.
-        sha: SHA a consumir. Si es ``None`` se resuelve la cabeza de ``main``.
+        sha: SHA exacto a consumir. Si es ``None`` se resuelve la **release
+            desplegable** (WP-104): la publicación ``latest`` demostrada como
+            ancestro de la cabeza de ``main``, que puede estar por delante con
+            commits sólo documentales.
         repositorio: ``propietario/nombre`` del repositorio público.
         rama: rama publicable; sólo ``main`` produce releases.
 
@@ -925,8 +1194,9 @@ def obtener_release_publica(
     Orden de validación, deliberadamente de lo barato a lo caro y de lo que
     decide a lo que se deriva:
 
-    1. SHA de ``main``;
-    2. publicación por tag y nombres exactos de los tres assets;
+    1. SHA a consumir: el pedido explícitamente o, si no hay, la release
+       desplegable con su ancestralidad respecto de ``main`` ya demostrada;
+    2. publicación y nombres exactos de los tres assets;
     3. descarga del asset de metadatos, que es chico y dice qué intento de CI
        habilitó esta release;
     4. demostración de ese intento histórico exacto y de su job de empaquetado
@@ -940,12 +1210,16 @@ def obtener_release_publica(
     """
 
     cliente = cliente or ClienteHttpPublicoReal()
-    sha_objetivo = (
-        validar_sha(sha)
-        if sha is not None
-        else resolver_sha_main(cliente, repositorio=repositorio, rama=rama)
-    )
-    publicacion = resolver_publicacion(cliente, sha_objetivo, repositorio=repositorio)
+    main_head_sha: str | None = None
+    if sha is not None:
+        sha_objetivo = validar_sha(sha)
+        publicacion = resolver_publicacion(cliente, sha_objetivo, repositorio=repositorio)
+    else:
+        identidad, publicacion = _resolver_publicacion_desplegable(
+            cliente, repositorio=repositorio, rama=rama
+        )
+        sha_objetivo = identidad.release_sha
+        main_head_sha = identidad.main_head_sha
 
     destino.mkdir(parents=True, exist_ok=True)
     temporal = destino / f".descarga-{sha_objetivo}-{os.getpid()}"
@@ -1051,6 +1325,7 @@ def obtener_release_publica(
         metadatos=archivo_metadatos,
         run_ci=run,
         job_ci=job,
+        main_head_sha=main_head_sha,
     )
 
 
@@ -1066,7 +1341,13 @@ def crear_parser() -> argparse.ArgumentParser:
         description="Obtiene una release pública de SIS-Leg por SHA, sin credenciales."
     )
     sub = parser.add_subparsers(dest="comando", required=True)
-    obtener = sub.add_parser("obtener", help="Descarga y verifica la release pública de un SHA.")
+    obtener = sub.add_parser(
+        "obtener",
+        help=(
+            "Descarga y verifica la release pública de un SHA o, sin --sha, la release "
+            "desplegable demostrada como ancestro de main."
+        ),
+    )
     obtener.add_argument("--destino", type=Path, required=True)
     obtener.add_argument("--sha", default=None)
     obtener.add_argument("--repositorio", default=REPOSITORIO_PREDETERMINADO)
@@ -1086,9 +1367,15 @@ def main(argumentos: Sequence[str] | None = None) -> int:
     except (ErrorActualizadorPublico, ErrorDespliegue, OSError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
+    # ``main_head_sha`` y ``release_sha`` se imprimen por separado aunque
+    # coincidan: quien lea la salida no tiene que deducir si ``main`` estaba
+    # por delante de la release. ``commit_sha`` se conserva por compatibilidad
+    # y es siempre igual a ``release_sha``.
     print(
         json.dumps(
             {
+                "main_head_sha": release.main_head_sha,
+                "release_sha": release.commit_sha,
                 "commit_sha": release.commit_sha,
                 "tree_sha": release.tree_sha,
                 "tag": release.tag,

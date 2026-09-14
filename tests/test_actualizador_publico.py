@@ -37,15 +37,18 @@ from deploy.actualizador_publico import (
     NOMBRE_WORKFLOW_CI,
     ClienteHttpPublicoReal,
     ErrorActualizadorPublico,
+    IdentidadDesplegable,
     assets_esperados,
     nombre_metadatos,
     nombre_paquete,
     nombre_sidecar,
     obtener_release_publica,
+    resolver_identidad_desplegable,
     resolver_publicacion,
     resolver_sha_main,
     tag_publicacion,
     validar_url_publica,
+    verificar_ancestro_publico,
     verificar_intento_ci,
     verificar_intento_historico,
 )
@@ -70,6 +73,9 @@ from scripts.publicar_release_publica import ErrorPublicacion, crear_parser, pub
 SHA = "a" * 40
 SHA_ARBOL = "c" * 40
 SHA_OTRO = "b" * 40
+# Cabeza de ``main`` compuesta sólo por documentación, por delante de la release
+# ``SHA``. Por DEC-019 nunca tiene CI ni publicación propia (WP-104).
+SHA_DOCUMENTAL = "d" * 40
 REPOSITORIO = "martinebene/SIS-Leg"
 RAIZ_REPOSITORIO = Path(__file__).resolve().parents[1]
 RUN_ID = 4242
@@ -293,6 +299,32 @@ class ClienteApiFalso:
         destino.write_bytes(self.contenidos[nombre])
 
 
+def comparacion_git(
+    base: str,
+    cabeza: str,
+    *,
+    status: str = "ahead",
+    behind_by: int = 0,
+    merge_base: str | None = None,
+    base_resuelta: str | None = None,
+) -> dict[str, Any]:
+    """Respuesta de ``/compare/base...cabeza`` con los campos que usa el canal.
+
+    Los valores por omisión describen el caso sano: ``base`` es ancestro de
+    ``cabeza``. Cada argumento permite romper una sola propiedad por prueba. La
+    forma de la respuesta se verificó contra la API pública real durante WP-104.
+    """
+
+    del cabeza
+    return {
+        "status": status,
+        "ahead_by": 1 if status == "ahead" else 0,
+        "behind_by": behind_by,
+        "base_commit": {"sha": base_resuelta or base},
+        "merge_base_commit": {"sha": merge_base or base},
+    }
+
+
 class ClienteHttpFalso:
     """Emula el lado lectura público del API de GitHub para el consumidor.
 
@@ -300,6 +332,11 @@ class ClienteHttpFalso:
     las pruebas no dependan del orden de los parámetros de la query. Un intento
     no registrado se comporta como el cliente real ante un 404: levanta el error
     del canal, que es lo que obliga al consumidor a fallar cerrado.
+
+    Desde WP-104 también responde ``/releases/latest`` —con ``release_latest`` o,
+    si no se indicó, con ``release``— y ``/compare/base...cabeza`` con las
+    comparaciones registradas. ``cabeza_main`` permite que ``main`` esté en un
+    commit distinto del de la release.
     """
 
     def __init__(
@@ -310,8 +347,14 @@ class ClienteHttpFalso:
         jobs: dict[int, dict[str, Any]] | None = None,
         release: dict[str, Any] | None = None,
         contenidos: dict[str, bytes] | None = None,
+        cabeza_main: str | None = None,
+        release_latest: Any | None = None,
+        comparaciones: dict[tuple[str, str], Any] | None = None,
     ) -> None:
         self.sha = sha
+        self.cabeza_main = cabeza_main
+        self.release_latest = release_latest
+        self.comparaciones = comparaciones if comparaciones is not None else {}
         self.intentos = intentos if intentos is not None else {1: run_exitosa(sha)}
         self.jobs = jobs if jobs is not None else {1: jobs_exitosos(sha)}
         self.release = release
@@ -328,7 +371,17 @@ class ClienteHttpFalso:
             if fragmento in url:
                 raise error
         if "/commits/" in url:
-            return {"sha": self.sha}
+            return {"sha": self.cabeza_main or self.sha}
+        if url.endswith("/releases/latest"):
+            latest = self.release_latest if self.release_latest is not None else self.release
+            if latest is None:
+                raise ErrorActualizadorPublico(f"GitHub respondió HTTP 404 en {url}.")
+            return latest
+        if "/compare/" in url:
+            base, cabeza = url.split("/compare/", 1)[1].split("?", 1)[0].split("...")
+            if (base, cabeza) not in self.comparaciones:
+                raise ErrorActualizadorPublico(f"GitHub respondió HTTP 404 en {url}.")
+            return self.comparaciones[(base, cabeza)]
         if "/attempts/" in url:
             numero = numero_de_intento(url)
             fuente = self.jobs if url.endswith("/jobs?per_page=100") else self.intentos
@@ -1047,7 +1100,7 @@ def test_asset_con_tamano_distinto_del_declarado_aborta(tmp_path: Path) -> None:
         ("/commits/", ErrorActualizadorPublico("HTTP 500")),
         ("/attempts/", ErrorActualizadorPublico("límite de tasa")),
         ("/jobs", ErrorActualizadorPublico("timed out")),
-        ("/releases/tags/", ErrorActualizadorPublico("JSON")),
+        ("/releases/latest", ErrorActualizadorPublico("JSON")),
         ("objects.githubusercontent.com", ErrorActualizadorPublico("conexión interrumpida")),
     ],
     ids=["commit", "intento", "jobs", "release", "descarga"],
@@ -1948,3 +2001,320 @@ def test_los_ejecutables_resuelven_sus_imports_desde_la_release(
 
     assert resultado.returncode == 0, resultado.stderr
     assert esperado in resultado.stdout
+
+
+# ---------------------------------------------------------------------------
+# 20. Release desplegable cuando `main` avanza sólo por documentación (WP-104)
+#
+# DEC-019 exime de CI a los pushes documentales a `main`, así que esos commits
+# nunca tienen release. El consumidor ya no exige una publicación del SHA exacto
+# de la cabeza: toma la release `latest` y demuestra con la comparación Git
+# pública que es ancestro de esa cabeza. Todo lo demás —tag, assets, metadatos,
+# árbol, CI histórica, checksum— sigue exigiéndose igual que antes.
+# ---------------------------------------------------------------------------
+
+
+def consumidor_con_main_documental(
+    publicador: ClienteApiFalso, *, cabeza: str = SHA_DOCUMENTAL, **comparacion: Any
+) -> ClienteHttpFalso:
+    """Consumidor con `main` en un commit documental por delante de la release ``SHA``.
+
+    ``comparacion`` altera la respuesta de la comparación Git para reproducir
+    historias que no demuestran ancestralidad.
+    """
+
+    cliente = consumidor_desde_publicacion(publicador)
+    cliente.cabeza_main = cabeza
+    cliente.comparaciones[(SHA, cabeza)] = comparacion_git(SHA, cabeza, **comparacion)
+    return cliente
+
+
+def test_main_igual_a_la_release_funciona_como_antes_sin_comparar(tmp_path: Path) -> None:
+    """Caso 1: con `main == release_sha` no hace falta consultar la comparación."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_desde_publicacion(publicador)
+    destino = tmp_path / "descarga"
+
+    release = obtener_release_publica(destino, cliente=cliente, repositorio=REPOSITORIO)
+
+    assert (release.main_head_sha, release.commit_sha) == (SHA, SHA)
+    assert not any("/compare/" in url for url in cliente.urls)
+    assert f"https://api.github.com/repos/{REPOSITORIO}/releases/latest" in cliente.urls
+    assert sorted(ruta.name for ruta in destino.iterdir()) == sorted(assets_esperados(SHA))
+
+
+def test_main_documental_por_delante_selecciona_la_release_ancestro(tmp_path: Path) -> None:
+    """Caso 2: `main` documental adelante; se consume la release ancestro demostrada."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_con_main_documental(publicador)
+    destino = tmp_path / "descarga"
+
+    release = obtener_release_publica(destino, cliente=cliente, repositorio=REPOSITORIO)
+
+    assert release.main_head_sha == SHA_DOCUMENTAL
+    assert release.commit_sha == SHA
+    assert release.tag == tag_publicacion(SHA)
+    assert release.tree_sha == SHA_ARBOL
+    assert (release.run_ci.identificador, release.run_ci.intento) == (RUN_ID, 1)
+    assert release.job_ci.identificador == JOB_ID
+    # La ancestralidad se pidió con los dos SHAs completos, no con nombres de rama.
+    assert (
+        f"https://api.github.com/repos/{REPOSITORIO}/compare/{SHA}...{SHA_DOCUMENTAL}?per_page=1"
+        in cliente.urls
+    )
+    # Jamás se buscó una publicación del commit documental.
+    assert not any(SHA_DOCUMENTAL in url for url in cliente.urls if "/releases/" in url)
+
+
+def test_resolver_identidad_desplegable_devuelve_cabeza_y_release_por_separado(
+    tmp_path: Path,
+) -> None:
+    """La identidad liviana no descarga assets ni consulta CI: sólo decide."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_con_main_documental(publicador)
+
+    identidad = resolver_identidad_desplegable(cliente, repositorio=REPOSITORIO)
+
+    assert identidad == IdentidadDesplegable(
+        main_head_sha=SHA_DOCUMENTAL, release_sha=SHA, tag=tag_publicacion(SHA)
+    )
+    assert not any("/attempts/" in url for url in cliente.urls)
+    assert not any("objects.githubusercontent.com" in url for url in cliente.urls)
+    # La cabeza se lee antes que `latest`: ver la justificación en el módulo.
+    assert "/commits/" in cliente.urls[0]
+
+
+@pytest.mark.parametrize(
+    ("comparacion", "mensaje"),
+    [
+        ({"status": "behind"}, "no es ancestro"),
+        ({"status": "diverged"}, "no es ancestro"),
+        ({"status": "identical"}, "no es ancestro"),
+        ({"behind_by": 2}, "no es ancestro"),
+        ({"merge_base": SHA_OTRO}, "historias divergen"),
+        ({"base_resuelta": SHA_OTRO}, "resolvió la base"),
+    ],
+    ids=["behind", "diverged", "identical-con-shas-distintos", "behind-by", "merge-base", "base"],
+)
+def test_latest_que_no_es_ancestro_de_main_falla_cerrado(
+    tmp_path: Path, comparacion: dict[str, Any], mensaje: str
+) -> None:
+    """Caso 5: sin ancestralidad demostrada no se consume nada ni se busca otra release."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_con_main_documental(publicador, **comparacion)
+    destino = tmp_path / "descarga"
+
+    with pytest.raises(ErrorActualizadorPublico, match=mensaje):
+        obtener_release_publica(destino, cliente=cliente, repositorio=REPOSITORIO)
+
+    assert not destino.exists() or list(destino.iterdir()) == []
+    # No hubo barrido silencioso de releases viejas ni descarga de assets.
+    assert [url for url in cliente.urls if "/releases" in url] == [
+        f"https://api.github.com/repos/{REPOSITORIO}/releases/latest"
+    ]
+    assert not any("objects.githubusercontent.com" in url for url in cliente.urls)
+
+
+def test_comparacion_git_inexistente_falla_cerrado(tmp_path: Path) -> None:
+    """Si la API no puede comparar los commits, la ancestralidad no está demostrada."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_desde_publicacion(publicador)
+    cliente.cabeza_main = SHA_DOCUMENTAL
+
+    with pytest.raises(ErrorActualizadorPublico, match="HTTP 404"):
+        obtener_release_publica(tmp_path / "descarga", cliente=cliente, repositorio=REPOSITORIO)
+
+
+def test_ancestro_identico_no_consulta_la_red() -> None:
+    """Dos SHAs completos iguales son la misma identidad Git: no hace falta la API."""
+
+    cliente = ClienteHttpFalso()
+
+    verificar_ancestro_publico(cliente, repositorio=REPOSITORIO, ancestro=SHA, descendiente=SHA)
+
+    assert cliente.urls == []
+
+
+@pytest.mark.parametrize(
+    ("cambio", "mensaje"),
+    [
+        ({"target_commitish": SHA_OTRO}, "no al commit"),
+        ({"target_commitish": "wp/104"}, "no al commit"),
+        ({"tag_name": "v1.0.0"}, "no es un tag determinista"),
+        ({"tag_name": "sis-leg-abc123"}, "no nombra un SHA completo"),
+        ({"tag_name": f"sis-leg-{SHA.upper()}"}, "no nombra un SHA completo"),
+    ],
+    ids=["target-otro-commit", "target-otra-rama", "tag-sin-prefijo", "tag-corto", "tag-mayus"],
+)
+def test_latest_con_tag_o_target_divergentes_falla_cerrado(
+    tmp_path: Path, cambio: dict[str, Any], mensaje: str
+) -> None:
+    """Caso 6: la release `latest` debe estar atada a un SHA completo y coherente."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_con_main_documental(publicador)
+    cliente.release_latest = {**publicador.releases[tag_publicacion(SHA)], **cambio}
+
+    with pytest.raises(ErrorActualizadorPublico, match=mensaje):
+        obtener_release_publica(tmp_path / "descarga", cliente=cliente, repositorio=REPOSITORIO)
+    assert not any("/compare/" in url for url in cliente.urls)
+
+
+@pytest.mark.parametrize(
+    ("latest", "mensaje"),
+    [
+        ({"draft": True}, "borrador o prerelease"),
+        ({"prerelease": True}, "borrador o prerelease"),
+        ({"draft": None}, "borrador o prerelease"),
+        ([], "objeto JSON"),
+        ({"tag_name": None}, "tag_name textual"),
+    ],
+    ids=["borrador", "prerelease", "draft-ausente", "lista", "sin-tag"],
+)
+def test_latest_borrador_prerelease_o_inesperada_falla_cerrado(
+    tmp_path: Path, latest: Any, mensaje: str
+) -> None:
+    """Caso 7: una respuesta `latest` que no es una release consumible no se usa."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_con_main_documental(publicador)
+    base = publicador.releases[tag_publicacion(SHA)]
+    cliente.release_latest = {**base, **latest} if isinstance(latest, dict) else latest
+
+    with pytest.raises(ErrorActualizadorPublico, match=mensaje):
+        obtener_release_publica(tmp_path / "descarga", cliente=cliente, repositorio=REPOSITORIO)
+
+
+def test_sin_release_publica_falla_cerrado(tmp_path: Path) -> None:
+    """Caso 8: sin ninguna publicación no hay versión desplegable y no se descarga nada."""
+
+    cliente = ClienteHttpFalso(cabeza_main=SHA_DOCUMENTAL)
+    destino = tmp_path / "descarga"
+
+    with pytest.raises(ErrorActualizadorPublico, match="sin release publicada"):
+        obtener_release_publica(destino, cliente=cliente, repositorio=REPOSITORIO)
+    assert not destino.exists()
+
+
+def test_main_documental_no_relaja_la_evidencia_de_ci(tmp_path: Path) -> None:
+    """Caso 9: ancestralidad demostrada no reemplaza la CI histórica exacta."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_con_main_documental(publicador)
+    cliente.jobs = {1: jobs_exitosos(name="Empaquetado parecido")}
+    destino = tmp_path / "descarga"
+
+    with pytest.raises(ErrorActualizadorPublico, match="exactamente un job"):
+        obtener_release_publica(destino, cliente=cliente, repositorio=REPOSITORIO)
+    assert not destino.exists() or list(destino.iterdir()) == []
+
+
+def test_main_documental_no_relaja_checksum_ni_arbol(tmp_path: Path) -> None:
+    """Caso 9: checksum y árbol siguen siendo obligatorios en la selección nueva."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+
+    def arbol_distinto(metadatos: dict[str, Any]) -> None:
+        metadatos["tree_sha"] = "e" * 40
+
+    cliente = consumidor_con_metadatos_mutados(publicador, arbol_distinto)
+    cliente.cabeza_main = SHA_DOCUMENTAL
+    cliente.comparaciones[(SHA, SHA_DOCUMENTAL)] = comparacion_git(SHA, SHA_DOCUMENTAL)
+
+    with pytest.raises(ErrorActualizadorPublico, match="tree SHA del manifest"):
+        obtener_release_publica(tmp_path / "descarga", cliente=cliente, repositorio=REPOSITORIO)
+
+    otro = consumidor_con_main_documental(publicador)
+    otro.contenidos[nombre_sidecar(SHA)] = f"{'0' * 64}  {nombre_paquete(SHA)}\n".encode("ascii")
+    otro.release_latest = {
+        **publicador.releases[tag_publicacion(SHA)],
+        "assets": [
+            {**asset, "size": len(otro.contenidos[asset["name"]])}
+            for asset in publicador.releases[tag_publicacion(SHA)]["assets"]
+        ],
+    }
+
+    with pytest.raises(ErrorDespliegue, match="Checksum incorrecto"):
+        obtener_release_publica(tmp_path / "descarga-2", cliente=otro, repositorio=REPOSITORIO)
+
+
+def test_main_documental_no_relaja_los_assets_exactos(tmp_path: Path) -> None:
+    """Caso 9: un asset `latest` mutable sigue invalidando la publicación entera."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_con_main_documental(publicador)
+    base = publicador.releases[tag_publicacion(SHA)]
+    cliente.release_latest = {
+        **base,
+        "assets": [*base["assets"], {**base["assets"][0], "name": "sis-leg-latest.tar.gz"}],
+    }
+
+    with pytest.raises(ErrorActualizadorPublico, match="asset inesperado"):
+        obtener_release_publica(tmp_path / "descarga", cliente=cliente, repositorio=REPOSITORIO)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"https://api.github.com/repos/{REPOSITORIO}/releases/latest",
+        f"https://api.github.com/repos/{REPOSITORIO}/compare/{SHA}...{SHA_DOCUMENTAL}?per_page=1",
+    ],
+    ids=["latest", "compare"],
+)
+def test_las_consultas_nuevas_tampoco_llevan_credenciales(url: str) -> None:
+    """Caso 10: `latest` y la comparación Git usan la misma solicitud sin auth."""
+
+    solicitud = ClienteHttpPublicoReal.construir_solicitud(url)
+
+    claves = {clave.lower() for clave in solicitud.headers}
+    assert "authorization" not in claves
+    assert "cookie" not in claves
+    assert claves == {"accept", "user-agent", "x-github-api-version"}
+
+
+def test_la_cli_diferencia_main_head_de_release_sha(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Caso 11: la salida del actualizador muestra las dos identidades por separado."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_con_main_documental(publicador)
+    monkeypatch.setattr(modulo_publico, "ClienteHttpPublicoReal", lambda: cliente)
+
+    codigo = modulo_publico.main(
+        ["obtener", "--destino", str(tmp_path / "descarga"), "--repositorio", REPOSITORIO]
+    )
+
+    assert codigo == 0
+    salida = json.loads(capsys.readouterr().out)
+    assert salida["main_head_sha"] == SHA_DOCUMENTAL
+    assert salida["release_sha"] == SHA
+    assert salida["commit_sha"] == SHA
+    assert salida["tag"] == tag_publicacion(SHA)
+    assert salida["tree_sha"] == SHA_ARBOL
+    assert (salida["ci_run_id"], salida["ci_run_attempt"], salida["ci_job_id"]) == (
+        RUN_ID,
+        1,
+        JOB_ID,
+    )
+
+
+def test_con_sha_explicito_no_se_consulta_main_ni_latest(tmp_path: Path) -> None:
+    """El modo por SHA exacto que usa la operación del host no cambia de semántica."""
+
+    publicador, _, _ = publicar_para_pruebas(tmp_path)
+    cliente = consumidor_con_main_documental(publicador)
+
+    release = obtener_release_publica(
+        tmp_path / "descarga", cliente=cliente, sha=SHA, repositorio=REPOSITORIO
+    )
+
+    assert release.commit_sha == SHA
+    assert release.main_head_sha is None
+    assert not any("/commits/" in url or "/releases/latest" in url for url in cliente.urls)
+    assert not any("/compare/" in url for url in cliente.urls)

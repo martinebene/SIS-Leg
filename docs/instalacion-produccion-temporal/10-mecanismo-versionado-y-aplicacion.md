@@ -67,8 +67,9 @@ que recorre estos archivos y falla si alguien reintroduce cualquiera de esas dep
 ### Qué hace cada operación
 
 **Actualizar SIS-Leg**, en este orden: lock global, guard institucional de no sesión/no preparación,
-resolución del SHA público de `main`, idempotencia, descarga verificada, preflight, preparación,
-**revalidación de `main`**, compuerta de configuración y recién entonces la acción que corresponda:
+resolución de la **release pública desplegable**, idempotencia, guard de no regresión, descarga
+verificada, preflight, preparación, **revalidación de la release desplegable**, compuerta de
+configuración y recién entonces la acción que corresponda:
 
 - con el sistema anterior activo: fija `target-release` y **no conmuta**; el recinto sigue atendido
   por el sistema que estaba;
@@ -90,12 +91,39 @@ resolución del SHA público de `main`, idempotencia, descarga verificada, prefl
   no reinicia nada;
 - si `current` y `target-release` divergen de forma no resoluble, aborta sin mutar.
 
-La revalidación de `main` existe porque las releases públicas son inmutables: la del SHA anterior
-sigue descargándose con normalidad aunque `main` haya avanzado mientras tanto. Sin volver a
-preguntar, una actualización lenta podría terminar declarando como objetivo una versión que ya dejó
-de ser la vigente, con una autorización tomada minutos antes. Si se detecta esa carrera, la release
-ya preparada **queda en disco** —preparar es aditivo y no toca lo que está en servicio— pero no se
-activa ni se declara como objetivo.
+#### Cabeza de `main` y release desplegable (WP-104)
+
+`main` puede avanzar por commits exclusivamente documentales que, por DEC-019, no ejecutan CI y
+nunca tienen release pública. Hasta WP-104 la actualización exigía la release del SHA exacto de la
+cabeza de `main` y, con un commit documental en la cabeza, fallaba siempre. Desde WP-104 se
+distinguen:
+
+- **cabeza de `main`** (`main_head_sha`): el último commit de la rama, que puede ser documental;
+- **release desplegable** (`sha_objetivo`): la publicación pública `latest` válida cuyo commit se
+  demuestra ancestro de esa cabeza con la comparación Git pública. Es la única que se descarga,
+  valida, prepara y activa.
+
+Si `latest` no es ancestro de `main`, o no hay ninguna release publicada, la actualización falla
+cerrado sin mutar nada. El plan que se muestra antes de confirmar y el historial registran los dos
+SHAs.
+
+**Guard de no regresión.** `latest` es lo que GitHub marcó como release más reciente, y una
+publicación tardía de un commit anterior podría quedar marcada así. Por eso, si el host ya declara
+una release —`target-release` o, si no hay, `current`— distinta de la desplegable, se exige con la
+misma comparación Git pública que la del host sea ancestro de la desplegable. Si no se puede
+demostrar, la operación aborta antes de descargar nada: «Actualizar» nunca retrocede la versión.
+
+**Revalidación.** Existe porque las releases públicas son inmutables: la anterior sigue
+descargándose con normalidad aunque aparezca otra más nueva. Antes de tocar configuración,
+`target-release` o servicios se vuelve a resolver la release desplegable y se compara su
+**identidad**, no la cabeza de `main`:
+
+- si `main` avanzó sólo por documentación y la release desplegable sigue siendo la misma, la
+  actualización continúa y el historial anota el avance;
+- si apareció una release productiva nueva, o ya no se puede demostrar la ancestralidad, se aborta.
+  La release ya preparada **queda en disco** —preparar es aditivo y no toca lo que está en
+  servicio— pero no se activa ni se declara como objetivo, y la release nueva tampoco se instala,
+  porque no fue descargada ni validada en ese intento.
 
 El paquete descargado se guarda en `/opt/sis-leg/descargas/` sólo mientras dura la operación: una vez
 preparada la release se descarta, porque pesa cientos de megabytes y ya es redundante. Si la
@@ -164,7 +192,8 @@ los éxitos es exactamente el que no sirve el día que hay que reconstruir qué 
 
 Cada línea registra la hora local de inicio, la operación, el estado formal previo y posterior, si
 hubo mutación, el código de salida, el desenlace del rollback, el diagnóstico del error y, para una
-actualización, la trazabilidad del canal público: commit, árbol, etiqueta, nombre y checksum SHA-256
+actualización, la trazabilidad del canal público: la cabeza de `main` observada (`main_head_sha`) y la
+release instalada (`sha_objetivo`) por separado, commit, árbol, etiqueta, nombre y checksum SHA-256
 del paquete, y el run, el intento y el job de CI que lo produjeron. **No hay secretos**: el
 consumidor no se autentica contra nada, así que no existe ningún token que registrar, y una prueba
 automática comprueba que el historial no contenga patrones de credenciales.
@@ -275,6 +304,10 @@ auditoría: idempotencia por metadata del aplicador, historial completo con evid
 revalidación de `main`, independencia de la vuelta a Legacy respecto de un target corrupto, rollback
 a SIS-Leg, *disable-first* verificable e identidad de árbol. Ninguna de ellas cambia lo que ve o hace
 hoy quien opera el sistema, así que el manual sigue sin requerir actualización.
+
+WP-104 repitió la evaluación con el mismo resultado: la selección de la release desplegable cuando
+`main` avanza sólo por documentación cambia qué versión elige un mecanismo que todavía no está
+instalado en ninguna máquina, y no altera ninguna pantalla, paso ni texto que vea hoy quien opera.
 
 Cuando WP-101B instale el mecanismo nuevo habrá que volver a evaluar el manual: ahí sí cambia qué ve
 la persona en pantalla durante una actualización, y esa evaluación corresponde a ese trabajo.
