@@ -34,6 +34,7 @@ from conftest import escribir_release_json_de_prueba
 
 from deploy.actualizador_publico import (
     ErrorActualizadorPublico,
+    IdentidadDesplegable,
     JobCi,
     ReleaseDescargada,
     RunCi,
@@ -64,6 +65,7 @@ from deploy.operaciones_host import (
     ErrorOperacionHost,
     OperadorHost,
     PlanOperacion,
+    confirmador_interactivo,
     registrar_en_historial,
     resultado_de_falla,
 )
@@ -74,9 +76,13 @@ RAIZ_REPOSITORIO = Path(__file__).resolve().parents[1]
 SHA_VIEJO = "a" * 40
 SHA_NUEVO = "b" * 40
 SHA_ARBOL = "c" * 40
-# Tercera cabeza de ``main``: representa un avance ocurrido **mientras** corría
-# una actualización que ya había congelado ``SHA_NUEVO``.
+# Tercera release pública: representa una release productiva nueva publicada
+# **mientras** corría una actualización que ya había congelado ``SHA_NUEVO``.
 SHA_MAS_NUEVO = "d" * 40
+# Cabeza de ``main`` compuesta sólo por documentación: nunca tiene release
+# propia (DEC-019) y queda por delante de la release desplegable (WP-104).
+SHA_DOCUMENTAL = "e" * 40
+SHA_DOCUMENTAL_POSTERIOR = "f" * 40
 # Hora fija que inyecta la suite para que el historial sea comparable.
 MARCA_TEMPORAL_FIJA = "2026-09-11T20:00:00-03:00"
 
@@ -170,6 +176,20 @@ def construir_artefactos(
         directorio_salida=tmp_path / f"artefactos-{sha[:6]}",
         sha_commit=sha,
         sha_arbol=SHA_ARBOL,
+    )
+
+
+def identidad_publica(release_sha: str, main_head_sha: str | None = None) -> IdentidadDesplegable:
+    """Identidad desplegable que entregaría el canal público.
+
+    Sin ``main_head_sha`` representa el caso clásico: la cabeza de ``main`` es la
+    propia release. Con él, ``main`` está por delante con commits documentales.
+    """
+
+    return IdentidadDesplegable(
+        main_head_sha=main_head_sha or release_sha,
+        release_sha=release_sha,
+        tag=f"sis-leg-{release_sha}",
     )
 
 
@@ -477,25 +497,52 @@ class EscenarioHost:
         *,
         sha_publico: str | None = None,
         shas_publicos: Sequence[str] | None = None,
+        identidades: Sequence[IdentidadDesplegable | Exception] | None = None,
         release: ReleaseDescargada | None = None,
         error_canal: Exception | None = None,
         escritor_target: Callable[[Path, str], Path] | None = None,
+        sin_ancestralidad: Sequence[tuple[str, str]] = (),
+        verificaciones_ancestro: list[tuple[str, str]] | None = None,
     ) -> OperadorHost:
         """Construye el operador con el canal público reemplazado por un doble.
 
-        ``shas_publicos`` entrega una respuesta distinta por consulta: sirve para
-        reproducir que ``main`` avanzó mientras la actualización estaba en curso.
-        La última respuesta se repite si alguien vuelve a preguntar.
+        ``sha_publico`` y ``shas_publicos`` describen el caso en que la cabeza de
+        ``main`` coincide con la release desplegable. ``shas_publicos`` entrega una
+        respuesta distinta por consulta: sirve para reproducir que apareció una
+        release nueva mientras la actualización estaba en curso.
+
+        ``identidades`` permite separar cabeza y release (WP-104) y también
+        inyectar una excepción en una consulta concreta. En los dos casos la
+        última respuesta se repite si alguien vuelve a preguntar.
+
+        ``sin_ancestralidad`` lista pares ``(ancestro, descendiente)`` cuya
+        relación la comparación Git pública **no** demuestra; cualquier otro par
+        se considera demostrado. ``verificaciones_ancestro`` recibe cada consulta.
         """
 
-        respuestas = list(shas_publicos) if shas_publicos is not None else []
+        respuestas: list[IdentidadDesplegable | Exception] = []
+        if identidades is not None:
+            respuestas = list(identidades)
+        elif shas_publicos is not None:
+            respuestas = [identidad_publica(sha) for sha in shas_publicos]
 
-        def resolver() -> str:
+        def resolver() -> IdentidadDesplegable:
             if respuestas:
-                return respuestas.pop(0) if len(respuestas) > 1 else respuestas[0]
+                respuesta = respuestas.pop(0) if len(respuestas) > 1 else respuestas[0]
+                if isinstance(respuesta, Exception):
+                    raise respuesta
+                return respuesta
             if sha_publico is None:
                 raise ErrorActualizadorPublico("no hay versión publicada")
-            return sha_publico
+            return identidad_publica(sha_publico)
+
+        def verificar_ancestro(ancestro: str, descendiente: str) -> None:
+            if verificaciones_ancestro is not None:
+                verificaciones_ancestro.append((ancestro, descendiente))
+            if (ancestro, descendiente) in sin_ancestralidad:
+                raise ErrorActualizadorPublico(
+                    f"El commit {ancestro} no es ancestro de {descendiente} (status='behind')."
+                )
 
         def obtener(destino: Path) -> ReleaseDescargada:
             del destino
@@ -509,7 +556,8 @@ class EscenarioHost:
             gestor=self.gestor,
             inspector=self.inspector,
             ejecutor=self.host,
-            resolver_sha_publico=resolver,
+            resolver_identidad_publica=resolver,
+            verificar_ancestro=verificar_ancestro,
             obtener_release=obtener,
             preflight=self.preflight_simulado,
             durmiente=lambda segundos: None,
@@ -621,7 +669,7 @@ def test_actualizar_es_idempotente_si_la_release_ya_esta_preparada(tmp_path: Pat
         gestor=escenario.gestor,
         inspector=escenario.inspector,
         ejecutor=escenario.host,
-        resolver_sha_publico=lambda: SHA_VIEJO,
+        resolver_identidad_publica=lambda: identidad_publica(SHA_VIEJO),
         obtener_release=obtener,
         preflight=escenario.preflight_simulado,
         durmiente=lambda segundos: None,
@@ -1087,11 +1135,12 @@ def test_la_release_preparada_incluye_el_zocalo_como_superficie_verificable(
 
 
 def test_actualizar_aborta_si_main_avanza_con_legacy_activo(tmp_path: Path) -> None:
-    """Una release pública inmutable sigue descargándose aunque ``main`` avance.
+    """Caso 4: una release productiva nueva durante la operación la aborta.
 
-    Por eso no alcanza con confiar en que el canal público fallaría: hay que
-    volver a preguntar por la cabeza de ``main`` antes de fijar el objetivo. Si
-    avanzó, la autorización con la que empezó la operación está vencida.
+    Una release pública inmutable sigue descargándose aunque aparezca otra más
+    nueva. Por eso hay que volver a resolver la identidad desplegable antes de
+    fijar el objetivo: si cambió, la autorización con la que empezó la operación
+    está vencida.
     """
 
     escenario = escenario_legacy(tmp_path)
@@ -1101,7 +1150,7 @@ def test_actualizar_aborta_si_main_avanza_con_legacy_activo(tmp_path: Path) -> N
         release=release_descargada(paquete, sidecar, SHA_NUEVO),
     )
 
-    with pytest.raises(ErrorOperacionHost, match="main avanzó"):
+    with pytest.raises(ErrorOperacionHost, match="release pública desplegable cambió"):
         operador.actualizar()
 
     # El objetivo y el sistema en servicio quedan exactamente como estaban.
@@ -1114,7 +1163,7 @@ def test_actualizar_aborta_si_main_avanza_con_legacy_activo(tmp_path: Path) -> N
 
 
 def test_actualizar_aborta_si_main_avanza_con_sisleg_activo(tmp_path: Path) -> None:
-    """Con SIS-Leg en servicio, la carrera tampoco puede activar la release vencida."""
+    """Caso 4 con SIS-Leg en servicio: la carrera no activa la vieja ni la nueva."""
 
     escenario = escenario_sisleg(tmp_path)
     paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
@@ -1123,13 +1172,264 @@ def test_actualizar_aborta_si_main_avanza_con_sisleg_activo(tmp_path: Path) -> N
         release=release_descargada(paquete, sidecar, SHA_NUEVO),
     )
 
-    with pytest.raises(ErrorOperacionHost, match="main avanzó"):
+    with pytest.raises(ErrorOperacionHost, match="release pública desplegable cambió"):
         operador.actualizar()
 
     assert escenario.gestor.current.resolve().name == SHA_VIEJO
     assert leer_target_release(escenario.raiz) == SHA_VIEJO
     assert escenario.config_intacta()
     assert not escenario.host.hubo_dos_bridges_simultaneos()
+
+
+# ---------------------------------------------------------------------------
+# Release desplegable con main documental por delante (WP-104)
+# ---------------------------------------------------------------------------
+
+
+def test_actualizar_con_main_documental_por_delante_instala_la_release_ancestro(
+    tmp_path: Path,
+) -> None:
+    """Caso 2: ``main`` documental adelante no bloquea; se instala la release ancestro."""
+
+    escenario = escenario_legacy(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    planes: list[PlanOperacion] = []
+    verificaciones: list[tuple[str, str]] = []
+    operador = escenario.operador(
+        identidades=(identidad_publica(SHA_NUEVO, SHA_DOCUMENTAL),),
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+        verificaciones_ancestro=verificaciones,
+    )
+
+    def confirmar(plan: PlanOperacion) -> bool:
+        planes.append(plan)
+        return True
+
+    resultado = operador.actualizar(confirmador=confirmar)
+
+    assert resultado.estado == "EXITO"
+    assert resultado.sha_objetivo == SHA_NUEVO
+    assert resultado.main_head_sha == SHA_DOCUMENTAL
+    assert leer_target_release(escenario.raiz) == SHA_NUEVO
+    assert planes[0].sha_objetivo == SHA_NUEVO
+    assert planes[0].main_head_sha == SHA_DOCUMENTAL
+    # Guard de no regresión: el target previo es ancestro de la release nueva.
+    assert verificaciones == [(SHA_VIEJO, SHA_NUEVO)]
+    assert any("ancestro demostrado de main" in accion for accion in resultado.acciones)
+    assert SERVICIO_BACKEND_LEGACY in escenario.host.activas
+
+
+def test_un_avance_documental_durante_la_preparacion_no_aborta_la_actualizacion(
+    tmp_path: Path,
+) -> None:
+    """Caso 3: si ``main`` avanza pero la release desplegable no cambia, se continúa."""
+
+    escenario = escenario_sisleg(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        identidades=(
+            identidad_publica(SHA_NUEVO, SHA_DOCUMENTAL),
+            identidad_publica(SHA_NUEVO, SHA_DOCUMENTAL_POSTERIOR),
+        ),
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+    )
+
+    resultado = operador.actualizar()
+
+    assert resultado.estado_final == ESTABLE_SISLEG
+    assert escenario.gestor.current.resolve().name == SHA_NUEVO
+    assert leer_target_release(escenario.raiz) == SHA_NUEVO
+    assert resultado.main_head_sha == SHA_DOCUMENTAL
+    assert any(
+        f"main avanzó de {SHA_DOCUMENTAL} a {SHA_DOCUMENTAL_POSTERIOR}" in accion
+        and f"sigue en {SHA_NUEVO}" in accion
+        for accion in resultado.acciones
+    )
+    assert not escenario.host.hubo_dos_bridges_simultaneos()
+
+
+def test_una_release_nueva_con_main_documental_aborta_antes_de_mutar(tmp_path: Path) -> None:
+    """Caso 4: la identidad desplegable cambia aunque ``main`` siga siendo documental."""
+
+    escenario = escenario_sisleg(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    escritos: list[str] = []
+
+    def escritor(raiz: Path, sha: str) -> Path:
+        escritos.append(sha)
+        return escribir_target_release(raiz, sha)
+
+    operador = escenario.operador(
+        identidades=(
+            identidad_publica(SHA_NUEVO, SHA_DOCUMENTAL),
+            identidad_publica(SHA_MAS_NUEVO, SHA_DOCUMENTAL_POSTERIOR),
+        ),
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+        escritor_target=escritor,
+    )
+
+    with pytest.raises(ErrorOperacionHost, match=f"cambió de {SHA_NUEVO} a {SHA_MAS_NUEVO}"):
+        operador.actualizar()
+
+    assert escritos == []
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert leer_target_release(escenario.raiz) == SHA_VIEJO
+    assert not (escenario.gestor.releases / SHA_MAS_NUEVO).exists()
+    # Ningún servicio de SIS-Leg se reinició: la release activa sigue intacta.
+    assert not any(comando[:2] == ["systemctl", "restart"] for comando in escenario.host.llamadas)
+    assert escenario.config_intacta()
+
+
+def test_la_revalidacion_aborta_si_la_ancestralidad_deja_de_demostrarse(tmp_path: Path) -> None:
+    """Si la nueva cabeza de ``main`` vuelve incoherente la release, no se activa nada."""
+
+    escenario = escenario_legacy(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        identidades=(
+            identidad_publica(SHA_NUEVO, SHA_DOCUMENTAL),
+            ErrorActualizadorPublico(f"El commit {SHA_NUEVO} no es ancestro de otra cabeza."),
+        ),
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+    )
+
+    with pytest.raises(ErrorOperacionHost, match="No se pudo revalidar"):
+        operador.actualizar()
+
+    assert leer_target_release(escenario.raiz) == SHA_VIEJO
+    assert SERVICIO_BACKEND_LEGACY in escenario.host.activas
+
+
+def test_actualizar_falla_cerrado_si_no_hay_release_desplegable(tmp_path: Path) -> None:
+    """Casos 5 a 8 vistos desde el host: cualquier falla de selección no muta nada."""
+
+    escenario = escenario_sisleg(tmp_path)
+    operador = escenario.operador(
+        identidades=(ErrorActualizadorPublico("la release latest no es ancestro de main"),),
+    )
+
+    with pytest.raises(ErrorOperacionHost, match="release pública desplegable"):
+        operador.actualizar()
+
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert leer_target_release(escenario.raiz) == SHA_VIEJO
+    assert escenario.preflights == 0
+    assert escenario.config_intacta()
+
+
+def test_actualizar_aborta_si_la_release_desplegable_seria_una_regresion(
+    tmp_path: Path,
+) -> None:
+    """``latest`` anterior a la release del host no puede retroceder la versión."""
+
+    escenario = escenario_sisleg(tmp_path)
+    operador = escenario.operador(
+        identidades=(identidad_publica(SHA_NUEVO, SHA_DOCUMENTAL),),
+        sin_ancestralidad=((SHA_VIEJO, SHA_NUEVO),),
+    )
+
+    with pytest.raises(ErrorOperacionHost, match="podría retroceder"):
+        operador.actualizar()
+
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert leer_target_release(escenario.raiz) == SHA_VIEJO
+    assert not (escenario.gestor.releases / SHA_NUEVO).exists()
+    assert escenario.preflights == 0
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.muto is False
+
+
+def test_idempotencia_con_main_documental_por_delante(tmp_path: Path) -> None:
+    """Caso 12: un avance documental no dispara descarga, preparación ni reinicio."""
+
+    escenario = escenario_sisleg(tmp_path)
+    verificaciones: list[tuple[str, str]] = []
+    operador = escenario.operador(
+        identidades=(identidad_publica(SHA_VIEJO, SHA_DOCUMENTAL),),
+        verificaciones_ancestro=verificaciones,
+    )
+
+    resultado = operador.actualizar()
+
+    assert resultado.muto is False
+    assert "ya está actualizado" in resultado.mensaje
+    assert resultado.sha_objetivo == SHA_VIEJO
+    assert resultado.main_head_sha == SHA_DOCUMENTAL
+    assert verificaciones == []
+    assert escenario.preflights == 0
+    assert not any(comando[:2] == ["systemctl", "restart"] for comando in escenario.host.llamadas)
+
+
+def test_el_rollback_en_caliente_no_cambia_con_main_documental_por_delante(
+    tmp_path: Path,
+) -> None:
+    """Caso 12: el rollback de WP-101A sigue restaurando current y target previos."""
+
+    escenario = escenario_sisleg(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        identidades=(identidad_publica(SHA_NUEVO, SHA_DOCUMENTAL),),
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+    )
+    escenario.host.fallas = (f"restart {SERVICIO_BRIDGE}",)
+
+    with pytest.raises(ErrorOperacionHost, match="restauró la release anterior"):
+        operador.actualizar()
+
+    assert escenario.gestor.current.resolve().name == SHA_VIEJO
+    assert leer_target_release(escenario.raiz) == SHA_VIEJO
+    assert operador.ultimo_resultado is not None
+    assert operador.ultimo_resultado.rollback == "EXITOSO"
+
+
+def test_el_historial_diferencia_main_head_de_la_release_instalada(tmp_path: Path) -> None:
+    """Caso 11: el historial conserva los dos SHAs cuando difieren."""
+
+    escenario = escenario_legacy(tmp_path)
+    paquete, sidecar = construir_artefactos(tmp_path, SHA_NUEVO)
+    operador = escenario.operador(
+        identidades=(identidad_publica(SHA_NUEVO, SHA_DOCUMENTAL),),
+        release=release_descargada(paquete, sidecar, SHA_NUEVO),
+    )
+    historial = tmp_path / "registros/operaciones.jsonl"
+
+    resultado = operador.actualizar()
+    assert registrar_en_historial(historial, resultado) is True
+
+    (registro,) = leer_historial(historial)
+    assert registro["main_head_sha"] == SHA_DOCUMENTAL
+    assert registro["sha_objetivo"] == SHA_NUEVO
+    assert registro["target_final"] == SHA_NUEVO
+    assert registro["evidencia_publica"]["commit_sha"] == SHA_NUEVO
+    assert registro["evidencia_publica"]["tag"] == f"sis-leg-{SHA_NUEVO}"
+    assert registro["evidencia_publica"]["tree_sha"] == SHA_ARBOL
+
+
+def test_el_confirmador_muestra_la_cabeza_de_main_cuando_difiere(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Caso 11: la persona ve por qué ``main`` no coincide con la release a instalar."""
+
+    def responder_no(mensaje: str) -> str:
+        del mensaje
+        return "no"
+
+    monkeypatch.setattr("builtins.input", responder_no)
+    plan = PlanOperacion(
+        operacion="actualizar",
+        estado_inicial=ESTABLE_LEGACY,
+        release_actual=None,
+        target_actual=SHA_VIEJO,
+        sha_objetivo=SHA_NUEVO,
+        acciones_previstas=("descargar",),
+        main_head_sha=SHA_DOCUMENTAL,
+    )
+
+    assert confirmador_interactivo(plan) is False
+
+    salida = capsys.readouterr().out
+    assert f"Release objetivo: {SHA_NUEVO}" in salida
+    assert f"Cabeza de main: {SHA_DOCUMENTAL}" in salida
 
 
 # ---------------------------------------------------------------------------

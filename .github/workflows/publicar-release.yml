@@ -10,7 +10,9 @@ name: Publicar release pública
 #
 # Un push documental exento por `paths-ignore` (DEC-019) no genera run de CI, así
 # que tampoco genera publicación. Esa ausencia es esperada: no hay release
-# productiva nueva porque no hay contenido material nuevo.
+# productiva nueva porque no hay contenido material nuevo. Desde WP-104 el
+# consumidor no exige una release del SHA exacto de la cabeza de `main`: toma la
+# release `latest` y demuestra que es ancestro de esa cabeza.
 on:
   workflow_run:
     workflows: ['CI']

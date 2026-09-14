@@ -205,6 +205,22 @@ Un push exento por `paths-ignore` (DEC-019) no genera run de CI y por lo tanto t
 genera publicación. Esa ausencia es esperada: no hay release productiva nueva porque no
 hubo cambio material.
 
+#### Cabeza de `main` y release desplegable (WP-104)
+
+Como consecuencia, la cabeza de `main` puede estar en un commit documental **sin release**.
+Desde WP-104 el consumidor distingue dos identidades:
+
+- `main_head_sha`: la cabeza actual de `main`, que gobierna el repositorio;
+- `release_sha`: la release desplegable, que es la publicación `latest` (no borrador, no
+  prerelease) cuyo commit se **demuestra** ancestro de esa cabeza —o idéntico a ella— con la
+  API pública de comparación Git (`/compare/<release>...<cabeza>`: `status` `ahead`,
+  `behind_by` 0 y `merge_base_commit` igual a la release).
+
+Fechas, orden de releases o prefijos de SHA no se aceptan como evidencia. Si la release
+`latest` no puede demostrarse como ancestro de `main`, el canal **falla cerrado** y no busca
+una release más vieja que disimule la divergencia. Si no existe ninguna release pública,
+también falla cerrado. Todas las garantías del resto del flujo se conservan sin cambios.
+
 #### Consumo sin credenciales
 
 `deploy/actualizador_publico.py` obtiene esa release **sin ninguna credencial del host**:
@@ -217,9 +233,13 @@ python3.14 /opt/sis-leg/current/deploy/actualizador_publico.py obtener --destino
 
 El flujo es rígido y siempre en este orden:
 
-1. resolver el SHA completo de `main` por recurso público;
-2. resolver la publicación por tag, nunca un asset `latest`;
-3. exigir los tres nombres de asset derivados del SHA, sin faltantes ni duplicados;
+1. resolver el SHA completo de la cabeza de `main` por recurso público;
+2. resolver la release `latest`, exigir tag `sis-leg-<sha>` con SHA completo,
+   `target_commitish` coherente y que no sea borrador ni prerelease; con `--sha` explícito se
+   resuelve en cambio la publicación por tag de ese SHA y no se consulta `main` ni `latest`;
+3. exigir los tres nombres de asset derivados del SHA, sin faltantes ni duplicados —nunca un
+   asset `latest.tar.gz` mutable— y, sin `--sha`, demostrar la ancestralidad de la release
+   respecto de la cabeza de `main`;
 4. descargar primero el asset de metadatos, que es chico y declara qué intento de CI
    habilitó esta release;
 5. exigir ese intento histórico exacto en `/actions/runs/<id>/attempts/<intento>`: mismo
@@ -231,6 +251,10 @@ El flujo es rígido y siempre en este orden:
 9. verificar el sidecar SHA-256 con la función canónica;
 10. contrastar el `tree_sha` de los metadatos con el de `release.json`;
 11. validar `release.json`, commit, tree e inventario con el motor canónico.
+
+La salida del comando informa `main_head_sha` y `release_sha` por separado, además del tag, el
+`tree_sha` y el run, intento y job de CI; `commit_sha` se conserva por compatibilidad y es igual
+a `release_sha`.
 
 Los pasos 4 a 7 son los que hacen que una re-ejecución de CI no rompa nada: la release es
 inmutable y nombra el intento que la publicó, así que se demuestra ese intento y no el más
