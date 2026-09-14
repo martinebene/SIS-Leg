@@ -46,6 +46,7 @@ pendiente.
 | [08 - Incidentes y lecciones](08-incidentes-y-lecciones.md) | Cada defecto encontrado en campo, su causa y su corrección. |
 | [09 - Estado conocido y compuertas](09-estado-y-gates.md) | Dónde está hoy la instalación, qué está autorizado y qué no. |
 | [10 - Mecanismo versionado y su aplicación](10-mecanismo-versionado-y-aplicacion.md) | Qué está instalado hoy, qué dejó versionado WP-101A y qué falta ejecutar en WP-101B. |
+| [11 - Bootstrap público transicional](11-bootstrap-publico-transicional.md) | Puente de un único uso (WP-105) para preparar una release moderna desde una release anterior a WP-101A, y su procedimiento con compuertas. |
 
 ## Cómo leer esta carpeta
 
