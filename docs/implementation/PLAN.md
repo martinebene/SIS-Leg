@@ -591,3 +591,11 @@ HUMAN_GATE aprueba dos correcciones de desarrollo independientes detectadas sin 
 WP-102 quedó `VERIFIED_COMPLETE`: PR #113 integrada por squash como `29b1eafeea60dce318ca462dc530b53c6a425825`, revisión independiente 0 BLOQUEANTES / 0 IMPORTANTES / 0 MENORES, auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`, CI post-merge #551 `success` 8/8 y cleanup verificado de worktree y ramas local/remota. Con ese gate satisfecho, HUMAN_GATE activa WP-103 con Claude Code / Claude Opus 5 como IMPLEMENTER y Antigravity/AGY / Gemini 3.8 Flash (High) como REVIEWER independiente. Continúa `max_concurrency=1`; WP-101B y toda mutación productiva permanecen fuera de alcance.
 
 WP-103 quedó `VERIFIED_COMPLETE`: PR #114 integrada por squash como `30b60eb6467ebd5dd5ee125dd9ce6e137ba9316b`, con tree `6732f85e1c53c815638c0763d98890271a07a1a8` idéntico al candidato revisado, revisión independiente 0 BLOQUEANTES / 0 IMPORTANTES / 0 MENORES, auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`, CI candidata #552 y post-merge #553 `success` 8/8. HUMAN_GATE verificó cleanup completo: worktree Orca/Git removido y ramas local/remota ausentes. Producción y WP-101B permanecen fuera de alcance.
+
+## Bootstrap público seguro transicional - WP-105 (14/09/2026)
+
+La revalidación read-only de WP-101B demostró que la release activa del host (`a702d71da8c0f2d66b8ccb0231543d15bcdb1e48`) es anterior al mecanismo versionado: no contiene `actualizador_publico.py` ni `instalador_host.py`, y su `herramienta_despliegue.py` valida un contrato de cuatro SPA que rechaza la release moderna con Zócalo. HUMAN_GATE aprueba WP-105 para crear, sólo en desarrollo, un bootstrap público mínimo, auditable y fail-closed que prepare una release moderna delegando en su propia herramienta verificada. WP-101B permanece suspendido y no se autoriza ninguna mutación productiva.
+
+| WP | Objetivo | Estado | Depende de | Agente |
+|---|---|---|---|---|
+| WP-105 | Bootstrap público seguro transicional desde releases anteriores a WP-101A | EN_CURSO | WP-100, WP-101, WP-104 | claude |

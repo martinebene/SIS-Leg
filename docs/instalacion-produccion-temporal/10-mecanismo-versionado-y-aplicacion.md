@@ -225,6 +225,24 @@ Eso tiene un límite honesto que conviene enunciar: las pruebas demuestran **la 
 guards**, no el comportamiento del systemd ni del Nginx reales del host. Esa verificación pertenece a
 WP-101B y por eso su primer paso es un inventario read-only.
 
+### Bootstrap público transicional (WP-105)
+
+La release activa del host es anterior a WP-101A: no contiene `actualizador_publico.py` ni
+`instalador_host.py`, y su `herramienta_despliegue.py` rechaza cualquier release moderna porque valida
+un contrato de cuatro SPA. Por eso el mecanismo de esta sección no puede llegar al host usando lo que
+el host ya tiene.
+
+WP-105 agrega `deploy/bootstrap_publico.py`, un archivo suelto de sólo biblioteca estándar que
+verifica una release pública exacta —publicación, commit y árbol contra Git, metadatos, intento
+histórico de CI, checksum e inventario completo del paquete— y recién entonces ejecuta la
+`herramienta_despliegue.py preparar` **de la propia release objetivo**. No activa, no toca `current`
+ni `target-release`, no instala wrappers y no reinicia servicios. Su `diagnosticar` no escribe bajo
+`/opt/sis-leg`.
+
+Es transicional: una vez preparada una release moderna, todo vuelve a pasar por las herramientas de
+esta sección. El detalle y el procedimiento están en
+[11 - Bootstrap público transicional](11-bootstrap-publico-transicional.md).
+
 ## 3. Qué falta ejecutar en WP-101B, sobre el servidor real
 
 WP-101B está **pendiente** de acceso al equipo de producción y de una compuerta humana específica.
@@ -233,7 +251,11 @@ La integración de WP-101A no lo autoriza.
 Pasos previstos, en orden:
 
 1. **inventario read-only del host**: estado formal, releases presentes, `target-release`, contenido
-   y permisos actuales de los wrappers, y comparación contra lo preparado;
+   y permisos actuales de los wrappers, y comparación contra lo preparado. Si la release activa es
+   anterior a WP-101A, antes de seguir hay que **preparar la release moderna con el bootstrap
+   de WP-105** siguiendo [11 - Bootstrap público transicional](11-bootstrap-publico-transicional.md):
+   diagnóstico read-only primero, preparación sólo con su propio HUMAN_GATE y detención inmediata
+   después de preparar;
 2. ejecutar `deploy/instalador_host.py ... plan` y revisar la salida completa. El plan compara
    **contenido y metadata**: un destino sólo se declara sin cambio cuando los bytes, el modo y el
    propietario son los declarados. Un archivo con el contenido correcto pero con permisos o dueño
@@ -308,6 +330,12 @@ hoy quien opera el sistema, así que el manual sigue sin requerir actualización
 WP-104 repitió la evaluación con el mismo resultado: la selección de la release desplegable cuando
 `main` avanza sólo por documentación cambia qué versión elige un mecanismo que todavía no está
 instalado en ninguna máquina, y no altera ninguna pantalla, paso ni texto que vea hoy quien opera.
+
+WP-105 repitió la evaluación con el mismo resultado: el bootstrap transicional es una herramienta de
+un único uso para quien administra la instalación durante WP-101B, gobernada por compuertas humanas
+propias y documentada en [11 - Bootstrap público transicional](11-bootstrap-publico-transicional.md).
+No se instala en el host, no forma parte de ningún botón ni wrapper y no cambia ninguna pantalla, paso
+ni texto que vea quien opera el sistema o quien le da soporte habitual.
 
 Cuando WP-101B instale el mecanismo nuevo habrá que volver a evaluar el manual: ahí sí cambia qué ve
 la persona en pantalla durante una actualización, y esa evaluación corresponde a ese trabajo.
