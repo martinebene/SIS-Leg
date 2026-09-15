@@ -209,6 +209,9 @@ const detalleEstado = computed(() => {
 .zocalo {
   --margen-lateral: 1.5vw;
   --margen-inferior: 1.5vh;
+  /* Separación horizontal entre columnas. Se declara una sola vez porque la usan tanto la
+     grilla de la placa como la de cada renglón (ver «Columnas compartidas» más abajo). */
+  --separacion-columnas: clamp(0.4rem, 0.7vw, 0.8rem);
 
   position: absolute;
   left: var(--margen-lateral);
@@ -218,6 +221,22 @@ const detalleEstado = computed(() => {
 
   display: grid;
   grid-template-rows: repeat(3, minmax(0, 1fr));
+  /*
+    Columnas compartidas por los tres renglones (WP-106).
+
+    1. `max-content`: la columna de rótulos mide exactamente lo que mide el rótulo más largo
+       (hoy `VOTACIÓN`), sea cual sea el cuerpo tipográfico que resulte en esta resolución.
+       Antes era un `clamp` sobre `vw` que no seguía al cuerpo del texto y, en algunas
+       proporciones de frame, recortaba la última letra.
+    2. `auto`: la píldora del estado, que sólo existe en el tercer renglón.
+    3. `minmax(0, 1fr)`: los valores. Es la única pista flexible, así que es la que cede el
+       ancho que necesiten los rótulos. El `0` mínimo le permite achicarse sin empujar la
+       placa: el texto sobrante se recorta con puntos suspensivos dentro del renglón.
+
+    El ancho total no depende de estas pistas: lo sigue fijando `width: 80vw`.
+  */
+  grid-template-columns: max-content auto minmax(0, 1fr);
+  column-gap: var(--separacion-columnas);
   /* Sin relleno vertical: los tres renglones necesitan el alto completo para poder
      duplicar el cuerpo sin desbordar, igual que resolvió WP-097 en la franja del Recinto. */
   padding: 0 clamp(0.7rem, 1.2vw, 1.4rem);
@@ -249,18 +268,41 @@ const detalleEstado = computed(() => {
 */
 .zocalo-con-aviso {
   grid-template-rows: minmax(0, 1fr);
+  /* El aviso ocupa una única celda de ancho completo: sin las columnas de los renglones. */
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 0;
   padding: 0;
 }
 
+/*
+  Renglón: hereda las columnas de la placa.
+
+  Cada renglón es su propia grilla (conserva su borde inferior, su centrado vertical y su
+  `overflow`), pero con `subgrid` no inventa columnas propias: usa las de `.zocalo`. Eso es
+  lo que hace que la columna de rótulos sea **una sola** para las tres filas —la mide el
+  rótulo más largo y las divisiones quedan alineadas—, algo que tres grillas independientes
+  con `max-content` no podrían garantizar.
+
+  La primera declaración de `grid-template-columns` es el respaldo para un navegador que no
+  entienda `subgrid`: descarta la segunda por inválida y conserva la geometría anterior a
+  WP-106 en lugar de desarmar el renglón.
+*/
 .renglon {
+  grid-column: 1 / -1;
   min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-columns: clamp(5.5rem, 9vw, 9rem) minmax(0, 1fr);
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: clamp(0.4rem, 0.7vw, 0.8rem);
+  gap: var(--separacion-columnas);
   overflow: hidden;
   border-bottom: 1px solid #1d3550;
+}
+
+/* En los renglones sin píldora, el valor ocupa la columna de la píldora y la de valores. */
+.renglon:not(.renglon-estado) > .valor {
+  grid-column: 2 / -1;
 }
 
 .renglon:last-child {
@@ -299,6 +341,7 @@ const detalleEstado = computed(() => {
 
 .renglon-estado {
   grid-template-columns: clamp(5.5rem, 9vw, 9rem) auto minmax(0, 1fr);
+  grid-template-columns: subgrid;
 }
 
 /*
