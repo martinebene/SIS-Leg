@@ -599,3 +599,11 @@ La revalidación read-only de WP-101B demostró que la release activa del host (
 | WP | Objetivo | Estado | Depende de | Agente |
 |---|---|---|---|---|
 | WP-105 | Bootstrap público seguro transicional desde releases anteriores a WP-101A | EN_CURSO | WP-100, WP-101, WP-104 | claude |
+
+## Zócalo: ancho dinámico de rótulos - WP-106 (15/09/2026)
+
+La prueba humana del Zócalo mostró que el rótulo `Votación` podía perder su última letra en determinadas resoluciones, porque el ancho reservado a la columna de rótulos dependía del viewport y no del texto. HUMAN_GATE aprueba WP-106 para corregir exclusivamente ese dimensionamiento con CSS intrínseco, sin agrandar ni mover la placa. Sólo desarrollo y revisión; producción no autorizada.
+
+| WP | Objetivo | Estado | Depende de | Agente |
+|---|---|---|---|---|
+| WP-106 | Ancho dinámico de la columna de rótulos del Zócalo | EN_CURSO | WP-099, WP-103 | claude |
