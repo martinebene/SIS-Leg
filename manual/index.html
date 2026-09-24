@@ -763,8 +763,9 @@
           <h4>Avisos después de cerrar</h4>
 
           <p>
-            Cuando la instalación tiene configurada una carpeta externa, Moderación muestra un aviso
-            breve que desaparece solo:
+            Después de cerrar, Moderación puede mostrar un aviso sobre lo que pasó con el informe de
+            acta y con la copia externa. Los avisos de copia desaparecen solos a los pocos segundos;
+            el aviso de informe no generado permanece en pantalla hasta que se lo cierra con la «✕».
           </p>
 
           <div class="tabla-contenedor">
@@ -785,11 +786,17 @@
                   </td>
                 </tr>
                 <tr>
-                  <td>Un aviso que empieza diciendo que la sesión cerró y que no se pudo generar el informe</td>
+                  <td>
+                    Un aviso que empieza diciendo que la sesión cerró y que no se pudo generar el
+                    informe, <strong>con una «✕» para cerrarlo</strong>
+                  </td>
                   <td>
                     El archivo de texto para el acta no se pudo escribir o el L3 no pudo
                     interpretarse íntegramente. Los tres registros CSV quedan intactos y son el
-                    registro válido.
+                    registro válido. Este aviso no se apaga solo: queda hasta que alguien lo cierra,
+                    porque es el único desenlace que deja al cuerpo sin un documento que esperaba
+                    tener y conviene que no pase inadvertido. Cerrarlo no cambia nada del sistema;
+                    también desaparece al enviar el comando siguiente.
                   </td>
                 </tr>
                 <tr>
@@ -2085,11 +2092,23 @@ Fecha: DD/MM/AAAA
           </p>
 
           <p>
+            Los textos que se cargan a mano o desde el Orden del Día —el tipo y el tema de una
+            votación, el motivo de una finalización manual, los nombres de las autoridades— pueden
+            tener varios renglones, tildes, comillas, punto y coma o signos igual. Todos se admiten
+            y ninguno impide generar el informe. Como el informe tiene una línea por hecho, un texto
+            de varios renglones aparece en una sola línea: los saltos se reemplazan por un espacio y
+            no se pierde ni se recorta nada de lo escrito. El registro L3 conserva siempre el texto
+            original con sus saltos, por si hiciera falta consultarlo tal como se cargó.
+          </p>
+
+          <p>
             Si el registro L3 no conserva su encabezado y sus seis columnas canónicas, contiene una
             fecha u hora inválida o incorpora un tipo de evento que esta versión todavía no sabe
             redactar, SIS-Leg no omite ni repara filas: no genera el informe y muestra la advertencia
             posterior al cierre. Los tres CSV cerrados quedan intactos y continúan siendo el registro
-            válido.
+            válido. Esas causas son siempre daños en la estructura del archivo: el contenido de los
+            textos escritos por personas no hace fallar el informe, cualesquiera sean los caracteres
+            que tengan.
           </p>
 
           <div class="nota">

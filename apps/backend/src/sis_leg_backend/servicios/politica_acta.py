@@ -28,6 +28,33 @@ Los patrones están **anclados al mensaje completo**. Si mañana alguien agrega 
 campo al final de un ``message``, el patrón deja de coincidir y el acta falla en
 vez de publicar ese campo sin que nadie lo haya revisado.
 
+Estricto con la estructura, sin restricción con el texto humano (WP-107)
+------------------------------------------------------------------------
+
+Esa estricticidad vale para la **estructura técnica** del mensaje, no para el
+contenido de sus campos humanos. Varios mensajes transportan texto que una
+persona escribió —el ``tipo`` y el ``tema`` de una votación, el motivo de una
+finalización manual, las autoridades, el nombre y el apellido del padrón— y ni
+la API ni el padrón restringen ahí los caracteres: aceptan saltos de línea,
+``;``, ``=``, comillas y Unicode arbitrario, y el L3 los persiste tal cual.
+
+El generador del acta no puede imponer indirectamente, mediante sus propias
+expresiones regulares, un subconjunto textual más chico que el que el sistema
+acepta y persiste. Antes de WP-107 lo hacía sin querer: el punto ``.`` de una
+expresión regular **no** coincide con un salto de línea, así que un ``tema`` de
+dos renglones —forma habitual de un Orden del Día real— convertía un L3
+perfectamente válido en :class:`ErrorActaNoDerivable`.
+
+Por eso todo campo humano se escribe hoy con :data:`CARACTER_TEXTO_HUMANO` en
+lugar de ``.``: un campo humano acepta **cualquier** carácter. Los campos
+técnicos conservan sus clases estrictas (un entero, una enumeración en
+mayúsculas, un conjunto cerrado de valores), de modo que la tolerancia nueva no
+alcanza a la estructura.
+
+El salto de línea, además, se aplana a un espacio antes de llegar acá: el acta
+es un informe de una línea por evento y esa normalización de presentación vive
+en ``acta_institucional.normalizar_texto_para_acta``, documentada allí.
+
 Fallo cerrado
 -------------
 
@@ -62,6 +89,31 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
+
+CARACTER_TEXTO_HUMANO = r"[\s\S]"
+"""Clase de caracteres de un campo humano: cualquiera, incluido el salto de línea.
+
+Por qué no se usa ``.``
+-----------------------
+
+``.`` coincide con cualquier carácter **menos** el salto de línea, y ésa es
+justamente la restricción que WP-107 vino a sacar: un ``tema`` de dos renglones
+es texto que la API acepta, que el L3 persiste correctamente y que el acta debe
+poder publicar.
+
+Por qué no se usa ``re.DOTALL``
+-------------------------------
+
+``re.DOTALL`` produciría el mismo efecto, pero es una bandera que se aplica al
+patrón **entero** y no deja ver en cada lugar cuál es la intención. Escribir la
+clase en el sitio del campo hace evidente, leyendo una sola línea, qué campos
+son humanos —y por lo tanto ilimitados— y cuáles son técnicos y siguen atados a
+``\\d+``, ``[A-Z_]+`` o a un conjunto cerrado de valores. Esa asimetría es el
+contrato de WP-107 y tiene que poder auditarse mirando el patrón.
+
+Se usa ``[\\s\\S]`` y no ``[\\w\\W]`` o ``(?s:.)`` por ser la forma más difundida
+y legible de "cualquier carácter" en una expresión regular.
+"""
 
 PREFIJO_MARCADOR_INICIO = "Inicio: "
 PREFIJO_MARCADOR_FIN = "Fin: "
@@ -242,20 +294,26 @@ def _persona(concejal: str, banca: str) -> str:
 # curso. Ambos son hechos institucionales que el acta debe conservar, pero
 # escritos en prosa y no como ``clave=valor``.
 _AUSENCIA = re.compile(
-    r"(?P<persona>.*) se AUSENTÓ"
+    rf"(?P<persona>{CARACTER_TEXTO_HUMANO}*) se AUSENTÓ"
     r"(?:; pedido_palabra_retirado=(?P<pedido>true|false)"
     r"; uso_palabra_finalizado=(?P<uso>true|false))?"
 )
 
-_PRESENCIA = re.compile(r".+ \(banca Nro:[^)]+\) se PRESENTÓ")
+_PRESENCIA = re.compile(rf"{CARACTER_TEXTO_HUMANO}+ \(banca Nro:[^)]+\) se PRESENTÓ")
 
 # Los cambios de sesión transportan sólo valores institucionales, pero se exige
 # el prefijo y el separador exactos para detectar cualquier campo agregado.
-_NUMERO_SESION_ACTUALIZADO = re.compile(r"Número de sesión actualizado: .* -> .*", re.DOTALL)
-_PRESIDENCIA_ACTUALIZADA = re.compile(r"Presidencia actualizado: .* -> .*", re.DOTALL)
+# Las tres familias publican el mensaje completo, así que el patrón sólo
+# comprueba la forma «anterior -> nuevo» y no captura los valores: nadie los
+# reescribe. Ambos lados son texto humano libre —el número de sesión llega como
+# texto y la ausencia se escribe «sin informar»— y por eso usan la clase de
+# campo humano.
+_VALOR_ANTERIOR_Y_NUEVO = rf"{CARACTER_TEXTO_HUMANO}* -> {CARACTER_TEXTO_HUMANO}*"
+
+_NUMERO_SESION_ACTUALIZADO = re.compile(rf"Número de sesión actualizado: {_VALOR_ANTERIOR_Y_NUEVO}")
+_PRESIDENCIA_ACTUALIZADA = re.compile(rf"Presidencia actualizado: {_VALOR_ANTERIOR_Y_NUEVO}")
 _SECRETARIA_ACTUALIZADA = re.compile(
-    r"Secretaría Legislativa actualizado: .* -> .*",
-    re.DOTALL,
+    rf"Secretaría Legislativa actualizado: {_VALOR_ANTERIOR_Y_NUEVO}"
 )
 _SESION_ABIERTA = re.compile(r"Apertura de sesión Nº\d+")
 _SESION_CERRADA = re.compile(r"Cierre de sesión Nº\d+")
@@ -286,7 +344,14 @@ def _redactar_ausencia(mensaje: str) -> str:
 # publican: son estado interno del mecanismo de turnos.
 # ---------------------------------------------------------------------------
 
-_IDENTIDAD_PALABRA = r"DNI=[^;]*; concejal=(?P<concejal>.*); banca=(?P<banca>[^;]*)"
+# El DNI también es texto humano: el padrón sólo exige que no esté vacío, así
+# que puede traer un ``;`` o un salto de línea. Se consume de forma perezosa
+# hasta el primer ``; concejal=`` porque el acta no lo publica; lo único que
+# importa es no romper el bloque de identidad por su contenido.
+_IDENTIDAD_PALABRA = (
+    rf"DNI={CARACTER_TEXTO_HUMANO}*?; concejal=(?P<concejal>{CARACTER_TEXTO_HUMANO}*)"
+    r"; banca=(?P<banca>[^;]*)"
+)
 
 _PEDIDO_REGISTRADO = re.compile(
     rf"Pedido de palabra registrado: {_IDENTIDAD_PALABRA}; posicion=\d+"
@@ -343,7 +408,8 @@ def _redactar_uso_finalizado(mensaje: str) -> str:
 # del Día: pueden contener ``;`` y ``=``. Por eso el patrón los delimita con las
 # claves literales que vienen después y no partiendo el mensaje por separadores.
 _VOTACION_ABIERTA = re.compile(
-    r"Votación abierta: número=(?P<numero>\d+); tipo=(?P<tipo>.*?); tema=(?P<tema>.*)"
+    rf"Votación abierta: número=(?P<numero>\d+); tipo=(?P<tipo>{CARACTER_TEXTO_HUMANO}*?)"
+    rf"; tema=(?P<tema>{CARACTER_TEXTO_HUMANO}*)"
     r"; tipo_mayoria=(?P<mayoria>SIMPLE|ESPECIAL); factor=(?P<factor>[^;]*)"
     r"; base=(?P<base>[A-Z_]+)"
 )
@@ -387,7 +453,8 @@ def _redactar_votacion_abierta(mensaje: str) -> str:
 
 
 _VOTO_ORDINARIO = re.compile(
-    r"Voto ordinario: (?P<persona>.*) votó (?P<valor>POSITIVO|NEGATIVO|ABSTENCION)"
+    rf"Voto ordinario: (?P<persona>{CARACTER_TEXTO_HUMANO}*)"
+    r" votó (?P<valor>POSITIVO|NEGATIVO|ABSTENCION)"
     r"; votación número=(?P<numero>\d+); id=[^;]*"
 )
 
@@ -477,10 +544,10 @@ _INCONCLUSA = re.compile(
     r"Votación finalizada inconclusa; numero_votacion=(?P<numero>\d+); id=[^;]*"
     r"; causa=(?P<causa>MANUAL|PERDIDA_QUORUM|CIERRE_SESION); estado_previo=[A-Z_]+"
     r"; resultado_previo=[A-Za-z]+; votos_conservados=(?P<votos>\d+)"
-    r"; resultado_nuevo=INCONCLUSA(?P<cola>.*)"
+    rf"; resultado_nuevo=INCONCLUSA(?P<cola>{CARACTER_TEXTO_HUMANO}*)"
 )
 
-_COLA_MANUAL = re.compile(r"; motivo_manual=(?P<motivo>.*)")
+_COLA_MANUAL = re.compile(rf"; motivo_manual=(?P<motivo>{CARACTER_TEXTO_HUMANO}*)")
 _COLA_QUORUM = re.compile(r"; presentes=(?P<presentes>\d+); quorum_requerido=(?P<quorum>\d+)")
 _COLA_CIERRE = re.compile(r"; resuelta_por_cierre_sesion=true")
 
@@ -519,7 +586,8 @@ def _redactar_inconclusa(mensaje: str) -> str:
 
 _VOTO_DESEMPATE = re.compile(
     r"Voto presidencial de desempate: numero_votacion=(?P<numero>\d+); id=[^;]*"
-    r"; presidencia=(?P<presidencia>.*); sentido=(?P<sentido>POSITIVO|NEGATIVO)"
+    rf"; presidencia=(?P<presidencia>{CARACTER_TEXTO_HUMANO}*)"
+    r"; sentido=(?P<sentido>POSITIVO|NEGATIVO)"
     r"; estado_previo=[A-Z_]+; resultado_previo=[A-Z]+; votos_ordinarios=\d+"
     rf"; {_CONTEOS}"
 )
@@ -537,7 +605,8 @@ def _redactar_voto_desempate(mensaje: str) -> str:
 
 _RESULTADO_DESEMPATE = re.compile(
     r"Resultado por desempate presidencial: numero_votacion=(?P<numero>\d+); id=[^;]*"
-    r"; presidencia=(?P<presidencia>.*); sentido=(?P<sentido>POSITIVO|NEGATIVO)"
+    rf"; presidencia=(?P<presidencia>{CARACTER_TEXTO_HUMANO}*)"
+    r"; sentido=(?P<sentido>POSITIVO|NEGATIVO)"
     r"; resultado_previo=EMPATADA; resultado_final=(?P<final>[A-Z]+)"
     rf"; votos_ordinarios=\d+; {_CONTEOS}"
 )

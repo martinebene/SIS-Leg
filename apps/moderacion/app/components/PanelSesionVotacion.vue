@@ -39,10 +39,17 @@
  *    es el trabajo real del operador durante una sesión abierta.
  * 11. Desenlace del cierre institucional (WP-085): cerrar la sesión produce además un informe
  *    de acta y, si la instalación lo configuró, una copia externa del conjunto. Ninguno de los
- *    dos es visible desde acá, así que este cuadrante los informa con un aviso efímero. El
- *    aviso de fallo usa un canal propio, distinto del error persistente, y su texto empieza
+ *    dos es visible desde acá, así que este cuadrante los informa con un aviso propio. El
+ *    aviso de fallo usa un canal distinto del error persistente, y su texto empieza
  *    afirmando que la sesión sí cerró: son hechos posteriores a un cierre ya irreversible y
  *    presentarlos como un error de cierre llevaría al operador a intentarlo otra vez.
+ * 12. Informe de acta no generado (WP-107): ese desenlace deja de ser efímero. Un acta que no
+ *    se pudo derivar es el único desenlace del cierre que obliga a una acción humana
+ *    posterior —recuperar el hecho desde los CSV, avisar a soporte— y un aviso que se apaga
+ *    solo a los 2,5 segundos se pierde justo cuando el operador está mirando el recinto y no
+ *    la pantalla. Por eso tiene su propio canal persistente, con cierre manual explícito. No
+ *    es un error accionable desde Moderación (no hay nada que reintentar acá), así que
+ *    tampoco usa el canal rojo de error: es una advertencia que espera a ser leída.
  */
 
 import { ref, computed, watch } from 'vue'
@@ -99,6 +106,12 @@ const mensajeExito = avisoExito.mensaje
 // desde Moderación: el cierre institucional ya es irreversible.
 const avisoAdvertencia = useAvisoEfimero()
 const mensajeAdvertencia = avisoAdvertencia.mensaje
+// WP-107: advertencia de informe de acta no generado. A diferencia de la anterior no usa
+// `useAvisoEfimero`, porque no debe caducar sola: permanece hasta que el operador la cierra
+// o hasta que emite un comando nuevo. Es un `ref` propio y no un parámetro del composable
+// para que la persistencia quede explícita en el estado y no dependa de una duración
+// «infinita» simulada con un temporizador que igual habría que cancelar.
+const advertenciaActa = ref<string | null>(null)
 
 // Control de apertura del diálogo de advertencia de cierre
 const mostrarDialogoCierre = ref(false)
@@ -348,6 +361,19 @@ function limpiarMensajes(): void {
   mensajeError.value = null
   avisoExito.limpiar()
   avisoAdvertencia.limpiar()
+  // La advertencia persistente también se retira acá, igual que el error: emitir un comando
+  // nuevo es una acción deliberada del operador y dejar colgado el desenlace de un cierre ya
+  // consumado sobre una preparación nueva confundiría más de lo que informa.
+  advertenciaActa.value = null
+}
+
+/**
+ * Cierra a mano la advertencia de acta no generada (WP-107).
+ *
+ * Es la única forma de que desaparezca sin emitir otro comando: no hay temporizador.
+ */
+function descartarAdvertenciaActa(): void {
+  advertenciaActa.value = null
 }
 
 /**
@@ -549,22 +575,28 @@ async function confirmarCerrarSesion(): Promise<void> {
 }
 
 /**
- * Traduce el resultado del cierre en el aviso efímero que corresponda (WP-085).
+ * Traduce el resultado del cierre en el aviso que corresponda (WP-085, WP-107).
  *
- * Los tres desenlaces posibles y por qué se muestran así:
+ * Los desenlaces posibles y por qué se muestran así:
  *
  * - **nada configurado y todo bien** (`OMITIDA` con acta generada): no se muestra nada. La
  *   instalación no pidió copia externa, así que anunciar «no se copió» sería ruido sobre una
- *   operación que salió exactamente como debía.
- * - **copia realizada** (`EXITOSA`): confirmación breve. El operador no puede ver la carpeta
- *   externa desde Moderación, así que este aviso es su única señal de que la réplica existe.
- * - **acta o copia fallidas**: advertencia efímera que empieza afirmando que la sesión cerró.
- *   Es la parte más importante del texto: sin ella, un operador que lee «no se pudo…» justo
- *   después de apretar «Cerrar sesión» concluye que el cierre falló e intenta cerrarla otra
- *   vez, cuando en realidad el estado ya volvió a SIN_PREPARAR y los CSV quedaron completos.
+ *   operación que salió exactamente como debía. WP-107 no cambia esto: el camino feliz no
+ *   gana ninguna señal nueva.
+ * - **copia realizada** (`EXITOSA`): confirmación breve y efímera. El operador no puede ver la
+ *   carpeta externa desde Moderación, así que este aviso es su única señal de que la réplica
+ *   existe.
+ * - **copia fallida** (`FALLIDA`): advertencia efímera. Los archivos locales, que son el
+ *   registro institucional válido, quedaron completos; la réplica es redundancia.
+ * - **acta no generada** (`acta_generada: false`): advertencia **persistente** con cierre
+ *   manual (WP-107). Es el único desenlace que deja al cuerpo legislativo sin un documento
+ *   que esperaba tener, así que no puede depender de que el operador estuviera mirando la
+ *   pantalla durante 2,5 segundos.
  *
- * El acta y la copia se informan en un solo aviso porque son consecuencias del mismo comando
- * y dos toasts encadenados se pisarían entre sí: el composable mantiene un único mensaje.
+ * En los cuatro casos lo primero que se lee es que la sesión cerró. Sin eso, un operador que
+ * lee «no se pudo…» justo después de apretar «Cerrar sesión» concluye que el cierre falló e
+ * intenta cerrarla otra vez, cuando en realidad el estado ya volvió a SIN_PREPARAR y los CSV
+ * quedaron completos y cerrados.
  */
 function anunciarCierreInstitucional(resultado: RespuestaCierreSesion | undefined): void {
   // Guarda defensiva: si por cualquier motivo el cierre llegara sin cuerpo, no hay nada
@@ -574,9 +606,10 @@ function anunciarCierreInstitucional(resultado: RespuestaCierreSesion | undefine
   if (!resultado) return
 
   if (!resultado.acta_generada) {
-    avisoAdvertencia.mostrar(
-      'La sesión cerró y los registros CSV quedaron completos, pero no se pudo generar el informe de acta.',
-    )
+    advertenciaActa.value =
+      'La sesión cerró correctamente y los registros CSV quedaron completos y cerrados. ' +
+      'No se pudo generar el informe de acta a partir de ellos. ' +
+      'Los CSV siguen siendo el registro institucional válido.'
     return
   }
 
@@ -700,6 +733,31 @@ const claseBadge = computed(() => {
         role="status"
       >
         <span>{{ mensajeAdvertencia }}</span>
+      </div>
+
+      <!--
+        WP-107: advertencia persistente del informe de acta. Comparte el aspecto ámbar de la
+        advertencia efímera porque informa lo mismo —un hecho posterior a un cierre ya
+        consumado— pero se distingue en lo único que importa: no caduca y ofrece un cierre
+        manual, igual que el error. `role="alert"` y no `role="status"` porque un lector de
+        pantalla debe anunciarla apenas aparece.
+      -->
+      <div
+        v-if="advertenciaActa"
+        data-testid="alerta-advertencia-acta"
+        class="fixed top-16 right-4 z-40 flex max-w-md items-start justify-between gap-2 rounded-lg border border-amber-600/80 bg-amber-950/95 p-2 text-xs text-amber-100 shadow-xl"
+        role="alert"
+      >
+        <span>{{ advertenciaActa }}</span>
+        <button
+          type="button"
+          data-testid="btn-descartar-advertencia-acta"
+          aria-label="Descartar la advertencia del informe de acta"
+          class="rounded p-1 text-amber-300 hover:bg-amber-900/50"
+          @click="descartarAdvertenciaActa"
+        >
+          ✕
+        </button>
       </div>
 
       <div
