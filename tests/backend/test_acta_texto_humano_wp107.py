@@ -63,7 +63,7 @@ Por eso la verificación se hace por *valor* y por *conteo*:
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -296,8 +296,17 @@ class BridgeAdversarial:
         )
 
 
-def preparar_archivos_adversariales(directorio: Path) -> list[str]:
+def preparar_archivos_adversariales(
+    directorio: Path,
+    *,
+    tipos_extra: tuple[str, ...] = (TIPO_ADVERSARIAL,),
+    ajustar_padron: Callable[[list[list[str]]], None] | None = None,
+) -> list[str]:
     """Instala configuración y padrón con todo el texto humano del corpus.
+
+    ``tipos_extra`` y ``ajustar_padron`` permiten que las regresiones de la
+    iteración 2 inyecten sus propios valores de frontera sin duplicar todo el
+    andamiaje: el resto del entorno es exactamente el mismo.
 
     El ``tipo`` de una votación tiene que estar declarado en ``voting.types``, y
     esa lista acepta cualquier texto no vacío. Escribir ahí el tipo adversarial
@@ -318,7 +327,7 @@ def preparar_archivos_adversariales(directorio: Path) -> list[str]:
     # ``json.dumps`` produce una cadena básica de TOML válida para este corpus:
     # escapa comillas, barras y saltos de línea, y deja el Unicode literal.
     tipos = json.loads(LINEA_TYPES.split("=", 1)[1].strip())
-    tipos.append(TIPO_ADVERSARIAL)
+    tipos.extend(tipos_extra)
     linea_types = "types = " + json.dumps(tipos, ensure_ascii=False)
 
     contenido = (
@@ -331,10 +340,13 @@ def preparar_archivos_adversariales(directorio: Path) -> list[str]:
     filas = filas_padron_valido()
     for numero, fila in enumerate(filas, start=1):
         fila[5] = f"dev{numero:02d}"
-    filas[0][0] = DNI_CON_PUNTO_Y_COMA
-    filas[0][1] = NOMBRE_ADVERSARIAL
-    filas[0][2] = APELLIDO_ADVERSARIAL
-    filas[1][2] = APELLIDO_MULTILINEA
+    if ajustar_padron is None:
+        filas[0][0] = DNI_CON_PUNTO_Y_COMA
+        filas[0][1] = NOMBRE_ADVERSARIAL
+        filas[0][2] = APELLIDO_ADVERSARIAL
+        filas[1][2] = APELLIDO_MULTILINEA
+    else:
+        ajustar_padron(filas)
     escribir_padron(carpeta / "concejales.csv", filas)
     return [fila[0] for fila in filas]
 
@@ -343,10 +355,17 @@ def preparar_archivos_adversariales(directorio: Path) -> list[str]:
 async def cliente_adversarial(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    tipos_extra: tuple[str, ...] = (TIPO_ADVERSARIAL,),
+    ajustar_padron: Callable[[list[list[str]]], None] | None = None,
 ) -> AsyncGenerator[tuple[AsyncClient, FastAPI, list[str]]]:
     """Entrega cliente, aplicación y DNI del padrón con el lifespan real."""
 
-    dnis = preparar_archivos_adversariales(tmp_path)
+    dnis = preparar_archivos_adversariales(
+        tmp_path,
+        tipos_extra=tipos_extra,
+        ajustar_padron=ajustar_padron,
+    )
     monkeypatch.chdir(tmp_path)
     aplicacion = crear_aplicacion()
     async with aplicacion.router.lifespan_context(aplicacion):
@@ -1105,3 +1124,246 @@ def test_una_forma_tecnica_invalida_sigue_abortando_el_acta(
 
     with pytest.raises(ErrorActaNoDerivable):
         redactar_con_texto_humano(etiqueta, codigo, mensaje)
+
+
+# ---------------------------------------------------------------------------
+# 5. Fronteras entre campos humanos adyacentes (WP-107 iteración 2)
+#
+# La iteración 1 resolvió que un campo humano pudiera contener cualquier
+# carácter. Quedó abierto un problema distinto y más profundo: cuando **dos**
+# campos humanos son adyacentes dentro del mismo mensaje, el separador literal
+# que los divide también puede aparecer dentro de uno de ellos, y entonces no
+# existe forma de saber por regex dónde termina el primero.
+#
+# Estas pruebas no comprueban «que los fragmentos estén en alguna parte»: exigen
+# la **estructura semántica concreta** de la línea institucional, es decir que
+# cada porción de texto siga cumpliendo el rol que le dio la persona que la
+# escribió.
+# ---------------------------------------------------------------------------
+
+TIPO_QUE_IMITA_LA_FRONTERA = "Moción; tema=esto sigue siendo TIPO"
+"""Un ``tipo`` que reproduce literalmente el separador que lo divide del ``tema``."""
+
+TEMA_QUE_IMITA_LA_FRONTERA = (
+    "Tema real; tipo_mayoria=SIMPLE; factor=esto sigue siendo TEMA; tema=interno"
+)
+"""Un ``tema`` que reproduce a la vez el separador siguiente y el anterior."""
+
+
+async def test_el_acta_atribuye_tipo_y_tema_aunque_imiten_su_propia_frontera(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Round-trip semántico real: ninguna porción puede cambiar de rol.
+
+    Se abre la votación por la API productiva con un ``tipo`` que contiene
+    ``; tema=`` y un ``tema`` que contiene ``; tipo_mayoria=`` y ``; tema=``. La
+    sesión se cierra con ``DELETE /api/v1/sesion`` y se exige que la línea del
+    acta diga exactamente «Tipo: <el tipo entero>. Tema: <el tema entero>.».
+
+    No alcanza con que los dos textos aparezcan en algún lugar del acta: eso ya
+    se cumplía antes de la corrección, con el final del tipo atribuido al tema.
+    """
+
+    async with cliente_adversarial(
+        tmp_path,
+        monkeypatch,
+        tipos_extra=(TIPO_QUE_IMITA_LA_FRONTERA,),
+    ) as (cliente, aplicacion, _dnis):
+        assert (await cliente.post("/api/v1/preparacion")).status_code == 204
+        for dispositivo in ("dev01", "dev02"):
+            assert (
+                await cliente.post(
+                    "/api/v1/entradas/tecla",
+                    json={"dispositivo": dispositivo, "tecla": "9"},
+                )
+            ).status_code == 200
+        assert (
+            await cliente.patch(
+                "/api/v1/preparacion",
+                json={
+                    "numero_sesion": 107,
+                    "presidencia": "Presidencia",
+                    "secretaria_legislativa": "Secretaría",
+                },
+            )
+        ).status_code == 204
+        assert (await cliente.post("/api/v1/sesion")).status_code == 204
+
+        apertura = await cliente.post(
+            "/api/v1/votaciones",
+            json={
+                "numero_votacion": 1,
+                "tipo": TIPO_QUE_IMITA_LA_FRONTERA,
+                "tema": TEMA_QUE_IMITA_LA_FRONTERA,
+                "tipo_mayoria": "SIMPLE",
+            },
+        )
+        assert apertura.status_code == 201
+        id_votacion = apertura.json()["id"]
+        for dispositivo, tecla in (("dev01", "1"), ("dev02", "1")):
+            assert (
+                await cliente.post(
+                    "/api/v1/entradas/tecla",
+                    json={"dispositivo": dispositivo, "tecla": tecla},
+                )
+            ).status_code == 200
+
+        rutas = rutas_del_conjunto_activo(aplicacion)
+        respuesta = await cliente.delete("/api/v1/sesion")
+
+        assert respuesta.status_code == 200
+        assert respuesta.json()["acta_generada"] is True
+        ruta_acta = ruta_acta_de_conjunto(rutas[NivelAuditoria.L3])
+        assert ruta_acta.exists()
+        acta = ruta_acta.read_text(encoding="utf-8")
+
+    # Estructura semántica exacta: cada texto conserva su rol completo.
+    esperado = (
+        f"Votación Nro 1 abierta. "
+        f"Tipo: {TIPO_QUE_IMITA_LA_FRONTERA}. "
+        f"Tema: {TEMA_QUE_IMITA_LA_FRONTERA}. "
+        f"Mayoría simple."
+    )
+    assert esperado in acta, (
+        f"El acta no atribuyó tipo y tema completos a su propio rol.\nEsperado: {esperado!r}"
+    )
+
+    # Y la metadata técnica real sigue sin aparecer.
+    assert id_votacion not in acta
+    for numero in range(1, 13):
+        assert f"dev{numero:02d}" not in acta
+
+
+DNI_QUE_INYECTA_UN_CONCEJAL = "30000001; concejal=NO_ES_EL_CONCEJAL_REAL"
+"""Un DNI del padrón que reproduce el separador del bloque de identidad."""
+
+NOMBRE_REAL_DE_LA_BANCA = "Rosalía"
+APELLIDO_REAL_DE_LA_BANCA = "Quiroga"
+
+
+def _padron_con_dni_que_inyecta(filas: list[list[str]]) -> None:
+    """Deja la banca 1 con un DNI que intenta suplantar al concejal."""
+
+    filas[0][0] = DNI_QUE_INYECTA_UN_CONCEJAL
+    filas[0][1] = NOMBRE_REAL_DE_LA_BANCA
+    filas[0][2] = APELLIDO_REAL_DE_LA_BANCA
+
+
+async def test_el_acta_publica_el_concejal_real_y_no_el_inyectado_desde_el_dni(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """El bloque de identidad de PALABRA no puede suplantarse desde el DNI.
+
+    El padrón acepta cualquier DNI no vacío, así que un DNI puede contener
+    literalmente ``; concejal=...``. Si la frontera entre DNI y concejal fuera
+    ambigua, el acta publicaría el nombre inyectado en lugar del real —o los dos
+    juntos—, que es una falsificación de identidad en un documento institucional.
+    """
+
+    async with cliente_adversarial(
+        tmp_path,
+        monkeypatch,
+        ajustar_padron=_padron_con_dni_que_inyecta,
+    ) as (cliente, aplicacion, _dnis):
+        assert (await cliente.post("/api/v1/preparacion")).status_code == 204
+        for dispositivo in ("dev01", "dev02"):
+            assert (
+                await cliente.post(
+                    "/api/v1/entradas/tecla",
+                    json={"dispositivo": dispositivo, "tecla": "9"},
+                )
+            ).status_code == 200
+        assert (
+            await cliente.patch(
+                "/api/v1/preparacion",
+                json={
+                    "numero_sesion": 107,
+                    "presidencia": "Presidencia",
+                    "secretaria_legislativa": "Secretaría",
+                },
+            )
+        ).status_code == 204
+        assert (await cliente.post("/api/v1/sesion")).status_code == 204
+
+        # Pedido de palabra, otorgamiento y finalización: las cuatro familias
+        # comparten el mismo bloque de identidad.
+        assert (
+            await cliente.post(
+                "/api/v1/entradas/tecla",
+                json={"dispositivo": "dev01", "tecla": "7"},
+            )
+        ).status_code == 200
+        assert (await cliente.post("/api/v1/palabra")).status_code == 204
+        assert (await cliente.delete("/api/v1/palabra")).status_code == 204
+
+        rutas = rutas_del_conjunto_activo(aplicacion)
+        respuesta = await cliente.delete("/api/v1/sesion")
+
+        assert respuesta.status_code == 200
+        assert respuesta.json()["acta_generada"] is True
+        acta = ruta_acta_de_conjunto(rutas[NivelAuditoria.L3]).read_text(encoding="utf-8")
+
+    persona_real = f"{NOMBRE_REAL_DE_LA_BANCA} {APELLIDO_REAL_DE_LA_BANCA} (banca Nro:1)"
+    for encabezado in (
+        "Pedido de palabra registrado: ",
+        "Uso de la palabra otorgado: ",
+        "Uso de la palabra finalizado por Moderación: ",
+    ):
+        assert f"{encabezado}{persona_real}" in acta, (
+            f"El acta no publicó la identidad real en {encabezado!r}"
+        )
+
+    # Lo inyectado dentro del DNI no llega al acta por ningún camino.
+    assert "NO_ES_EL_CONCEJAL_REAL" not in acta
+    assert "30000001" not in acta
+    assert "DNI=" not in acta
+
+
+AUTORIDAD_QUE_IMITA_LA_FLECHA = "Dra. Paz -> Dr. Lugo"
+"""Una autoridad cuyo nombre contiene el separador ``->`` entre valores."""
+
+
+async def test_el_acta_atribuye_las_autoridades_aunque_contengan_la_flecha(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``anterior -> nuevo`` tampoco puede confundirse con el contenido.
+
+    El valor anterior y el nuevo son dos campos humanos adyacentes separados por
+    una flecha literal. Un nombre que contenga ``->`` desplaza la frontera.
+    """
+
+    async with cliente_adversarial(tmp_path, monkeypatch) as (cliente, aplicacion, _dnis):
+        assert (await cliente.post("/api/v1/preparacion")).status_code == 204
+        for dispositivo in ("dev01", "dev02"):
+            assert (
+                await cliente.post(
+                    "/api/v1/entradas/tecla",
+                    json={"dispositivo": dispositivo, "tecla": "9"},
+                )
+            ).status_code == 200
+        assert (
+            await cliente.patch(
+                "/api/v1/preparacion",
+                json={
+                    "numero_sesion": 107,
+                    "presidencia": AUTORIDAD_QUE_IMITA_LA_FLECHA,
+                    "secretaria_legislativa": "Secretaría",
+                },
+            )
+        ).status_code == 204
+        assert (await cliente.post("/api/v1/sesion")).status_code == 204
+
+        rutas = rutas_del_conjunto_activo(aplicacion)
+        respuesta = await cliente.delete("/api/v1/sesion")
+
+        assert respuesta.status_code == 200
+        assert respuesta.json()["acta_generada"] is True
+        acta = ruta_acta_de_conjunto(rutas[NivelAuditoria.L3]).read_text(encoding="utf-8")
+
+    esperado = f"Presidencia actualizado: sin informar -> {AUTORIDAD_QUE_IMITA_LA_FLECHA}"
+    assert esperado in acta, (
+        f"El acta no atribuyó correctamente la autoridad.\nEsperado: {esperado!r}"
+    )

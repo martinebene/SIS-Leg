@@ -2097,9 +2097,24 @@ Fecha: DD/MM/AAAA
             tener varios renglones, tildes, comillas, punto y coma o signos igual. Todos se admiten
             y ninguno impide generar el informe. Como el informe tiene una línea por hecho, un texto
             de varios renglones aparece en una sola línea: los saltos se reemplazan por un espacio y
-            no se pierde ni se recorta nada de lo escrito. El registro L3 conserva siempre el texto
-            original con sus saltos, por si hiciera falta consultarlo tal como se cargó.
+            no se pierde ni se recorta nada de lo escrito.
           </p>
+
+          <div class="nota">
+            <strong>Para soporte: cómo se ven esos textos dentro del CSV</strong>
+            Algunos registros del archivo L3 escriben los textos cargados por personas —el tipo y el
+            tema de una votación, el nombre del concejal y los nombres de las autoridades— con unas
+            marcas que empiezan con una barra invertida: <code>\n</code> por un salto de línea,
+            <code>\r</code> por un retorno, <code>\p</code> por un punto y coma y <code>\\</code>
+            por una barra invertida que la persona haya escrito. Esas filas se reconocen porque
+            llevan <code>formato=h1</code> al principio.
+            <br /><br />
+            No es un error ni una pérdida de información: es la forma de que un punto y coma escrito
+            dentro de un nombre no se confunda con el punto y coma que separa los campos del
+            registro. Sin eso, un texto podía «correrse» de un campo al otro. La conversión es
+            reversible y exacta: el informe de acta y la pantalla de Moderación muestran siempre el
+            texto tal como se cargó, sin marcas.
+          </div>
 
           <p>
             Si el registro L3 no conserva su encabezado y sus seis columnas canónicas, contiene una

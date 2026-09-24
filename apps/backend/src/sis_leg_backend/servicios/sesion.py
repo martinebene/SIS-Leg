@@ -48,6 +48,10 @@ from sis_leg_backend.servicios.finalizacion_votacion import (
     finalizar_votacion_inconclusa_bajo_lock,
 )
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.texto_humano_l3 import (
+    MARCA_FORMATO_TEXTO_HUMANO,
+    codificar_texto_humano,
+)
 
 ETIQUETA_SESION = "SESION"
 CODIGO_NUMERO_SESION_ACTUALIZADO = "NUMERO_SESION_ACTUALIZADO"
@@ -425,9 +429,9 @@ class ServicioSesion:
             NivelAuditoria.L3,
             ETIQUETA_SESION,
             codigo,
-            f"{campo} actualizado: "
-            f"{ServicioSesion._valor_humano(anterior)} -> "
-            f"{ServicioSesion._valor_humano(nuevo)}",
+            f"{campo} actualizado: {MARCA_FORMATO_TEXTO_HUMANO}; "
+            f"anterior={codificar_texto_humano(ServicioSesion._valor_humano(anterior))}; "
+            f"nuevo={codificar_texto_humano(ServicioSesion._valor_humano(nuevo))}",
         )
 
     @staticmethod

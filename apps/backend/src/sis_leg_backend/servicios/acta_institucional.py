@@ -494,7 +494,18 @@ def _formatear_evento(fila: Sequence[str], numero_fila: int, ruta_l3: Path) -> s
     except ErrorActaNoDerivable as error:
         raise rechazar(str(error)) from error
 
-    return f"{hora}{SEPARADOR_LINEA_ACTA}{texto}"
+    # La normalización se aplica dos veces y las dos son necesarias.
+    #
+    # Antes de redactar, para que el catálogo reciba el mensaje en una sola
+    # línea y sin pictogramas, que es la forma sobre la que están escritos sus
+    # patrones.
+    #
+    # Después de redactar, porque desde WP-107 I002 una política puede
+    # **decodificar** un campo humano y devolver así un salto de línea que el
+    # mensaje ya no contenía de forma literal. Sin este segundo paso ese salto
+    # llegaría al archivo y ese evento ocuparía varias líneas, rompiendo la
+    # regla de una línea por hecho.
+    return f"{hora}{SEPARADOR_LINEA_ACTA}{normalizar_texto_para_acta(texto)}"
 
 
 def _hora_del_timestamp(timestamp: str) -> str:

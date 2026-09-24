@@ -192,7 +192,10 @@ async def test_actualizacion_preparatoria_individual_normaliza_y_audita(
     assert preparacion is not None
     assert getattr(preparacion, atributo) == esperado
     assert filas_l1(estado)[-1][4] == codigo
-    assert "sin informar ->" in filas_l1(estado)[-1][5]
+    # WP-107 I002: el valor anterior y el nuevo son dos campos humanos adyacentes
+    # y desde entonces viajan codificados y separados por estructura, en lugar de
+    # concatenados con una flecha que un nombre podía contener.
+    assert filas_l1(estado)[-1][5].endswith("; anterior=sin informar; nuevo=" + str(esperado))
 
 
 async def test_actualizacion_multiple_respeta_orden_y_permite_limpiar(
@@ -223,7 +226,7 @@ async def test_actualizacion_multiple_respeta_orden_y_permite_limpiar(
         "PRESIDENCIA_ACTUALIZADA",
         "SECRETARIA_LEGISLATIVA_ACTUALIZADA",
     ]
-    assert filas_l1(estado)[-1][5].endswith("Secretaría Inicial -> sin informar")
+    assert filas_l1(estado)[-1][5].endswith("; anterior=Secretaría Inicial; nuevo=sin informar")
 
 
 async def test_repeticion_y_noop_no_generan_eventos_ficticios(tmp_path: Path) -> None:
