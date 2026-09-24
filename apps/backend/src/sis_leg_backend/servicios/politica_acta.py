@@ -177,9 +177,26 @@ CODIGO_PREPARACION_CANCELADA = "PREPARACION_CANCELADA"
 ETIQUETA_SESION = "SESION"
 CODIGO_SESION_ABIERTA = "SESION_ABIERTA"
 CODIGO_SESION_CERRADA = "SESION_CERRADA"
+# Actualizaciones institucionales: dos generaciones de ``event_code``.
+#
+# Los tres códigos sin sufijo pertenecen a conjuntos ya cerrados y **ningún
+# productor los emite desde WP-107 I003**. Se conservan acá porque el acta tiene
+# que poder derivar esos archivos históricos, y significan exclusivamente el
+# formato anterior.
+#
+# Los tres con sufijo ``_H1`` son los que emite el backend hoy y significan
+# exclusivamente el formato de texto humano codificado. El sufijo es el
+# discriminador: en estas familias el primer campo humano empieza justo después
+# del prefijo, así que ninguna marca escrita dentro del mensaje podría
+# distinguir una generación de la otra (DEC-008 define las autoridades como
+# texto libre).
 CODIGO_NUMERO_SESION_ACTUALIZADO = "NUMERO_SESION_ACTUALIZADO"
 CODIGO_PRESIDENCIA_ACTUALIZADA = "PRESIDENCIA_ACTUALIZADA"
 CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA = "SECRETARIA_LEGISLATIVA_ACTUALIZADA"
+
+CODIGO_NUMERO_SESION_ACTUALIZADO_H1 = "NUMERO_SESION_ACTUALIZADO_H1"
+CODIGO_PRESIDENCIA_ACTUALIZADA_H1 = "PRESIDENCIA_ACTUALIZADA_H1"
+CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1 = "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1"
 
 ETIQUETA_PRESENCIA = "PRESENCIA"
 CODIGO_CONCEJAL_PRESENTE = "CONCEJAL_PRESENTE"
@@ -320,8 +337,21 @@ def _declara_formato_nuevo(mensaje: str, prefijo: str, familia: str) -> bool:
 
     Por qué se mira la posición exacta y no «si aparece la marca en algún lado»:
     un texto humano podría contener la palabra ``formato=h1``. Exigir que esté
-    inmediatamente después del prefijo la vuelve estructural, porque en los
-    mensajes históricos esa posición la ocupa siempre otra clave técnica.
+    inmediatamente después del prefijo la vuelve estructural.
+
+    Dónde puede usarse este discriminador (WP-107 I003)
+    ---------------------------------------------------
+
+    **Sólo** en familias cuyos mensajes históricos tienen una clave técnica en
+    esa posición, de modo que ningún texto humano haya podido ocuparla. Hoy son
+    dos: ``VOTACION_ABIERTA``, que empieza por ``número=``, y las cuatro de
+    ``PALABRA``, que empiezan por ``DNI=``. En ambas el productor escribía esa
+    clave siempre, así que la marca no puede confundirse con contenido.
+
+    Las actualizaciones de sesión **no** cumplen esa condición: su primer campo
+    humano empieza justo después del prefijo y DEC-008 lo define como texto
+    libre, así que una persona podía escribir la marca entera. Por eso su
+    discriminador vive en el ``event_code`` y esta función no se les aplica.
     """
 
     if not mensaje.startswith(prefijo):
@@ -406,31 +436,56 @@ _ACTUALIZACION_CODIFICADA = (
 _ACTUALIZACION_LEGACY = rf"{CARACTER_TEXTO_HUMANO}* -> {CARACTER_TEXTO_HUMANO}*"
 
 
-def _redactar_actualizacion(campo: str, familia: str) -> Callable[[str], str]:
-    """Publica «<campo> actualizado: <anterior> -> <nuevo>» en ambos formatos.
+def _redactar_actualizacion_historica(campo: str, familia: str) -> Callable[[str], str]:
+    """Publica una actualización de sesión de un conjunto ya cerrado.
 
-    En el formato nuevo los dos valores se separan por estructura y se decodifican
-    por separado, de modo que la línea del acta atribuye cada nombre a su rol aunque
-    contenga la propia flecha. En el histórico el mensaje se conserva tal cual,
-    que es lo que hacía la iteración 1: no se puede desambiguar hacia atrás un
-    texto cuya frontera nunca se persistió, pero tampoco cambia lo que el acta
-    venía publicando para esos conjuntos.
+    Se aplica **sólo** a los ``event_code`` sin sufijo de versión, que ningún
+    productor emite desde WP-107 I003. Conserva exactamente la redacción que el
+    acta venía publicando para esos archivos: el mensaje entero, tal cual.
+
+    Deliberadamente **no** mira el contenido para decidir nada. Un valor
+    histórico podía empezar con cualquier cosa —incluida la marca de formato o
+    una versión inventada— porque DEC-008 define las autoridades como texto
+    libre. Intentar interpretarlo fue el defecto que corrige esta iteración:
+    hacía que un nombre como ``formato=h1; anterior=Ana; nuevo=Beatriz`` se
+    republicara partido en dos, y que uno como ``formato=h2; ...`` abortara un
+    acta que antes se derivaba sin problemas.
+
+    La ambigüedad histórica entre ``anterior`` y ``nuevo`` sigue sin poder
+    resolverse hacia atrás: la información que separaría los dos valores nunca se
+    persistió. Por eso se publica el texto completo, que es lo único fiel.
     """
 
     prefijo = f"{campo}{_SUFIJO_ACTUALIZACION}"
-    # Se compilan una vez, al construir el catálogo, y quedan capturados por el
-    # closure: cada evento sólo aplica el patrón que le corresponde.
-    codificado = re.compile(rf"{re.escape(prefijo)}{_ACTUALIZACION_CODIFICADA}")
-    legacy = re.compile(rf"{re.escape(prefijo)}{_ACTUALIZACION_LEGACY}")
+    patron = re.compile(rf"{re.escape(prefijo)}{_ACTUALIZACION_LEGACY}")
 
     def redactar(mensaje: str) -> str:
-        if _declara_formato_nuevo(mensaje, prefijo, familia):
-            datos = _exigir(codificado, mensaje, familia)
-            anterior = _decodificar_campo(datos["anterior"], familia)
-            nuevo = _decodificar_campo(datos["nuevo"], familia)
-            return f"{prefijo}{anterior} -> {nuevo}"
-        _exigir(legacy, mensaje, familia)
+        _exigir(patron, mensaje, familia)
         return mensaje
+
+    return redactar
+
+
+def _redactar_actualizacion_codificada(campo: str, familia: str) -> Callable[[str], str]:
+    """Publica «<campo> actualizado: <anterior> -> <nuevo>» del formato vigente.
+
+    Se aplica **sólo** a los ``event_code`` con sufijo ``_H1``. Los dos valores se
+    separan por estructura y se decodifican por separado, de modo que la línea del
+    acta atribuye cada nombre a su rol aunque contenga la propia flecha.
+
+    Exige la marca de formato en su posición exacta. No hay ruta de respaldo hacia
+    el formato histórico: si un mensaje llega con este ``event_code`` y no respeta
+    la forma, el acta falla cerrado en vez de reinterpretarlo con otra gramática.
+    """
+
+    prefijo = f"{campo}{_SUFIJO_ACTUALIZACION}"
+    patron = re.compile(rf"{re.escape(prefijo)}{_ACTUALIZACION_CODIFICADA}")
+
+    def redactar(mensaje: str) -> str:
+        datos = _exigir(patron, mensaje, familia)
+        anterior = _decodificar_campo(datos["anterior"], familia)
+        nuevo = _decodificar_campo(datos["nuevo"], familia)
+        return f"{prefijo}{anterior} -> {nuevo}"
 
     return redactar
 
@@ -882,18 +937,38 @@ POLITICAS_ACTA: Mapping[tuple[str, str], PoliticaActa] = MappingProxyType(
             motivo="Sólo cierre y número de sesión, ambos institucionales.",
         ),
         (ETIQUETA_SESION, CODIGO_NUMERO_SESION_ACTUALIZADO): PoliticaActa(
-            redactar=_redactar_actualizacion(
+            redactar=_redactar_actualizacion_historica(
                 "Número de sesión", "SESION/NUMERO_SESION_ACTUALIZADO"
+            ),
+            motivo="Conjunto cerrado: número anterior y nuevo, tal como se escribieron.",
+        ),
+        (ETIQUETA_SESION, CODIGO_PRESIDENCIA_ACTUALIZADA): PoliticaActa(
+            redactar=_redactar_actualizacion_historica(
+                "Presidencia", "SESION/PRESIDENCIA_ACTUALIZADA"
+            ),
+            motivo="Conjuntos cerrados: autoridad anterior y nueva, tal como se escribieron.",
+        ),
+        (ETIQUETA_SESION, CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA): PoliticaActa(
+            redactar=_redactar_actualizacion_historica(
+                "Secretaría Legislativa", "SESION/SECRETARIA_LEGISLATIVA_ACTUALIZADA"
+            ),
+            motivo="Conjuntos cerrados: autoridad anterior y nueva, tal como se escribieron.",
+        ),
+        (ETIQUETA_SESION, CODIGO_NUMERO_SESION_ACTUALIZADO_H1): PoliticaActa(
+            redactar=_redactar_actualizacion_codificada(
+                "Número de sesión", "SESION/NUMERO_SESION_ACTUALIZADO_H1"
             ),
             motivo="Valor anterior y nuevo del número de sesión, sin metadata técnica.",
         ),
-        (ETIQUETA_SESION, CODIGO_PRESIDENCIA_ACTUALIZADA): PoliticaActa(
-            redactar=_redactar_actualizacion("Presidencia", "SESION/PRESIDENCIA_ACTUALIZADA"),
+        (ETIQUETA_SESION, CODIGO_PRESIDENCIA_ACTUALIZADA_H1): PoliticaActa(
+            redactar=_redactar_actualizacion_codificada(
+                "Presidencia", "SESION/PRESIDENCIA_ACTUALIZADA_H1"
+            ),
             motivo="Nombres de la autoridad anterior y nueva, sin metadata técnica.",
         ),
-        (ETIQUETA_SESION, CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA): PoliticaActa(
-            redactar=_redactar_actualizacion(
-                "Secretaría Legislativa", "SESION/SECRETARIA_LEGISLATIVA_ACTUALIZADA"
+        (ETIQUETA_SESION, CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1): PoliticaActa(
+            redactar=_redactar_actualizacion_codificada(
+                "Secretaría Legislativa", "SESION/SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1"
             ),
             motivo="Nombres de la autoridad anterior y nueva, sin metadata técnica.",
         ),

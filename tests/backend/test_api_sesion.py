@@ -145,9 +145,9 @@ async def test_patch_preparacion_admite_campos_individuales_multiples_y_limpieza
         ).status_code == 204
         codigos = [fila[4] for fila in filas_auditoria(aplicacion)]
         assert codigos[-3:] == [
-            "NUMERO_SESION_ACTUALIZADO",
-            "PRESIDENCIA_ACTUALIZADA",
-            "SECRETARIA_LEGISLATIVA_ACTUALIZADA",
+            "NUMERO_SESION_ACTUALIZADO_H1",
+            "PRESIDENCIA_ACTUALIZADA_H1",
+            "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1",
         ]
 
         assert (

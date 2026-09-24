@@ -154,7 +154,7 @@ async def abrir_contexto_valido(
             ),
             "numero_sesion",
             59,
-            "NUMERO_SESION_ACTUALIZADO",
+            "NUMERO_SESION_ACTUALIZADO_H1",
         ),
         (
             ActualizacionDatosInstitucionales(
@@ -163,7 +163,7 @@ async def abrir_contexto_valido(
             ),
             "presidencia",
             "Presidencia",
-            "PRESIDENCIA_ACTUALIZADA",
+            "PRESIDENCIA_ACTUALIZADA_H1",
         ),
         (
             ActualizacionDatosInstitucionales(
@@ -172,7 +172,7 @@ async def abrir_contexto_valido(
             ),
             "secretaria_legislativa",
             "Secretaría",
-            "SECRETARIA_LEGISLATIVA_ACTUALIZADA",
+            "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1",
         ),
     ],
 )
@@ -220,11 +220,11 @@ async def test_actualizacion_multiple_respeta_orden_y_permite_limpiar(
     assert preparacion.presidencia is None
     assert preparacion.secretaria_legislativa is None
     assert [fila[4] for fila in filas_l1(estado)[-5:]] == [
-        "NUMERO_SESION_ACTUALIZADO",
-        "PRESIDENCIA_ACTUALIZADA",
-        "SECRETARIA_LEGISLATIVA_ACTUALIZADA",
-        "PRESIDENCIA_ACTUALIZADA",
-        "SECRETARIA_LEGISLATIVA_ACTUALIZADA",
+        "NUMERO_SESION_ACTUALIZADO_H1",
+        "PRESIDENCIA_ACTUALIZADA_H1",
+        "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1",
+        "PRESIDENCIA_ACTUALIZADA_H1",
+        "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1",
     ]
     assert filas_l1(estado)[-1][5].endswith("; anterior=Secretaría Inicial; nuevo=sin informar")
 
@@ -388,8 +388,8 @@ async def test_cambios_de_autoridades_en_sesion_son_normalizados_y_noop(
     assert sesion.secretaria_legislativa == "Nueva Secretaría"
     assert len(filas_l1(estado)) == cantidad_eventos
     assert [fila[4] for fila in filas_l1(estado)[-2:]] == [
-        "PRESIDENCIA_ACTUALIZADA",
-        "SECRETARIA_LEGISLATIVA_ACTUALIZADA",
+        "PRESIDENCIA_ACTUALIZADA_H1",
+        "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1",
     ]
 
 
@@ -668,7 +668,7 @@ async def test_actualizaciones_concurrentes_comparten_serializador_y_writer(
 
     sesion = estado.sesion_activa
     assert sesion is not None
-    eventos = [fila for fila in filas_l1(estado) if fila[4] == "PRESIDENCIA_ACTUALIZADA"]
+    eventos = [fila for fila in filas_l1(estado) if fila[4] == "PRESIDENCIA_ACTUALIZADA_H1"]
     assert len(eventos) == 3
     secuencias = [int(fila[0]) for fila in eventos]
     assert secuencias == sorted(secuencias)

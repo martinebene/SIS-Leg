@@ -43,10 +43,12 @@ from __future__ import annotations
 import pytest
 from sis_leg_backend.servicios.acta_institucional import normalizar_texto_para_acta
 from sis_leg_backend.servicios.politica_acta import (
+    POLITICAS_ACTA,
     ErrorActaNoDerivable,
     redactar_linea_de_acta,
 )
 from sis_leg_backend.servicios.texto_humano_l3 import (
+    FAMILIAS_CON_TEXTO_HUMANO_CODIFICADO,
     MARCA_FORMATO_TEXTO_HUMANO,
     ErrorTextoHumanoInvalido,
     codificar_texto_humano,
@@ -282,9 +284,9 @@ def test_palabra_publica_el_concejal_real_sea_cual_sea_el_dni(
 @pytest.mark.parametrize(
     ("campo", "codigo"),
     (
-        ("Número de sesión", "NUMERO_SESION_ACTUALIZADO"),
-        ("Presidencia", "PRESIDENCIA_ACTUALIZADA"),
-        ("Secretaría Legislativa", "SECRETARIA_LEGISLATIVA_ACTUALIZADA"),
+        ("Número de sesión", "NUMERO_SESION_ACTUALIZADO_H1"),
+        ("Presidencia", "PRESIDENCIA_ACTUALIZADA_H1"),
+        ("Secretaría Legislativa", "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1"),
     ),
 )
 def test_autoridades_atribuyen_anterior_y_nuevo_sin_ambiguedad(
@@ -528,12 +530,6 @@ def test_un_mensaje_historico_no_se_confunde_con_el_formato_nuevo() -> None:
             "Pedido de palabra registrado: formato=h9; DNI=1; concejal=Ana; banca=1; posicion=1",
             id="palabra",
         ),
-        pytest.param(
-            "SESION",
-            "PRESIDENCIA_ACTUALIZADA",
-            "Presidencia actualizado: formato=futuro; anterior=A; nuevo=B",
-            id="autoridad",
-        ),
     ),
 )
 def test_una_version_de_formato_desconocida_falla_cerrado(
@@ -545,6 +541,12 @@ def test_una_version_de_formato_desconocida_falla_cerrado(
 
     Antes que publicar en un acta institucional un texto que quizá esté mal
     decodificado, la generación se aborta entera y alguien revisa.
+
+    Sólo aplica a las familias que declaran su formato **dentro** del mensaje.
+    Las actualizaciones de sesión lo declaran en su ``event_code`` desde WP-107
+    I003, así que ahí una versión rara escrita en el texto no es una declaración:
+    es contenido, y el mensaje simplemente no tiene la forma que su código exige.
+    Ese caso se cubre en el fallo cerrado estructural de más abajo.
     """
 
     with pytest.raises(ErrorActaNoDerivable, match="formato de texto humano"):
@@ -563,7 +565,7 @@ def test_una_version_de_formato_desconocida_falla_cerrado(
         ),
         pytest.param(
             "SESION",
-            "PRESIDENCIA_ACTUALIZADA",
+            "PRESIDENCIA_ACTUALIZADA_H1",
             f"Presidencia actualizado: {MARCA_FORMATO_TEXTO_HUMANO}; anterior=A\\; nuevo=B",
             id="barra-final-en-anterior",
         ),
@@ -606,9 +608,21 @@ def test_un_campo_codificado_que_no_se_puede_decodificar_falla_cerrado(
         ),
         pytest.param(
             "SESION",
-            "PRESIDENCIA_ACTUALIZADA",
+            "PRESIDENCIA_ACTUALIZADA_H1",
             f"Presidencia actualizado: {MARCA_FORMATO_TEXTO_HUMANO}; anterior=A",
             id="campo-humano-faltante",
+        ),
+        pytest.param(
+            "SESION",
+            "PRESIDENCIA_ACTUALIZADA_H1",
+            "Presidencia actualizado: formato=futuro; anterior=A; nuevo=B",
+            id="marca-de-formato-ajena-en-familia-versionada",
+        ),
+        pytest.param(
+            "SESION",
+            "PRESIDENCIA_ACTUALIZADA_H1",
+            "Presidencia actualizado: Ana -> Beatriz",
+            id="mensaje-historico-con-event-code-versionado",
         ),
     ),
 )
@@ -643,7 +657,7 @@ def test_moderacion_muestra_el_texto_legible_y_no_los_escapes(humano: str) -> No
         "; tipo_mayoria=SIMPLE; factor=0.0; base=VOTOS_COMPUTABLES"
     )
 
-    legible = decodificar_mensaje_para_presentacion(mensaje)
+    legible = decodificar_mensaje_para_presentacion("VOTACION", "VOTACION_ABIERTA", mensaje)
 
     assert legible == (
         f"Votación abierta: número=1; tipo={humano}; tema={humano}"
@@ -656,7 +670,10 @@ def test_un_mensaje_historico_se_presenta_sin_tocar() -> None:
 
     mensaje = "Pedido de palabra registrado: DNI=1; concejal=Ana Garcia; banca=1; posicion=1"
 
-    assert decodificar_mensaje_para_presentacion(mensaje) == mensaje
+    assert (
+        decodificar_mensaje_para_presentacion("PALABRA", "PEDIDO_PALABRA_REGISTRADO", mensaje)
+        == mensaje
+    )
 
 
 def test_un_mensaje_con_escapes_dañados_no_rompe_la_proyeccion() -> None:
@@ -670,4 +687,226 @@ def test_un_mensaje_con_escapes_dañados_no_rompe_la_proyeccion() -> None:
 
     mensaje = f"Votación abierta: {MARCA_FORMATO_TEXTO_HUMANO}; número=1; tipo=X\\z; tema=Y"
 
-    assert decodificar_mensaje_para_presentacion(mensaje) == mensaje
+    assert decodificar_mensaje_para_presentacion("VOTACION", "VOTACION_ABIERTA", mensaje) == mensaje
+
+
+# ---------------------------------------------------------------------------
+# 8. Discriminación de formato fuera del texto humano (WP-107 iteración 3)
+#
+# Las tres familias de actualización de sesión tienen una particularidad que
+# ninguna otra comparte: su primer campo humano empieza **inmediatamente después
+# del prefijo**. DEC-008 define Presidencia y Secretaría Legislativa como texto
+# libre, así que una persona podía escribir ahí exactamente la misma marca que
+# el formato nuevo usa para identificarse.
+#
+# Por eso el discriminador dejó de estar dentro del mensaje y pasó al
+# ``event_code``, que es una columna propia del CSV que sólo escribe el
+# productor. Los códigos históricos significan el formato anterior y nada más;
+# los ``..._H1`` significan el formato codificado y nada más.
+# ---------------------------------------------------------------------------
+
+VALORES_QUE_IMITAN_LA_MARCA = (
+    pytest.param("formato=h1; anterior=Ana; nuevo=Beatriz", id="marca-vigente-completa"),
+    pytest.param("formato=h2; texto", id="marca-de-version-futura"),
+    pytest.param("formato=h1; anterior=X; nuevo=Y -> Z", id="marca-con-flecha"),
+    pytest.param("formato=h1; anterior=A\\p; nuevo=B\\\\", id="marca-con-escapes"),
+    pytest.param("formato=h1; anterior=Uno\nDos; nuevo=Tres", id="marca-con-lf"),
+    pytest.param("formato=h1; anterior=Uno\r\nDos; nuevo=Tres", id="marca-con-crlf"),
+    pytest.param("formato=h1;", id="marca-truncada"),
+    pytest.param("formato=", id="clave-sola"),
+)
+"""Valores que una persona podía escribir y que imitan la marca de formato.
+
+Todos son texto libre legítimo según DEC-008. Ninguno puede cambiar cómo se
+interpreta el mensaje que los contiene.
+"""
+
+
+@pytest.mark.parametrize("anterior", VALORES_QUE_IMITAN_LA_MARCA)
+@pytest.mark.parametrize(
+    ("campo", "codigo"),
+    (
+        ("Número de sesión", "NUMERO_SESION_ACTUALIZADO"),
+        ("Presidencia", "PRESIDENCIA_ACTUALIZADA"),
+        ("Secretaría Legislativa", "SECRETARIA_LEGISLATIVA_ACTUALIZADA"),
+    ),
+)
+def test_una_autoridad_historica_no_se_reinterpreta_por_su_contenido(
+    campo: str,
+    codigo: str,
+    anterior: str,
+) -> None:
+    """Un conjunto cerrado se publica igual aunque su texto imite la marca.
+
+    Es la regresión del primer hallazgo de la auditoría 002. Antes, un valor
+    histórico que empezara con ``formato=h1; anterior=...`` se volvía a partir y
+    el acta publicaba una atribución falsa; uno que empezara con ``formato=h2``
+    abortaba un acta que hasta entonces se derivaba sin problemas.
+
+    Ahora el ``event_code`` histórico determina la gramática y el contenido no
+    influye en nada.
+    """
+
+    mensaje = f"{campo} actualizado: {anterior} -> Autoridad Siguiente"
+
+    linea = _redactar("SESION", codigo, mensaje)
+
+    assert linea == _aplanar(mensaje)
+
+
+@pytest.mark.parametrize("anterior", VALORES_QUE_IMITAN_LA_MARCA)
+@pytest.mark.parametrize("nuevo", VALORES_QUE_IMITAN_LA_MARCA)
+def test_una_autoridad_vigente_atribuye_aunque_el_texto_imite_la_marca(
+    anterior: str,
+    nuevo: str,
+) -> None:
+    """El formato vigente separa los dos valores aunque ambos imiten la marca."""
+
+    mensaje = (
+        f"Presidencia actualizado: {MARCA_FORMATO_TEXTO_HUMANO}"
+        f"; anterior={codificar_texto_humano(anterior)}"
+        f"; nuevo={codificar_texto_humano(nuevo)}"
+    )
+
+    linea = _redactar("SESION", "PRESIDENCIA_ACTUALIZADA_H1", mensaje)
+
+    assert linea == _aplanar(f"Presidencia actualizado: {anterior} -> {nuevo}")
+
+
+@pytest.mark.parametrize(
+    ("etiqueta", "codigo", "prefijo_legacy"),
+    (
+        ("VOTACION", "VOTACION_ABIERTA", "número="),
+        ("PALABRA", "PEDIDO_PALABRA_REGISTRADO", "DNI="),
+        ("PALABRA", "PEDIDO_PALABRA_RETIRADO", "DNI="),
+        ("PALABRA", "USO_PALABRA_OTORGADO", "DNI="),
+        ("PALABRA", "USO_PALABRA_FINALIZADO", "DNI="),
+    ),
+)
+def test_las_demas_familias_no_exponen_esa_posicion_al_texto_humano(
+    etiqueta: str,
+    codigo: str,
+    prefijo_legacy: str,
+) -> None:
+    """Por qué estas familias sí pueden declarar su formato dentro del mensaje.
+
+    En ellas la posición inmediatamente posterior al prefijo la ocupa **siempre**
+    una clave técnica que escribió el productor (``número=`` o ``DNI=``). El
+    texto humano llega después de esa clave, así que nunca puede ocupar el lugar
+    donde se busca la marca, y la regla de diseño de la iteración 3 —la versión
+    no depende de una secuencia que un usuario legacy podía escribir en el mismo
+    lugar— se cumple sin necesidad de versionar su ``event_code``.
+
+    Esta prueba deja constancia verificable de esa premisa: el prefijo legacy de
+    cada familia es el que declara el catálogo y no admite texto humano antes.
+    """
+
+    prefijo_h1 = FAMILIAS_CON_TEXTO_HUMANO_CODIFICADO[(etiqueta, codigo)]
+    assert not prefijo_h1.endswith(prefijo_legacy)
+
+    # Un mensaje histórico de esa familia empieza por su clave técnica, de modo
+    # que jamás puede confundirse con la marca de formato.
+    assert not f"{prefijo_h1}{prefijo_legacy}".startswith(
+        f"{prefijo_h1}{MARCA_FORMATO_TEXTO_HUMANO}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 9. La presentación decide por familia, nunca por contenido
+# ---------------------------------------------------------------------------
+
+TEXTOS_QUE_IMITAN_EL_FORMATO = (
+    pytest.param("Texto literal formato=h1; con \\p y \\n y \\r", id="marca-y-escapes"),
+    pytest.param("formato=h1; ", id="solo-la-marca"),
+    pytest.param("formato=h2; texto", id="version-futura"),
+    pytest.param("\\p\\n\\r", id="solo-escapes"),
+    pytest.param("Barra sola \\ al final", id="barra-suelta"),
+    pytest.param("formato=h1; anterior=A; nuevo=B", id="mensaje-h1-completo-falso"),
+    pytest.param("Cuarto intermedio formato=h1; \\p ñ/á", id="mezcla-realista"),
+)
+
+
+@pytest.mark.parametrize("texto", TEXTOS_QUE_IMITAN_EL_FORMATO)
+@pytest.mark.parametrize(
+    ("etiqueta", "codigo"),
+    (
+        ("EVENTO", "INICIO"),
+        ("EVENTO", "FIN"),
+        ("SESION", "PRESIDENCIA_ACTUALIZADA"),
+        ("SESION", "NUMERO_SESION_ACTUALIZADO"),
+        ("PRESENCIA", "CONCEJAL_PRESENTE"),
+        ("VOTACION", "VOTO_ORDINARIO_REGISTRADO"),
+        ("PREPARACION", "PREPARACION_INICIADA"),
+    ),
+)
+def test_un_evento_no_codificado_se_presenta_exactamente_igual(
+    etiqueta: str,
+    codigo: str,
+    texto: str,
+) -> None:
+    """Es la regresión del segundo hallazgo de la auditoría 002.
+
+    Antes la presentación buscaba la marca dentro del mensaje, así que un aviso
+    de recinto cuyo texto contuviera ese literal llegaba mutilado al panel de
+    Moderación: se le quitaba la marca y se le deshacían escapes que la persona
+    había escrito a mano.
+
+    Ninguna de estas familias usa el formato codificado, de modo que su mensaje
+    tiene que llegar intacto sin importar qué contenga.
+    """
+
+    assert decodificar_mensaje_para_presentacion(etiqueta, codigo, texto) == texto
+
+
+@pytest.mark.parametrize("humano", CORPUS_DE_CAMPOS)
+def test_una_actualizacion_vigente_se_presenta_legible(humano: str) -> None:
+    """Las familias h1 sí llegan decodificadas y sin marca técnica."""
+
+    mensaje = (
+        f"Presidencia actualizado: {MARCA_FORMATO_TEXTO_HUMANO}"
+        f"; anterior={codificar_texto_humano(humano)}"
+        f"; nuevo={codificar_texto_humano(humano)}"
+    )
+
+    legible = decodificar_mensaje_para_presentacion("SESION", "PRESIDENCIA_ACTUALIZADA_H1", mensaje)
+
+    assert legible == f"Presidencia actualizado: anterior={humano}; nuevo={humano}"
+    # La marca desaparece de su posición estructural. No se exige que el literal
+    # no aparezca en ningún lado: si la persona lo escribió como nombre, el panel
+    # tiene que mostrarlo igual que cualquier otro texto.
+    assert not legible.startswith(f"Presidencia actualizado: {MARCA_FORMATO_TEXTO_HUMANO}; ")
+
+
+@pytest.mark.parametrize("humano", CORPUS_DE_CAMPOS)
+def test_palabra_vigente_se_presenta_legible(humano: str) -> None:
+    """El bloque de identidad también llega legible al panel de eventos."""
+
+    mensaje = (
+        f"Pedido de palabra registrado: {MARCA_FORMATO_TEXTO_HUMANO}"
+        f"; DNI={codificar_texto_humano('30000001')}"
+        f"; concejal={codificar_texto_humano(humano)}; banca=1; posicion=1"
+    )
+
+    legible = decodificar_mensaje_para_presentacion("PALABRA", "PEDIDO_PALABRA_REGISTRADO", mensaje)
+
+    assert legible == (
+        f"Pedido de palabra registrado: DNI=30000001; concejal={humano}; banca=1; posicion=1"
+    )
+
+
+def test_el_registro_de_familias_codificadas_coincide_con_el_catalogo() -> None:
+    """Cada familia declarada como codificada tiene política y prefijo correcto.
+
+    El registro de presentación y el catálogo del acta repiten las mismas
+    cadenas en módulos distintos para no crear un ciclo de importación. Esa
+    duplicación sólo es segura si algo comprueba que no se desincronicen.
+    """
+
+    for familia, prefijo in FAMILIAS_CON_TEXTO_HUMANO_CODIFICADO.items():
+        assert familia in POLITICAS_ACTA, f"{familia} no tiene política de acta declarada"
+        assert prefijo.endswith(": "), f"El prefijo de {familia} no termina en «: »"
+
+        # El prefijo tiene que ser el que realmente usa el catálogo: se comprueba
+        # redactando un mensaje mínimo construido con él.
+        mensaje = f"{prefijo}{MARCA_FORMATO_TEXTO_HUMANO}; "
+        assert decodificar_mensaje_para_presentacion(*familia, mensaje) == prefijo

@@ -801,7 +801,14 @@ def test_finalizacion_manual_admite_cualquier_motivo(humano: str) -> None:
     ),
 )
 def test_autoridades_admiten_cualquier_valor(codigo: str, campo: str, humano: str) -> None:
-    """Las tres actualizaciones institucionales llevan valores humanos libres."""
+    """Las tres actualizaciones institucionales llevan valores humanos libres.
+
+    Usa los ``event_code`` **históricos**, que desde WP-107 I003 identifican
+    exclusivamente el formato anterior. Son los que llevan los conjuntos ya
+    cerrados y esta prueba fija que ninguno de ellos deje de derivarse por el
+    contenido de su texto. El formato vigente de estas familias se prueba, con
+    su propio código versionado, en la suite del formato.
+    """
 
     mensaje = f"{campo} actualizado: sin informar -> {humano}"
 
@@ -1367,3 +1374,105 @@ async def test_el_acta_atribuye_las_autoridades_aunque_contengan_la_flecha(
     assert esperado in acta, (
         f"El acta no atribuyó correctamente la autoridad.\nEsperado: {esperado!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 6. Discriminación de formato por event_code (WP-107 iteración 3)
+#
+# Las actualizaciones de sesión ya no declaran su formato dentro del mensaje: lo
+# declaran en su ``event_code``. Acá se comprueba, por el camino productivo, que
+# el productor emite el código versionado y que el acta atribuye cada autoridad
+# a su rol aunque el texto imite la marca del formato.
+# ---------------------------------------------------------------------------
+
+AUTORIDAD_QUE_IMITA_LA_MARCA = "formato=h1; anterior=Ana; nuevo=Beatriz"
+AUTORIDAD_CON_VERSION_FUTURA = "formato=h2; texto"
+AUTORIDAD_CON_FLECHA_Y_ESCAPES = "formato=h1; anterior=X; nuevo=Y -> Z\\p y \\\\"
+
+
+async def test_las_autoridades_nuevas_usan_event_code_versionado_y_se_atribuyen(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regresión B de la iteración 3, por API real.
+
+    Se cambian Presidencia y Secretaría con valores que imitan exactamente la
+    marca de formato y se exige que:
+
+    1. el productor escriba el ``event_code`` versionado en el L3;
+    2. el acta atribuya cada valor a su rol, sin que el texto desplace nada;
+    3. el cierre responda ``acta_generada=true``;
+    4. no se filtre metadata técnica real.
+    """
+
+    async with cliente_adversarial(tmp_path, monkeypatch) as (cliente, aplicacion, dnis):
+        assert (await cliente.post("/api/v1/preparacion")).status_code == 204
+        for dispositivo in ("dev01", "dev02"):
+            assert (
+                await cliente.post(
+                    "/api/v1/entradas/tecla",
+                    json={"dispositivo": dispositivo, "tecla": "9"},
+                )
+            ).status_code == 200
+        assert (
+            await cliente.patch(
+                "/api/v1/preparacion",
+                json={
+                    "numero_sesion": 107,
+                    "presidencia": AUTORIDAD_QUE_IMITA_LA_MARCA,
+                    "secretaria_legislativa": AUTORIDAD_CON_VERSION_FUTURA,
+                },
+            )
+        ).status_code == 204
+        assert (await cliente.post("/api/v1/sesion")).status_code == 204
+        assert (
+            await cliente.patch(
+                "/api/v1/sesion",
+                json={"presidencia": AUTORIDAD_CON_FLECHA_Y_ESCAPES},
+            )
+        ).status_code == 204
+
+        rutas = rutas_del_conjunto_activo(aplicacion)
+        respuesta = await cliente.delete("/api/v1/sesion")
+
+        assert respuesta.status_code == 200
+        assert respuesta.json()["acta_generada"] is True
+
+        ruta_l3 = rutas[NivelAuditoria.L3]
+        acta = ruta_acta_de_conjunto(ruta_l3).read_text(encoding="utf-8")
+
+        import csv as _csv
+
+        with ruta_l3.open(encoding="utf-8-sig", newline="") as archivo:
+            codigos = [fila[4] for fila in _csv.reader(archivo, delimiter=";")][1:]
+
+    # 1. El productor versionó el event_code y no dejó ninguno histórico.
+    assert "PRESIDENCIA_ACTUALIZADA_H1" in codigos
+    assert "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1" in codigos
+    assert "NUMERO_SESION_ACTUALIZADO_H1" in codigos
+    for historico in (
+        "PRESIDENCIA_ACTUALIZADA",
+        "SECRETARIA_LEGISLATIVA_ACTUALIZADA",
+        "NUMERO_SESION_ACTUALIZADO",
+    ):
+        assert historico not in codigos, (
+            f"El productor volvió a emitir el event_code histórico {historico!r}"
+        )
+
+    # 2. Cada valor conserva su rol completo, aunque imite la marca de formato.
+    for esperado in (
+        f"Presidencia actualizado: sin informar -> {AUTORIDAD_QUE_IMITA_LA_MARCA}",
+        f"Secretaría Legislativa actualizado: sin informar -> {AUTORIDAD_CON_VERSION_FUTURA}",
+        (
+            f"Presidencia actualizado: {AUTORIDAD_QUE_IMITA_LA_MARCA} -> "
+            f"{AUTORIDAD_CON_FLECHA_Y_ESCAPES}"
+        ),
+        "Número de sesión actualizado: sin informar -> 107",
+    ):
+        assert esperado in acta, f"El acta no atribuyó la autoridad.\nEsperado: {esperado!r}"
+
+    # 4. Ninguna metadata técnica real se filtró.
+    for dni in dnis:
+        assert dni not in acta
+    for numero in range(1, 13):
+        assert f"dev{numero:02d}" not in acta

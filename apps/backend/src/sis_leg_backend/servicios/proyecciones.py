@@ -1915,12 +1915,22 @@ class ServicioProyecciones:
         pantalla: sin este paso el operador vería el texto con sus escapes en el
         panel de eventos. La decodificación es sólo de presentación y no altera
         lo que quedó persistido en los CSV, que siguen siendo la evidencia.
+
+        Desde la iteración 3 se le pasan también la etiqueta y el ``event_code``.
+        Son la **única** información que puede decidir si corresponde decodificar:
+        el productor las escribe en columnas propias del CSV y ningún texto humano
+        puede imitarlas. Antes la decisión salía de buscar la marca dentro del
+        mensaje, y entonces un aviso cuyo texto contuviera ese literal llegaba
+        mutilado a la pantalla.
         """
 
         referencia = evento.referencia
-        if revelable or referencia is None or referencia.mensaje_seguro is None:
-            return decodificar_mensaje_para_presentacion(evento.mensaje)
-        return decodificar_mensaje_para_presentacion(referencia.mensaje_seguro)
+        crudo = (
+            evento.mensaje
+            if revelable or referencia is None or referencia.mensaje_seguro is None
+            else referencia.mensaje_seguro
+        )
+        return decodificar_mensaje_para_presentacion(evento.etiqueta, evento.codigo_evento, crudo)
 
     def _sentido_revelable(
         self,

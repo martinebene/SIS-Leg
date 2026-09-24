@@ -100,6 +100,9 @@ escribir y volver a leer un valor humano sin perder sus fronteras.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from types import MappingProxyType
+
 VERSION_FORMATO_TEXTO_HUMANO = "h1"
 """Versión vigente del formato de campos humanos del L3.
 
@@ -221,51 +224,103 @@ def decodificar_texto_humano(codificado: str) -> str:
     return "".join(partes)
 
 
-def decodificar_mensaje_para_presentacion(mensaje: str) -> str:
+FAMILIAS_CON_TEXTO_HUMANO_CODIFICADO: Mapping[tuple[str, str], str] = MappingProxyType(
+    {
+        ("VOTACION", "VOTACION_ABIERTA"): "Votación abierta: ",
+        ("PALABRA", "PEDIDO_PALABRA_REGISTRADO"): "Pedido de palabra registrado: ",
+        ("PALABRA", "PEDIDO_PALABRA_RETIRADO"): "Pedido de palabra retirado: ",
+        ("PALABRA", "USO_PALABRA_OTORGADO"): "Uso de palabra otorgado: ",
+        ("PALABRA", "USO_PALABRA_FINALIZADO"): "Uso de palabra finalizado: ",
+        ("SESION", "NUMERO_SESION_ACTUALIZADO_H1"): "Número de sesión actualizado: ",
+        ("SESION", "PRESIDENCIA_ACTUALIZADA_H1"): "Presidencia actualizado: ",
+        ("SESION", "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1"): (
+            "Secretaría Legislativa actualizado: "
+        ),
+    }
+)
+"""Qué familias ``(tag, event_code)`` escriben sus campos humanos codificados.
+
+Es la **única** fuente estructural para decidir si un mensaje está codificado. Un
+``event_code`` lo escribe el productor en su propia columna del CSV y ninguna
+persona puede influir en él, a diferencia del texto del mensaje.
+
+El valor es el prefijo fijo con el que empieza esa familia. La marca de formato
+vive siempre inmediatamente después, así que conocerlo permite quitarla por
+posición exacta en lugar de buscarla.
+
+Las familias de actualización de sesión aparecen sólo con su ``event_code``
+versionado (``..._H1``). Sus códigos históricos describen mensajes cuyo primer
+campo era texto libre que empezaba justo después del prefijo: ahí ninguna marca
+textual puede distinguir el formato, porque una persona podía escribirla igual.
+Por eso el discriminador de esas familias es el ``event_code`` y no el mensaje.
+"""
+
+
+def decodificar_mensaje_para_presentacion(etiqueta: str, codigo_evento: str, mensaje: str) -> str:
     """Devuelve un mensaje L3 legible por una persona, sin marca ni escapes.
 
     Para qué existe
     ---------------
 
     Moderación muestra el ``message`` durable tal cual en su panel de eventos
-    recientes. Si ahí apareciera la forma codificada, el operador leería
-    ``Moción\\ptema=falso`` en lugar de ``Moción; tema=falso``: la corrección del
-    archivo técnico se habría pagado con una regresión de legibilidad.
+    recientes. Si ahí apareciera la forma codificada, el operador leería el texto
+    con sus escapes en lugar del que se cargó: la corrección del archivo técnico
+    se habría pagado con una regresión de legibilidad.
 
-    Esta función deshace la marca y los escapes sobre el mensaje **entero**. Es
-    seguro hacerlo de una sola pasada porque el andamiaje técnico que rodea a los
-    valores —``"; tema="``, ``"; tipo_mayoria=SIMPLE"``, los números, los
-    identificadores— no contiene barras invertidas, así que la decodificación
-    sólo puede tocar lo que el codificador escribió.
+    Por qué decide la familia y no el contenido (WP-107 I003)
+    ---------------------------------------------------------
+
+    La primera versión de esta función buscaba la marca **dentro** del mensaje.
+    Eso estaba mal por la misma razón que el resto de WP-107: el contenido humano
+    no puede decidir nada estructural. Un aviso de recinto cuyo texto fuera
+    ``Texto literal formato=h1; con ...`` quedaba mutilado en pantalla, porque la
+    función le quitaba esa marca y le deshacía escapes que la persona había
+    escrito a mano.
+
+    Ahora la decisión sale del par ``(tag, event_code)``, que el productor escribe
+    en columnas propias del CSV y que ningún texto humano puede imitar. Una
+    familia que no figura en :data:`FAMILIAS_CON_TEXTO_HUMANO_CODIFICADO` devuelve
+    su mensaje **exactamente**, contenga lo que contenga.
+
+    La marca, además, se quita por posición: se exige que el mensaje empiece por
+    ``prefijo + marca`` y se corta ahí. Ya no se busca la subcadena en ningún
+    lugar.
 
     Para qué NO sirve
     -----------------
 
     **Nunca** debe usarse para extraer un campo. Decodificar antes de separar
     reintroduce exactamente la ambigüedad que WP-107 elimina: el resultado vuelve
-    a tener ``;`` dentro de los valores. Quien necesite un campo tiene que
-    separar primero por la estructura y decodificar después, valor por valor,
-    como hace :mod:`sis_leg_backend.servicios.politica_acta`.
+    a tener ``;`` dentro de los valores. Quien necesite un campo tiene que separar
+    primero por la estructura y decodificar después, valor por valor, como hace
+    :mod:`sis_leg_backend.servicios.politica_acta`.
 
     Entradas:
-        mensaje: el ``message`` durable, con o sin marca de formato.
+        etiqueta: columna ``tag`` del evento.
+        codigo_evento: columna ``event_code`` del evento.
+        mensaje: el ``message`` durable.
 
     Resultado:
-        El mensaje legible. Un mensaje sin marca —formato histórico— se devuelve
-        intacto, porque sus valores nunca fueron codificados.
+        El mensaje legible cuando la familia usa el formato codificado; el mensaje
+        intacto en cualquier otro caso.
 
     Errores:
-        Ninguno. Si el mensaje declara la marca pero sus escapes están dañados,
-        se devuelve el texto original sin tocar: una proyección de sólo lectura
-        no puede romper el snapshot entero por un mensaje ilegible, y el CSV
-        conserva la evidencia real de todos modos.
+        Ninguno. Si una familia codificada trae un mensaje que no respeta su forma,
+        o cuyos escapes están dañados, se devuelve el texto original sin tocar: una
+        proyección de sólo lectura no puede romper el snapshot entero de Moderación
+        por un mensaje ilegible, y el CSV conserva la evidencia real igual. El acta,
+        que sí produce un documento institucional, falla cerrado en ese mismo caso.
     """
 
-    marca = f"{MARCA_FORMATO_TEXTO_HUMANO}; "
-    if marca not in mensaje:
+    prefijo = FAMILIAS_CON_TEXTO_HUMANO_CODIFICADO.get((etiqueta, codigo_evento))
+    if prefijo is None:
         return mensaje
-    sin_marca = mensaje.replace(marca, "", 1)
+
+    encabezado = f"{prefijo}{MARCA_FORMATO_TEXTO_HUMANO}; "
+    if not mensaje.startswith(encabezado):
+        return mensaje
+
     try:
-        return decodificar_texto_humano(sin_marca)
+        return f"{prefijo}{decodificar_texto_humano(mensaje[len(encabezado) :])}"
     except ErrorTextoHumanoInvalido:
         return mensaje
