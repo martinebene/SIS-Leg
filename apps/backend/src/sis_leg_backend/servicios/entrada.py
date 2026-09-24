@@ -52,6 +52,10 @@ from sis_leg_backend.servicios.finalizacion_votacion import (
     finalizar_votacion_inconclusa_bajo_lock,
 )
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.texto_humano_l3 import (
+    MARCA_FORMATO_TEXTO_HUMANO,
+    codificar_texto_humano,
+)
 
 VALOR_VOTO_POR_TECLA = {
     "1": ValorVotoOrdinario.POSITIVO,
@@ -809,10 +813,17 @@ class ServicioEntradaTecla:
 
     @staticmethod
     def _mensaje_identidad(identidad: IdentidadConcejal) -> str:
-        """Representa DNI, nombre y banca en los hechos directos de palabra."""
+        """Representa DNI, nombre y banca en los hechos directos de palabra.
+
+        Misma forma y mismo motivo que ``ServicioPalabra.mensaje_identidad``:
+        DNI y nombre son campos humanos adyacentes y se codifican para que la
+        frontera entre ambos no dependa del contenido (WP-107).
+        """
 
         return (
-            f"DNI={identidad.dni}; concejal={identidad.nombre} {identidad.apellido}; "
+            f"{MARCA_FORMATO_TEXTO_HUMANO}; "
+            f"DNI={codificar_texto_humano(identidad.dni)}; "
+            f"concejal={codificar_texto_humano(f'{identidad.nombre} {identidad.apellido}')}; "
             f"banca={identidad.banca}"
         )
 

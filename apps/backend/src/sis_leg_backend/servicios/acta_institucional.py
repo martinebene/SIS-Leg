@@ -38,6 +38,15 @@ la familia ``(tag, event_code)`` tenga política declarada. Cualquier desvío
 aborta **todo** el acta con ``ErrorActaNoDerivable``: no se repara la fila, no se
 descarta y no se sigue de largo.
 
+Esa estricticidad, sin embargo, es sobre la **estructura técnica**. El contenido
+de los campos humanos no se restringe: cualquier carácter que la API o el padrón
+acepten y que el L3 persista tiene que poder representarse en el acta. WP-107
+corrigió el caso concreto de los saltos de línea, que hacían fallar el informe de
+sesiones perfectamente válidas; el contrato completo está documentado en
+:mod:`sis_leg_backend.servicios.politica_acta`, y la normalización de
+presentación que lo hace compatible con el formato del informe, en
+:func:`normalizar_texto_para_acta`.
+
 Cuando eso ocurre los CSV quedan intactos, el cierre institucional sigue
 consumado, la copia externa no se intenta y la API informa ``acta_generada`` en
 ``false`` para que Moderación avise que la sesión sí cerró pero el informe no se
@@ -481,11 +490,22 @@ def _formatear_evento(fila: Sequence[str], numero_fila: int, ruta_l3: Path) -> s
         raise rechazar(f"el timestamp {timestamp!r} no respeta el formato canónico") from error
 
     try:
-        texto = redactar_linea_de_acta(etiqueta, codigo_evento, _depurar_texto(mensaje))
+        texto = redactar_linea_de_acta(etiqueta, codigo_evento, normalizar_texto_para_acta(mensaje))
     except ErrorActaNoDerivable as error:
         raise rechazar(str(error)) from error
 
-    return f"{hora}{SEPARADOR_LINEA_ACTA}{texto}"
+    # La normalización se aplica dos veces y las dos son necesarias.
+    #
+    # Antes de redactar, para que el catálogo reciba el mensaje en una sola
+    # línea y sin pictogramas, que es la forma sobre la que están escritos sus
+    # patrones.
+    #
+    # Después de redactar, porque desde WP-107 I002 una política puede
+    # **decodificar** un campo humano y devolver así un salto de línea que el
+    # mensaje ya no contenía de forma literal. Sin este segundo paso ese salto
+    # llegaría al archivo y ese evento ocuparía varias líneas, rompiendo la
+    # regla de una línea por hecho.
+    return f"{hora}{SEPARADOR_LINEA_ACTA}{normalizar_texto_para_acta(texto)}"
 
 
 def _hora_del_timestamp(timestamp: str) -> str:
@@ -499,14 +519,52 @@ def _hora_del_timestamp(timestamp: str) -> str:
     return datetime.strptime(timestamp, FORMATO_TIMESTAMP).strftime("%H:%M:%S")
 
 
-def _depurar_texto(mensaje: str) -> str:
-    """Retira pictogramas antes de aplicar la política explícita de la familia.
+def normalizar_texto_para_acta(mensaje: str) -> str:
+    """Normaliza la presentación del mensaje antes de aplicar su política.
 
-    Quita emojis y pictogramas, colapsa los espacios dobles que esa eliminación
-    puede dejar y recorta los extremos. La función no decide qué parte del
-    mensaje es institucional: esa responsabilidad pertenece al formatter
-    declarado en ``POLITICAS_ACTA``, que reconstruye el hecho sin copiar su
-    metadata técnica.
+    Hace exactamente tres cosas, en este orden:
+
+    1. **quita emojis y pictogramas**, porque un acta institucional se redacta en
+       texto llano y el CSV ya conserva el original como evidencia;
+    2. **aplana los saltos de línea a un espacio** (WP-107);
+    3. **colapsa espacios repetidos y recorta los extremos**, para que ni la
+       eliminación de emojis ni el aplanado dejen huecos visibles.
+
+    La función no decide qué parte del mensaje es institucional: esa
+    responsabilidad pertenece al formatter declarado en ``POLITICAS_ACTA``, que
+    reconstruye el hecho sin copiar su metadata técnica.
+
+    Por qué el aplanado de saltos de línea, y por qué un espacio
+    -----------------------------------------------------------
+
+    El acta es un informe de **una línea por evento**: cada línea empieza con la
+    hora y sigue con el texto del hecho. Varios campos son texto humano libre
+    —el ``tema`` de una votación tomado del Orden del Día es el caso típico— y
+    pueden traer varios renglones. Copiarlos tal cual rompería esa estructura:
+    un solo evento ocuparía varias líneas, las líneas extra no tendrían hora y
+    el informe dejaría de poder recorrerse evento por evento.
+
+    Las dos alternativas descartadas eran peores. **Rechazar** el texto
+    multilínea es lo que hacía el sistema antes de WP-107 y dejaba sesiones
+    enteras sin acta. **Insertar una marca visible** (``\\n`` escrito como ``|``
+    o ``\\\\n``) agregaría al documento un símbolo que nadie escribió y que se
+    confundiría con contenido real.
+
+    El espacio conserva todo el contenido semántico —ninguna palabra se pierde,
+    nada se trunca y nada se descarta— y sólo reemplaza la separación entre
+    renglones, que es información de formato y no de fondo.
+
+    ``str.splitlines`` es la referencia deliberada de "qué cuenta como salto de
+    línea": cubre ``\\n``, ``\\r``, ``\\r\\n``, los controles de formulario y los
+    separadores Unicode de línea y de párrafo, de modo que la normalización no
+    dependa de una lista de caracteres escrita a mano que quede incompleta.
+
+    Es pública porque WP-107 la convirtió en parte del contrato del acta: las
+    pruebas tienen que poder afirmar exactamente qué presentación produce cada
+    texto humano, y una estrategia documentada que sólo pudiera comprobarse por
+    su efecto final sobre el archivo completo sería muy difícil de auditar.
     """
 
-    return _ESPACIOS_REPETIDOS.sub(" ", _EMOJIS.sub("", mensaje)).strip()
+    sin_emojis = _EMOJIS.sub("", mensaje)
+    en_una_linea = " ".join(sin_emojis.splitlines())
+    return _ESPACIOS_REPETIDOS.sub(" ", en_una_linea).strip()

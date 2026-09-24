@@ -996,13 +996,64 @@ def test_el_catalogo_cubre_todas_las_familias_l3_que_produce_el_backend() -> Non
     )
 
 
+FAMILIAS_SOLO_HISTORICAS = frozenset(
+    {
+        ("SESION", "NUMERO_SESION_ACTUALIZADO"),
+        ("SESION", "PRESIDENCIA_ACTUALIZADA"),
+        ("SESION", "SECRETARIA_LEGISLATIVA_ACTUALIZADA"),
+    }
+)
+"""Familias que el catálogo conserva aunque ningún productor las emita ya.
+
+WP-107 I003 versionó el ``event_code`` de las tres actualizaciones de sesión
+(``..._H1``) porque en ellas el primer campo humano empieza inmediatamente
+después del prefijo: cualquier marca puesta dentro del mensaje podía haberla
+escrito una persona, así que el discriminador de formato tuvo que mudarse a una
+columna que sólo escribe el productor.
+
+Los códigos sin sufijo siguen viviendo en el catálogo porque el acta debe poder
+derivar los conjuntos ya cerrados, que WP-107 prohíbe expresamente migrar o
+regenerar. Son deliberadamente huérfanos: si alguno volviera a producirse, la
+lista de abajo dejaría de describir la realidad y habría que revisarla.
+"""
+
+
 def test_el_catalogo_no_declara_familias_que_ya_nadie_produce() -> None:
-    """Una política huérfana indica que el catálogo quedó desactualizado."""
+    """Una política huérfana indica que el catálogo quedó desactualizado.
+
+    La única excepción son las familias que sólo existen para leer archivos
+    históricos, enumeradas y justificadas en :data:`FAMILIAS_SOLO_HISTORICAS`.
+    """
 
     familias = familias_l3_declaradas_en_el_codigo()
-    huerfanas = sorted(familia for familia in POLITICAS_ACTA if familia not in familias)
+    huerfanas = sorted(
+        familia
+        for familia in POLITICAS_ACTA
+        if familia not in familias and familia not in FAMILIAS_SOLO_HISTORICAS
+    )
 
     assert not huerfanas, f"POLITICAS_ACTA declara familias que ya no se registran: {huerfanas}"
+
+
+def test_las_familias_solo_historicas_siguen_sin_producirse() -> None:
+    """La allowlist histórica no puede volverse una excusa silenciosa.
+
+    Si un WP futuro volviera a emitir uno de esos ``event_code``, la excepción
+    de arriba lo taparía. Este test exige lo contrario: que sigan sin producirse
+    y que sigan teniendo política declarada para los conjuntos cerrados.
+    """
+
+    familias = familias_l3_declaradas_en_el_codigo()
+
+    for familia in FAMILIAS_SOLO_HISTORICAS:
+        assert familia not in familias, (
+            f"{familia} volvió a producirse: sacarla de FAMILIAS_SOLO_HISTORICAS "
+            "y revisar su política de redacción."
+        )
+        assert familia in POLITICAS_ACTA, (
+            f"{familia} dejó de tener política y los conjuntos históricos que la "
+            "contienen ya no podrían derivarse."
+        )
 
 
 def test_las_constantes_del_catalogo_coinciden_con_las_de_cada_servicio() -> None:
@@ -1019,14 +1070,19 @@ def test_las_constantes_del_catalogo_coinciden_con_las_de_cada_servicio() -> Non
         (politica_acta.ETIQUETA_SESION, sesion.ETIQUETA_SESION),
         (politica_acta.CODIGO_SESION_ABIERTA, sesion.CODIGO_SESION_ABIERTA),
         (politica_acta.CODIGO_SESION_CERRADA, sesion.CODIGO_SESION_CERRADA),
+        # Sólo los códigos vigentes se comparan contra el servicio: los
+        # históricos ya no existen ahí, y su literal se comprueba abajo.
         (
-            politica_acta.CODIGO_NUMERO_SESION_ACTUALIZADO,
-            sesion.CODIGO_NUMERO_SESION_ACTUALIZADO,
+            politica_acta.CODIGO_NUMERO_SESION_ACTUALIZADO_H1,
+            sesion.CODIGO_NUMERO_SESION_ACTUALIZADO_H1,
         ),
-        (politica_acta.CODIGO_PRESIDENCIA_ACTUALIZADA, sesion.CODIGO_PRESIDENCIA_ACTUALIZADA),
         (
-            politica_acta.CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA,
-            sesion.CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA,
+            politica_acta.CODIGO_PRESIDENCIA_ACTUALIZADA_H1,
+            sesion.CODIGO_PRESIDENCIA_ACTUALIZADA_H1,
+        ),
+        (
+            politica_acta.CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1,
+            sesion.CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1,
         ),
         (politica_acta.ETIQUETA_PRESENCIA, entrada.ETIQUETA_PRESENCIA),
         (politica_acta.CODIGO_CONCEJAL_PRESENTE, entrada.CODIGO_CONCEJAL_PRESENTE),

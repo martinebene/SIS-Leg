@@ -607,3 +607,11 @@ La prueba humana del Zócalo mostró que el rótulo `Votación` podía perder su
 | WP | Objetivo | Estado | Depende de | Agente |
 |---|---|---|---|---|
 | WP-106 | Ancho dinámico de la columna de rótulos del Zócalo | EN_CURSO | WP-099, WP-103 | claude |
+
+## Robustez del ACTA ante texto humano válido - WP-107 (24/09/2026)
+
+Tras varios días de uso productivo se observaron cierres donde los CSV L1/L2/L3 quedan completos pero falta el archivo `*-ACTA.txt`. La auditoría confirmó la causa: los temas del Orden del Día contienen saltos de línea y caracteres arbitrarios que la API acepta y el L3 persiste, pero las expresiones regulares de `politica_acta.py` usaban `.`, que no coincide con un salto de línea, y convertían un L3 válido en `ErrorActaNoDerivable`. HUMAN_GATE aprueba WP-107 para que todo contenido humano válido pueda representarse en el acta conservando el fallo cerrado ante corrupción estructural real, y para que el aviso de `acta_generada=false` pase de efímero a advertencia persistente descartable. Sólo desarrollo y revisión; producción no autorizada.
+
+| WP | Objetivo | Estado | Depende de | Agente |
+|---|---|---|---|---|
+| WP-107 | Robustez del ACTA ante texto humano válido y advertencia persistente | EN_CURSO | WP-085, WP-078 | claude |

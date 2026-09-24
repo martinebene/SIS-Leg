@@ -40,6 +40,10 @@ from sis_leg_backend.servicios.finalizacion_votacion import (
     finalizar_votacion_inconclusa_bajo_lock,
 )
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.texto_humano_l3 import (
+    MARCA_FORMATO_TEXTO_HUMANO,
+    codificar_texto_humano,
+)
 
 ETIQUETA_VOTACION = "VOTACION"
 CODIGO_VOTACION_ABIERTA = "VOTACION_ABIERTA"
@@ -364,11 +368,21 @@ class ServicioVotacion:
 
     @staticmethod
     def _mensaje_apertura(votacion: Votacion) -> str:
-        """Construye el texto humano con todos los datos exigidos por DEC-009."""
+        """Construye el texto humano con todos los datos exigidos por DEC-009.
+
+        ``tipo`` y ``tema`` son dos campos humanos **adyacentes**: el separador
+        ``"; tema="`` que los divide puede aparecer dentro del propio ``tipo``, y
+        entonces nadie podría saber cuál de las dos apariciones es la real. Por
+        eso ambos se codifican (WP-107) y el mensaje declara su formato: después
+        de codificar, ningún ``;`` del mensaje pertenece a un valor y la frontera
+        queda fijada por construcción.
+        """
 
         return (
-            f"Votación abierta: número={votacion.numero_votacion}; "
-            f"tipo={votacion.tipo}; tema={votacion.tema}; "
+            f"Votación abierta: {MARCA_FORMATO_TEXTO_HUMANO}; "
+            f"número={votacion.numero_votacion}; "
+            f"tipo={codificar_texto_humano(votacion.tipo)}; "
+            f"tema={codificar_texto_humano(votacion.tema)}; "
             f"tipo_mayoria={votacion.tipo_mayoria.value}; factor={votacion.factor}; "
             f"base={votacion.base.value}"
         )

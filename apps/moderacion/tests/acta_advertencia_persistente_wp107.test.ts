@@ -1,30 +1,28 @@
 /**
- * Avisos de Moderación tras el cierre institucional (WP-085).
+ * Advertencia persistente cuando el informe de acta no se pudo generar (WP-107).
  *
- * Qué demuestra este archivo
- * --------------------------
- * Al cerrar una sesión el backend produce dos archivos derivados —el informe de acta y,
- * opcionalmente, una copia externa del conjunto— y devuelve en el cuerpo de la respuesta qué
- * pasó con cada uno. El operador no puede ver ninguno de los dos desde Moderación, así que el
- * único canal por el que se entera es el aviso efímero que muestra este cuadrante.
+ * Qué cambia respecto de WP-085
+ * -----------------------------
+ * WP-085 informaba los tres desenlaces posteriores al cierre —acta, copia externa y éxito—
+ * con avisos efímeros de 2500 ms. Para la copia externa eso alcanza: los archivos locales,
+ * que son el registro institucional válido, quedaron completos y la réplica es redundancia.
  *
- * Las cuatro reglas que se verifican acá son decisiones cerradas del WP:
+ * Para el informe de acta no alcanza. Es el único desenlace que deja al cuerpo legislativo
+ * sin un documento que esperaba tener, y obliga a una acción humana posterior fuera de
+ * Moderación. Un aviso que se apaga solo a los 2,5 segundos se pierde exactamente cuando el
+ * operador está mirando el recinto y no la pantalla, y entonces nadie se entera hasta que
+ * alguien busca el archivo días después.
  *
- * 1. **Sin copia configurada no hay aviso.** `copia_externa: 'OMITIDA'` con acta generada es la
- *    operación normal de una instalación que no pidió copia externa; anunciarla sería ruido.
- * 2. **Copia realizada muestra confirmación.** Es la única evidencia visible de que la réplica
- *    existe.
- * 3. **Un fallo del acta o de la copia se anuncia sin decir que el cierre falló.** El texto debe
- *    empezar afirmando que la sesión cerró: es lo que evita que el operador intente cerrarla otra
- *    vez sobre un sistema que ya volvió a «sin preparar». Desde WP-107 el fallo del acta usa una
- *    advertencia persistente y el de la copia externa sigue siendo efímero; la regla del texto
- *    vale para los dos.
- * 4. **Ese fallo no usa el canal de error persistente.** El error persistente de este cuadrante es
- *    accionable y se cierra a mano; acá no hay nada que reintentar desde Moderación, porque el
- *    cierre institucional ya es irreversible.
+ * Las cuatro reglas que fija este archivo
+ * ---------------------------------------
+ * 1. `acta_generada: false` muestra una advertencia que **no** caduca sola.
+ * 2. Su texto afirma primero que la sesión cerró y que los CSV quedaron completos: el cierre
+ *    institucional no se presenta como fallido, porque ya es irreversible.
+ * 3. El operador puede cerrarla a mano.
+ * 4. El camino normal (`acta_generada: true`) no gana ningún ruido nuevo.
  *
- * Como el resto de las pruebas de Moderación, las mutaciones se simulan con un cliente falso: el
- * componente nunca decide reglas institucionales por su cuenta.
+ * Igual que el resto de las pruebas de Moderación, el cliente es falso: el componente nunca
+ * decide reglas institucionales por su cuenta.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -144,13 +142,13 @@ function crearEstadoSesionAbierta(): EstadoModeracion {
   return {
     instancia: 'instancia-prueba',
     revision: 1,
-    generado_en: '2026-09-08T10:00:00Z',
+    generado_en: '2026-09-24T10:00:00Z',
     estado_global: 'SESION_ABIERTA',
     preparacion: null,
     sesion: {
-      fecha_hora_inicio_preparacion: '2026-09-08T09:00:00Z',
-      fecha_hora_apertura: '2026-09-08T09:30:00Z',
-      numero_sesion: 42,
+      fecha_hora_inicio_preparacion: '2026-09-24T09:00:00Z',
+      fecha_hora_apertura: '2026-09-24T09:30:00Z',
+      numero_sesion: 107,
       presidencia: 'Dra. Presidencia',
       secretaria_legislativa: 'Sr. Secretaría',
     },
@@ -186,7 +184,7 @@ function crearCliente(respuestaCierre: RespuestaCierreSesion): ClienteModeracion
     cerrarSesion: vi.fn().mockResolvedValue(respuestaCierre),
     cargarOrdenDelDia: vi.fn().mockResolvedValue({ puntos: [] }),
     descartarOrdenDelDia: vi.fn().mockResolvedValue(undefined),
-    abrirVotacion: vi.fn().mockResolvedValue({ id: 'votacion-2' }),
+    abrirVotacion: vi.fn().mockResolvedValue({ id: 'votacion-1' }),
     finalizarVotacion: vi.fn().mockResolvedValue(undefined),
     desempatar: vi.fn().mockResolvedValue(undefined),
     otorgarPalabra: vi.fn().mockResolvedValue(undefined),
@@ -215,11 +213,20 @@ async function cerrarSesionDesdeElPanel(
   return wrapper
 }
 
-const SELECTOR_ADVERTENCIA = '[data-testid="alerta-advertencia-comando"]'
-// WP-107: canal persistente propio del informe de acta, distinto del aviso efímero.
 const SELECTOR_ADVERTENCIA_ACTA = '[data-testid="alerta-advertencia-acta"]'
+const SELECTOR_DESCARTAR_ACTA = '[data-testid="btn-descartar-advertencia-acta"]'
+const SELECTOR_ADVERTENCIA_EFIMERA = '[data-testid="alerta-advertencia-comando"]'
 const SELECTOR_EXITO = '[data-testid="alerta-exito-comando"]'
 const SELECTOR_ERROR = '[data-testid="alerta-error-comando"]'
+
+/**
+ * Margen muy superior al temporizador efímero.
+ *
+ * No alcanza con avanzar exactamente 2500 ms: eso sólo probaría que no caduca en ese
+ * instante. Avanzar cuarenta veces esa duración demuestra que no hay **ningún** temporizador
+ * detrás de la advertencia, cualquiera fuese su valor.
+ */
+const ESPERA_MUY_LARGA_MS = DURACION_AVISO_EFIMERO_MS * 40
 
 beforeEach(() => reiniciarInstanciaCompartidaParaPruebas())
 
@@ -229,84 +236,99 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('WP-085 — avisos de acta y copia externa al cerrar la sesión', () => {
-  it('CA-085.5 — sin copia configurada el cierre no muestra ningún aviso', async () => {
+describe('WP-107 — advertencia persistente de informe de acta no generado', () => {
+  it('la advertencia no desaparece sola después del temporizador efímero', async () => {
+    vi.useFakeTimers()
     const wrapper = await cerrarSesionDesdeElPanel({
-      acta_generada: true,
+      acta_generada: false,
       copia_externa: 'OMITIDA',
     })
 
-    expect(wrapper.find(SELECTOR_EXITO).exists()).toBe(false)
-    expect(wrapper.find(SELECTOR_ADVERTENCIA).exists()).toBe(false)
-    expect(wrapper.find(SELECTOR_ERROR).exists()).toBe(false)
-  })
+    expect(wrapper.find(SELECTOR_ADVERTENCIA_ACTA).exists()).toBe(true)
 
-  it('CA-085.8 — una copia exitosa se confirma con un aviso efímero', async () => {
-    vi.useFakeTimers()
-    const wrapper = await cerrarSesionDesdeElPanel({
-      acta_generada: true,
-      copia_externa: 'EXITOSA',
-    })
-
-    const aviso = wrapper.get(SELECTOR_EXITO)
-    expect(aviso.text()).toContain('copiados a la carpeta externa')
-    expect(wrapper.find(SELECTOR_ADVERTENCIA).exists()).toBe(false)
-    expect(wrapper.find(SELECTOR_ERROR).exists()).toBe(false)
-
-    // Efímero de verdad: caduca solo, sin que el operador lo cierre.
     vi.advanceTimersByTime(DURACION_AVISO_EFIMERO_MS)
     await flushPromises()
+    expect(wrapper.find(SELECTOR_ADVERTENCIA_ACTA).exists()).toBe(true)
+
+    vi.advanceTimersByTime(ESPERA_MUY_LARGA_MS)
+    await flushPromises()
+    expect(wrapper.find(SELECTOR_ADVERTENCIA_ACTA).exists()).toBe(true)
+  })
+
+  it('el texto afirma que la sesión cerró y que los CSV quedaron completos', async () => {
+    const wrapper = await cerrarSesionDesdeElPanel({
+      acta_generada: false,
+      copia_externa: 'OMITIDA',
+    })
+
+    const texto = wrapper.get(SELECTOR_ADVERTENCIA_ACTA).text()
+    // Lo primero que se lee es el cierre consumado: sin eso el operador intentaría cerrar
+    // otra vez una sesión que ya no existe.
+    expect(texto.indexOf('La sesión cerró correctamente')).toBe(0)
+    expect(texto).toContain('los registros CSV quedaron completos y cerrados')
+    expect(texto).toContain('No se pudo generar el informe de acta')
+    expect(texto).toContain('Los CSV siguen siendo el registro institucional válido')
+    // No se presenta como un fallo del cierre ni como un error accionable.
+    expect(texto).not.toContain('Error')
+    expect(wrapper.find(SELECTOR_ERROR).exists()).toBe(false)
+  })
+
+  it('el operador puede descartarla manualmente', async () => {
+    const wrapper = await cerrarSesionDesdeElPanel({
+      acta_generada: false,
+      copia_externa: 'OMITIDA',
+    })
+
+    const boton = wrapper.get(SELECTOR_DESCARTAR_ACTA)
+    // El botón dice con palabras qué hace: la «✕» sola no es descriptiva para un lector de
+    // pantalla. Se lee del elemento y no de `attributes()` porque el entorno de prueba no
+    // serializa los atributos estáticos del render compilado a mano.
+    expect(boton.element.getAttribute('aria-label')).toContain('Descartar')
+
+    await boton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find(SELECTOR_ADVERTENCIA_ACTA).exists()).toBe(false)
+  })
+
+  it('usa un canal propio y no el aviso efímero de advertencia', async () => {
+    const wrapper = await cerrarSesionDesdeElPanel({
+      acta_generada: false,
+      copia_externa: 'OMITIDA',
+    })
+
+    expect(wrapper.find(SELECTOR_ADVERTENCIA_ACTA).exists()).toBe(true)
+    expect(wrapper.find(SELECTOR_ADVERTENCIA_EFIMERA).exists()).toBe(false)
     expect(wrapper.find(SELECTOR_EXITO).exists()).toBe(false)
   })
 
-  it('CA-085.7 — una copia fallida avisa el error diciendo que la sesión sí cerró', async () => {
+  it('un acta generada no muestra ninguna advertencia nueva', async () => {
+    // El camino feliz es el habitual: WP-107 no puede agregarle ruido.
+    for (const copia of ['OMITIDA', 'EXITOSA'] as const) {
+      const wrapper = await cerrarSesionDesdeElPanel({
+        acta_generada: true,
+        copia_externa: copia,
+      })
+
+      expect(wrapper.find(SELECTOR_ADVERTENCIA_ACTA).exists()).toBe(false)
+      expect(wrapper.find(SELECTOR_ERROR).exists()).toBe(false)
+    }
+  })
+
+  it('una copia externa fallida sigue usando el aviso efímero de WP-085', async () => {
+    // La copia es redundancia y los archivos locales quedaron completos: ese desenlace no
+    // justifica ocupar la pantalla hasta que alguien lo cierre.
     vi.useFakeTimers()
     const wrapper = await cerrarSesionDesdeElPanel({
       acta_generada: true,
       copia_externa: 'FALLIDA',
     })
 
-    const aviso = wrapper.get(SELECTOR_ADVERTENCIA)
-    // Lo primero que se lee es que el cierre ocurrió: sin eso, el operador
-    // intentaría cerrar otra vez una sesión que ya no existe.
-    expect(aviso.text()).toContain('La sesión cerró')
-    expect(aviso.text()).toContain('no se pudo copiarlos a la carpeta externa')
-    // No usa el canal persistente y accionable: no hay nada que reintentar acá.
-    expect(wrapper.find(SELECTOR_ERROR).exists()).toBe(false)
-    expect(wrapper.find(SELECTOR_EXITO).exists()).toBe(false)
+    expect(wrapper.find(SELECTOR_ADVERTENCIA_EFIMERA).exists()).toBe(true)
+    expect(wrapper.find(SELECTOR_ADVERTENCIA_ACTA).exists()).toBe(false)
 
     vi.advanceTimersByTime(DURACION_AVISO_EFIMERO_MS)
     await flushPromises()
-    expect(wrapper.find(SELECTOR_ADVERTENCIA).exists()).toBe(false)
-  })
-
-  it('CA-085.1 — un informe de acta fallido también avisa que la sesión sí cerró', async () => {
-    // WP-107 mantiene esta regla pero cambia el canal: este desenlace dejó de ser efímero y
-    // pasó a una advertencia persistente con cierre manual, porque obliga a una acción humana
-    // posterior fuera de Moderación. Lo que no cambió, y se sigue comprobando acá, es que el
-    // texto afirme el cierre y que no use el canal rojo de error.
-    // La persistencia y el descarte manual se prueban en `acta_advertencia_persistente_wp107`.
-    const wrapper = await cerrarSesionDesdeElPanel({
-      acta_generada: false,
-      copia_externa: 'OMITIDA',
-    })
-
-    const aviso = wrapper.get(SELECTOR_ADVERTENCIA_ACTA)
-    expect(aviso.text()).toContain('La sesión cerró')
-    expect(aviso.text()).toContain('No se pudo generar el informe de acta')
-    expect(wrapper.find(SELECTOR_ADVERTENCIA).exists()).toBe(false)
-    expect(wrapper.find(SELECTOR_ERROR).exists()).toBe(false)
-    expect(wrapper.find(SELECTOR_EXITO).exists()).toBe(false)
-  })
-
-  it('un cierre sin cuerpo no se confunde con un cierre fallido', async () => {
-    // Guarda defensiva del componente: si la respuesta llegara vacía, el panel no
-    // debe caer en su `catch` y mostrar «Error al cerrar la sesión» sobre un cierre
-    // que en realidad fue exitoso.
-    const wrapper = await cerrarSesionDesdeElPanel(undefined as unknown as RespuestaCierreSesion)
-
-    expect(wrapper.find(SELECTOR_ERROR).exists()).toBe(false)
-    expect(wrapper.find(SELECTOR_ADVERTENCIA).exists()).toBe(false)
-    expect(wrapper.find(SELECTOR_EXITO).exists()).toBe(false)
+    expect(wrapper.find(SELECTOR_ADVERTENCIA_EFIMERA).exists()).toBe(false)
   })
 })

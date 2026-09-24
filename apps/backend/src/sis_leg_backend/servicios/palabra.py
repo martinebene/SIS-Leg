@@ -15,6 +15,10 @@ from sis_leg_backend.dominio.errores import ErrorEstadoIncompatible
 from sis_leg_backend.dominio.estado import EstadoGlobal, EstadoOperativo
 from sis_leg_backend.dominio.sesion import Sesion
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.texto_humano_l3 import (
+    MARCA_FORMATO_TEXTO_HUMANO,
+    codificar_texto_humano,
+)
 
 ETIQUETA_PALABRA = "PALABRA"
 CODIGO_USO_PALABRA_OTORGADO = "USO_PALABRA_OTORGADO"
@@ -136,10 +140,19 @@ class ServicioPalabra:
 
     @staticmethod
     def mensaje_identidad(concejal: Concejal) -> str:
-        """Representa identidad humana y técnica suficiente para auditoría."""
+        """Representa identidad humana y técnica suficiente para auditoría.
+
+        El DNI y el nombre son dos campos humanos adyacentes —el padrón sólo
+        exige que no estén vacíos— así que un DNI podría contener literalmente
+        ``"; concejal="`` y desplazar la frontera. En un acta institucional eso
+        equivale a suplantar una identidad, de modo que ambos se codifican
+        (WP-107) y el bloque declara su formato.
+        """
 
         return (
-            f"DNI={concejal.dni}; concejal={concejal.nombre} {concejal.apellido}; "
+            f"{MARCA_FORMATO_TEXTO_HUMANO}; "
+            f"DNI={codificar_texto_humano(concejal.dni)}; "
+            f"concejal={codificar_texto_humano(f'{concejal.nombre} {concejal.apellido}')}; "
             f"banca={concejal.banca}"
         )
 

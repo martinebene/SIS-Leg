@@ -45,6 +45,9 @@ from sis_leg_backend.hechos_operativos import (
 )
 from sis_leg_backend.servicios.publicacion import CoordinadorPublicacion
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.texto_humano_l3 import (
+    decodificar_mensaje_para_presentacion,
+)
 
 # La pantalla pública trabaja con una allowlist positiva y textos escritos a
 # mano. El mensaje de auditoría no participa de este mapeo: puede contener DNI,
@@ -1899,17 +1902,35 @@ class ServicioProyecciones:
 
     @staticmethod
     def _mensaje_evento(evento: EventoAuditoriaReciente, revelable: bool) -> str:
-        """Elige entre el mensaje durable y su variante segura.
+        """Elige entre el mensaje durable y su variante segura, y lo vuelve legible.
 
         Un evento sin referencia, o con referencia que no declaró texto
         alternativo, publica siempre su mensaje original: no se inventa una
         censura donde el emisor no declaró un secreto.
+
+        WP-107 agrega el último paso. Desde la iteración 2 algunos mensajes L3
+        escriben sus campos humanos codificados, para que la frontera entre dos
+        valores contiguos no dependa de lo que una persona haya tecleado. Esa
+        codificación es correcta para el archivo técnico pero ilegible en
+        pantalla: sin este paso el operador vería el texto con sus escapes en el
+        panel de eventos. La decodificación es sólo de presentación y no altera
+        lo que quedó persistido en los CSV, que siguen siendo la evidencia.
+
+        Desde la iteración 3 se le pasan también la etiqueta y el ``event_code``.
+        Son la **única** información que puede decidir si corresponde decodificar:
+        el productor las escribe en columnas propias del CSV y ningún texto humano
+        puede imitarlas. Antes la decisión salía de buscar la marca dentro del
+        mensaje, y entonces un aviso cuyo texto contuviera ese literal llegaba
+        mutilado a la pantalla.
         """
 
         referencia = evento.referencia
-        if revelable or referencia is None or referencia.mensaje_seguro is None:
-            return evento.mensaje
-        return referencia.mensaje_seguro
+        crudo = (
+            evento.mensaje
+            if revelable or referencia is None or referencia.mensaje_seguro is None
+            else referencia.mensaje_seguro
+        )
+        return decodificar_mensaje_para_presentacion(evento.etiqueta, evento.codigo_evento, crudo)
 
     def _sentido_revelable(
         self,

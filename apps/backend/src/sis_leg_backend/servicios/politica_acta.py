@@ -28,6 +28,33 @@ Los patrones están **anclados al mensaje completo**. Si mañana alguien agrega 
 campo al final de un ``message``, el patrón deja de coincidir y el acta falla en
 vez de publicar ese campo sin que nadie lo haya revisado.
 
+Estricto con la estructura, sin restricción con el texto humano (WP-107)
+------------------------------------------------------------------------
+
+Esa estricticidad vale para la **estructura técnica** del mensaje, no para el
+contenido de sus campos humanos. Varios mensajes transportan texto que una
+persona escribió —el ``tipo`` y el ``tema`` de una votación, el motivo de una
+finalización manual, las autoridades, el nombre y el apellido del padrón— y ni
+la API ni el padrón restringen ahí los caracteres: aceptan saltos de línea,
+``;``, ``=``, comillas y Unicode arbitrario, y el L3 los persiste tal cual.
+
+El generador del acta no puede imponer indirectamente, mediante sus propias
+expresiones regulares, un subconjunto textual más chico que el que el sistema
+acepta y persiste. Antes de WP-107 lo hacía sin querer: el punto ``.`` de una
+expresión regular **no** coincide con un salto de línea, así que un ``tema`` de
+dos renglones —forma habitual de un Orden del Día real— convertía un L3
+perfectamente válido en :class:`ErrorActaNoDerivable`.
+
+Por eso todo campo humano se escribe hoy con :data:`CARACTER_TEXTO_HUMANO` en
+lugar de ``.``: un campo humano acepta **cualquier** carácter. Los campos
+técnicos conservan sus clases estrictas (un entero, una enumeración en
+mayúsculas, un conjunto cerrado de valores), de modo que la tolerancia nueva no
+alcanza a la estructura.
+
+El salto de línea, además, se aplana a un espacio antes de llegar acá: el acta
+es un informe de una línea por evento y esa normalización de presentación vive
+en ``acta_institucional.normalizar_texto_para_acta``, documentada allí.
+
 Fallo cerrado
 -------------
 
@@ -62,6 +89,39 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
+
+from sis_leg_backend.servicios.texto_humano_l3 import (
+    CLAVE_FORMATO_TEXTO_HUMANO,
+    MARCA_FORMATO_TEXTO_HUMANO,
+    VERSION_FORMATO_TEXTO_HUMANO,
+    ErrorTextoHumanoInvalido,
+    decodificar_texto_humano,
+)
+
+CARACTER_TEXTO_HUMANO = r"[\s\S]"
+"""Clase de caracteres de un campo humano: cualquiera, incluido el salto de línea.
+
+Por qué no se usa ``.``
+-----------------------
+
+``.`` coincide con cualquier carácter **menos** el salto de línea, y ésa es
+justamente la restricción que WP-107 vino a sacar: un ``tema`` de dos renglones
+es texto que la API acepta, que el L3 persiste correctamente y que el acta debe
+poder publicar.
+
+Por qué no se usa ``re.DOTALL``
+-------------------------------
+
+``re.DOTALL`` produciría el mismo efecto, pero es una bandera que se aplica al
+patrón **entero** y no deja ver en cada lugar cuál es la intención. Escribir la
+clase en el sitio del campo hace evidente, leyendo una sola línea, qué campos
+son humanos —y por lo tanto ilimitados— y cuáles son técnicos y siguen atados a
+``\\d+``, ``[A-Z_]+`` o a un conjunto cerrado de valores. Esa asimetría es el
+contrato de WP-107 y tiene que poder auditarse mirando el patrón.
+
+Se usa ``[\\s\\S]`` y no ``[\\w\\W]`` o ``(?s:.)`` por ser la forma más difundida
+y legible de "cualquier carácter" en una expresión regular.
+"""
 
 PREFIJO_MARCADOR_INICIO = "Inicio: "
 PREFIJO_MARCADOR_FIN = "Fin: "
@@ -117,9 +177,26 @@ CODIGO_PREPARACION_CANCELADA = "PREPARACION_CANCELADA"
 ETIQUETA_SESION = "SESION"
 CODIGO_SESION_ABIERTA = "SESION_ABIERTA"
 CODIGO_SESION_CERRADA = "SESION_CERRADA"
+# Actualizaciones institucionales: dos generaciones de ``event_code``.
+#
+# Los tres códigos sin sufijo pertenecen a conjuntos ya cerrados y **ningún
+# productor los emite desde WP-107 I003**. Se conservan acá porque el acta tiene
+# que poder derivar esos archivos históricos, y significan exclusivamente el
+# formato anterior.
+#
+# Los tres con sufijo ``_H1`` son los que emite el backend hoy y significan
+# exclusivamente el formato de texto humano codificado. El sufijo es el
+# discriminador: en estas familias el primer campo humano empieza justo después
+# del prefijo, así que ninguna marca escrita dentro del mensaje podría
+# distinguir una generación de la otra (DEC-008 define las autoridades como
+# texto libre).
 CODIGO_NUMERO_SESION_ACTUALIZADO = "NUMERO_SESION_ACTUALIZADO"
 CODIGO_PRESIDENCIA_ACTUALIZADA = "PRESIDENCIA_ACTUALIZADA"
 CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA = "SECRETARIA_LEGISLATIVA_ACTUALIZADA"
+
+CODIGO_NUMERO_SESION_ACTUALIZADO_H1 = "NUMERO_SESION_ACTUALIZADO_H1"
+CODIGO_PRESIDENCIA_ACTUALIZADA_H1 = "PRESIDENCIA_ACTUALIZADA_H1"
+CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1 = "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1"
 
 ETIQUETA_PRESENCIA = "PRESENCIA"
 CODIGO_CONCEJAL_PRESENTE = "CONCEJAL_PRESENTE"
@@ -223,6 +300,98 @@ def _exigir(patron: re.Pattern[str], mensaje: str, familia: str) -> re.Match[str
     return coincidencia
 
 
+CAMPO_HUMANO_CODIFICADO = r"[^;]*"
+"""Cómo se delimita un campo humano en el formato nuevo del L3 (WP-107 I002).
+
+Un valor codificado no puede contener un ``;`` crudo —esa es la invariante que
+garantiza :mod:`sis_leg_backend.servicios.texto_humano_l3`—, así que en un
+mensaje con marca de formato **todo ``;`` es estructural** y ``[^;]*`` separa el
+campo de forma exacta.
+
+Es la diferencia de fondo con :data:`CARACTER_TEXTO_HUMANO`, que sigue usándose
+para leer los mensajes históricos: aquella clase admite cualquier carácter y por
+eso depende de que el resto del patrón fije la frontera; ésta no puede invadir la
+estructura ni aunque la persona haya escrito el separador.
+"""
+
+
+def _declara_formato_nuevo(mensaje: str, prefijo: str, familia: str) -> bool:
+    """Decide si el mensaje usa el formato codificado y valida su versión.
+
+    Entradas:
+        mensaje: el ``message`` completo del evento L3.
+        prefijo: el texto fijo con el que empieza esa familia, por ejemplo
+            ``"Votación abierta: "``. La marca vive siempre justo después.
+        familia: nombre de la familia, sólo para el mensaje de error.
+
+    Resultado:
+        ``True`` cuando el mensaje declara la versión vigente y debe leerse con
+        la gramática nueva; ``False`` cuando no declara ninguna y corresponde la
+        ruta de compatibilidad histórica.
+
+    Errores:
+        ErrorActaNoDerivable: si declara una versión que este código no conoce.
+            Es fallo cerrado deliberado: un formato futuro puede haber cambiado
+            la tabla de escapes, y leerlo con la tabla vieja produciría un texto
+            institucional silenciosamente equivocado.
+
+    Por qué se mira la posición exacta y no «si aparece la marca en algún lado»:
+    un texto humano podría contener la palabra ``formato=h1``. Exigir que esté
+    inmediatamente después del prefijo la vuelve estructural.
+
+    Dónde puede usarse este discriminador (WP-107 I003)
+    ---------------------------------------------------
+
+    **Sólo** en familias cuyos mensajes históricos tienen una clave técnica en
+    esa posición, de modo que ningún texto humano haya podido ocuparla. Hoy son
+    dos: ``VOTACION_ABIERTA``, que empieza por ``número=``, y las cuatro de
+    ``PALABRA``, que empiezan por ``DNI=``. En ambas el productor escribía esa
+    clave siempre, así que la marca no puede confundirse con contenido.
+
+    Las actualizaciones de sesión **no** cumplen esa condición: su primer campo
+    humano empieza justo después del prefijo y DEC-008 lo define como texto
+    libre, así que una persona podía escribir la marca entera. Por eso su
+    discriminador vive en el ``event_code`` y esta función no se les aplica.
+    """
+
+    if not mensaje.startswith(prefijo):
+        return False
+    resto = mensaje[len(prefijo) :]
+    if not resto.startswith(f"{CLAVE_FORMATO_TEXTO_HUMANO}="):
+        return False
+    if resto.startswith(f"{MARCA_FORMATO_TEXTO_HUMANO}; "):
+        return True
+
+    fin = resto.find(";")
+    declarada = resto[len(CLAVE_FORMATO_TEXTO_HUMANO) + 1 : fin if fin != -1 else len(resto)]
+    raise ErrorActaNoDerivable(
+        f"El mensaje L3 de {familia} declara el formato de texto humano {declarada!r}, "
+        f"y esta versión del acta sólo sabe leer {VERSION_FORMATO_TEXTO_HUMANO!r}. "
+        "Actualizar el catálogo antes de derivar un conjunto con ese formato."
+    )
+
+
+def _decodificar_campo(valor: str, familia: str) -> str:
+    """Devuelve el texto humano original de un campo ya separado del mensaje.
+
+    Se aplica **después** de partir el mensaje por su estructura, nunca antes:
+    decodificar el mensaje entero devolvería los ``;`` al interior de los valores
+    y reintroduciría exactamente la ambigüedad que el formato elimina.
+
+    Errores:
+        ErrorActaNoDerivable: si el valor tiene escapes que no pertenecen al
+            formato. Un acta no puede publicar un texto que no se pudo recuperar
+            con certeza.
+    """
+
+    try:
+        return decodificar_texto_humano(valor)
+    except ErrorTextoHumanoInvalido as error:
+        raise ErrorActaNoDerivable(
+            f"El mensaje L3 de {familia} tiene un campo humano que no se puede decodificar: {error}"
+        ) from error
+
+
 def _persona(concejal: str, banca: str) -> str:
     """Redacta identidad y banca como aparecen en el resto del acta.
 
@@ -242,21 +411,85 @@ def _persona(concejal: str, banca: str) -> str:
 # curso. Ambos son hechos institucionales que el acta debe conservar, pero
 # escritos en prosa y no como ``clave=valor``.
 _AUSENCIA = re.compile(
-    r"(?P<persona>.*) se AUSENTÓ"
+    rf"(?P<persona>{CARACTER_TEXTO_HUMANO}*) se AUSENTÓ"
     r"(?:; pedido_palabra_retirado=(?P<pedido>true|false)"
     r"; uso_palabra_finalizado=(?P<uso>true|false))?"
 )
 
-_PRESENCIA = re.compile(r".+ \(banca Nro:[^)]+\) se PRESENTÓ")
+_PRESENCIA = re.compile(rf"{CARACTER_TEXTO_HUMANO}+ \(banca Nro:[^)]+\) se PRESENTÓ")
 
-# Los cambios de sesión transportan sólo valores institucionales, pero se exige
-# el prefijo y el separador exactos para detectar cualquier campo agregado.
-_NUMERO_SESION_ACTUALIZADO = re.compile(r"Número de sesión actualizado: .* -> .*", re.DOTALL)
-_PRESIDENCIA_ACTUALIZADA = re.compile(r"Presidencia actualizado: .* -> .*", re.DOTALL)
-_SECRETARIA_ACTUALIZADA = re.compile(
-    r"Secretaría Legislativa actualizado: .* -> .*",
-    re.DOTALL,
+# Los cambios de sesión transportan dos valores humanos adyacentes, el anterior
+# y el nuevo. En el formato histórico los separaba una flecha literal ``" -> "``
+# que también podía aparecer dentro de cualquiera de los dos nombres: la
+# frontera era ambigua aunque el acta no la partiera. El formato nuevo los
+# escribe como dos campos codificados y la flecha vuelve a ser sólo redacción
+# del acta (WP-107 I002).
+_SUFIJO_ACTUALIZACION = " actualizado: "
+
+_ACTUALIZACION_CODIFICADA = (
+    rf"{MARCA_FORMATO_TEXTO_HUMANO}; anterior=(?P<anterior>{CAMPO_HUMANO_CODIFICADO})"
+    rf"; nuevo=(?P<nuevo>{CAMPO_HUMANO_CODIFICADO})"
 )
+
+# Ruta histórica: se conserva tal como la leía la iteración 1 para que los
+# conjuntos ya cerrados sigan derivándose exactamente igual.
+_ACTUALIZACION_LEGACY = rf"{CARACTER_TEXTO_HUMANO}* -> {CARACTER_TEXTO_HUMANO}*"
+
+
+def _redactar_actualizacion_historica(campo: str, familia: str) -> Callable[[str], str]:
+    """Publica una actualización de sesión de un conjunto ya cerrado.
+
+    Se aplica **sólo** a los ``event_code`` sin sufijo de versión, que ningún
+    productor emite desde WP-107 I003. Conserva exactamente la redacción que el
+    acta venía publicando para esos archivos: el mensaje entero, tal cual.
+
+    Deliberadamente **no** mira el contenido para decidir nada. Un valor
+    histórico podía empezar con cualquier cosa —incluida la marca de formato o
+    una versión inventada— porque DEC-008 define las autoridades como texto
+    libre. Intentar interpretarlo fue el defecto que corrige esta iteración:
+    hacía que un nombre como ``formato=h1; anterior=Ana; nuevo=Beatriz`` se
+    republicara partido en dos, y que uno como ``formato=h2; ...`` abortara un
+    acta que antes se derivaba sin problemas.
+
+    La ambigüedad histórica entre ``anterior`` y ``nuevo`` sigue sin poder
+    resolverse hacia atrás: la información que separaría los dos valores nunca se
+    persistió. Por eso se publica el texto completo, que es lo único fiel.
+    """
+
+    prefijo = f"{campo}{_SUFIJO_ACTUALIZACION}"
+    patron = re.compile(rf"{re.escape(prefijo)}{_ACTUALIZACION_LEGACY}")
+
+    def redactar(mensaje: str) -> str:
+        _exigir(patron, mensaje, familia)
+        return mensaje
+
+    return redactar
+
+
+def _redactar_actualizacion_codificada(campo: str, familia: str) -> Callable[[str], str]:
+    """Publica «<campo> actualizado: <anterior> -> <nuevo>» del formato vigente.
+
+    Se aplica **sólo** a los ``event_code`` con sufijo ``_H1``. Los dos valores se
+    separan por estructura y se decodifican por separado, de modo que la línea del
+    acta atribuye cada nombre a su rol aunque contenga la propia flecha.
+
+    Exige la marca de formato en su posición exacta. No hay ruta de respaldo hacia
+    el formato histórico: si un mensaje llega con este ``event_code`` y no respeta
+    la forma, el acta falla cerrado en vez de reinterpretarlo con otra gramática.
+    """
+
+    prefijo = f"{campo}{_SUFIJO_ACTUALIZACION}"
+    patron = re.compile(rf"{re.escape(prefijo)}{_ACTUALIZACION_CODIFICADA}")
+
+    def redactar(mensaje: str) -> str:
+        datos = _exigir(patron, mensaje, familia)
+        anterior = _decodificar_campo(datos["anterior"], familia)
+        nuevo = _decodificar_campo(datos["nuevo"], familia)
+        return f"{prefijo}{anterior} -> {nuevo}"
+
+    return redactar
+
+
 _SESION_ABIERTA = re.compile(r"Apertura de sesión Nº\d+")
 _SESION_CERRADA = re.compile(r"Cierre de sesión Nº\d+")
 
@@ -286,18 +519,80 @@ def _redactar_ausencia(mensaje: str) -> str:
 # publican: son estado interno del mecanismo de turnos.
 # ---------------------------------------------------------------------------
 
-_IDENTIDAD_PALABRA = r"DNI=[^;]*; concejal=(?P<concejal>.*); banca=(?P<banca>[^;]*)"
+# El DNI también es texto humano: el padrón sólo exige que no esté vacío, así
+# que puede traer un ``;`` y suplantar el nombre del concejal que viene después.
+# En el formato nuevo ambos campos van codificados y ``[^;]*`` los separa de
+# forma exacta; la ruta histórica conserva la lectura de la iteración 1.
+_IDENTIDAD_CODIFICADA = (
+    rf"{MARCA_FORMATO_TEXTO_HUMANO}; DNI={CAMPO_HUMANO_CODIFICADO}"
+    rf"; concejal=(?P<concejal>{CAMPO_HUMANO_CODIFICADO}); banca=(?P<banca>[^;]*)"
+)
 
-_PEDIDO_REGISTRADO = re.compile(
-    rf"Pedido de palabra registrado: {_IDENTIDAD_PALABRA}; posicion=\d+"
+_IDENTIDAD_LEGACY = (
+    rf"DNI={CARACTER_TEXTO_HUMANO}*?; concejal=(?P<concejal>{CARACTER_TEXTO_HUMANO}*)"
+    r"; banca=(?P<banca>[^;]*)"
 )
-_PEDIDO_RETIRADO = re.compile(
-    rf"Pedido de palabra retirado: {_IDENTIDAD_PALABRA}; posicion_previa=\d+"
+
+# Cada familia de palabra es el mismo bloque de identidad con una cola técnica
+# propia. Se declaran juntas para que agregar una futura no pueda olvidarse de
+# ninguno de los dos formatos.
+_COLAS_DE_PALABRA: Mapping[str, str] = MappingProxyType(
+    {
+        "Pedido de palabra registrado": r"; posicion=\d+",
+        "Pedido de palabra retirado": r"; posicion_previa=\d+",
+        "Uso de palabra otorgado": r"; posicion_origen=\d+",
+        "Uso de palabra finalizado": r"; causa=(?P<causa>PROPIO|MODERACION)",
+    }
 )
-_USO_OTORGADO = re.compile(rf"Uso de palabra otorgado: {_IDENTIDAD_PALABRA}; posicion_origen=\d+")
-_USO_FINALIZADO = re.compile(
-    rf"Uso de palabra finalizado: {_IDENTIDAD_PALABRA}; causa=(?P<causa>PROPIO|MODERACION)"
+
+
+# Los dos patrones de cada familia se compilan una sola vez, al importar el
+# módulo. Además de ahorrar trabajo por evento, deja el catálogo completo
+# construido de entrada: una cola mal escrita explota al importar y no la primera
+# vez que alguien cierra una sesión.
+_PATRONES_DE_PALABRA: Mapping[str, tuple[re.Pattern[str], re.Pattern[str]]] = MappingProxyType(
+    {
+        prefijo: (
+            re.compile(rf"{re.escape(prefijo)}: {_IDENTIDAD_CODIFICADA}{cola}"),
+            re.compile(rf"{re.escape(prefijo)}: {_IDENTIDAD_LEGACY}{cola}"),
+        )
+        for prefijo, cola in _COLAS_DE_PALABRA.items()
+    }
 )
+
+
+def _redactar_identidad(prefijo: str, mensaje: str, familia: str) -> tuple[re.Match[str], str]:
+    """Separa el bloque de identidad y devuelve la persona lista para publicarse.
+
+    Entradas:
+        prefijo: frase fija con la que empieza esa familia, por ejemplo
+            ``"Pedido de palabra registrado"``.
+        mensaje: el ``message`` completo, ya depurado por el generador.
+        familia: nombre ``ETIQUETA/CODIGO``, sólo para los mensajes de error.
+
+    Resultado:
+        La coincidencia —que las familias con cola propia necesitan para leer su
+        último campo técnico— y la persona ya redactada como la nombra el resto
+        del acta.
+
+    Errores:
+        ErrorActaNoDerivable: si el mensaje no tiene la forma de su formato o si
+            un campo codificado no se puede decodificar.
+
+    Concentra en un solo lugar la regla de que el nombre se decodifica **sólo**
+    cuando el mensaje declara el formato nuevo. La banca es un entero del dominio
+    y nunca estuvo codificada.
+    """
+
+    codificado, legacy = _PATRONES_DE_PALABRA[prefijo]
+    if _declara_formato_nuevo(mensaje, f"{prefijo}: ", familia):
+        datos = _exigir(codificado, mensaje, familia)
+        concejal = _decodificar_campo(datos["concejal"], familia)
+    else:
+        datos = _exigir(legacy, mensaje, familia)
+        concejal = datos["concejal"]
+    return datos, _persona(concejal, datos["banca"])
+
 
 _CAUSAS_FIN_PALABRA = MappingProxyType(
     {
@@ -308,18 +603,24 @@ _CAUSAS_FIN_PALABRA = MappingProxyType(
 
 
 def _redactar_pedido_registrado(mensaje: str) -> str:
-    datos = _exigir(_PEDIDO_REGISTRADO, mensaje, "PALABRA/PEDIDO_PALABRA_REGISTRADO")
-    return f"Pedido de palabra registrado: {_persona(datos['concejal'], datos['banca'])}"
+    _, persona = _redactar_identidad(
+        "Pedido de palabra registrado", mensaje, "PALABRA/PEDIDO_PALABRA_REGISTRADO"
+    )
+    return f"Pedido de palabra registrado: {persona}"
 
 
 def _redactar_pedido_retirado(mensaje: str) -> str:
-    datos = _exigir(_PEDIDO_RETIRADO, mensaje, "PALABRA/PEDIDO_PALABRA_RETIRADO")
-    return f"Pedido de palabra retirado: {_persona(datos['concejal'], datos['banca'])}"
+    _, persona = _redactar_identidad(
+        "Pedido de palabra retirado", mensaje, "PALABRA/PEDIDO_PALABRA_RETIRADO"
+    )
+    return f"Pedido de palabra retirado: {persona}"
 
 
 def _redactar_uso_otorgado(mensaje: str) -> str:
-    datos = _exigir(_USO_OTORGADO, mensaje, "PALABRA/USO_PALABRA_OTORGADO")
-    return f"Uso de la palabra otorgado: {_persona(datos['concejal'], datos['banca'])}"
+    _, persona = _redactar_identidad(
+        "Uso de palabra otorgado", mensaje, "PALABRA/USO_PALABRA_OTORGADO"
+    )
+    return f"Uso de la palabra otorgado: {persona}"
 
 
 def _redactar_uso_finalizado(mensaje: str) -> str:
@@ -330,9 +631,11 @@ def _redactar_uso_finalizado(mensaje: str) -> str:
     lugar del par ``causa=...`` del registro técnico.
     """
 
-    datos = _exigir(_USO_FINALIZADO, mensaje, "PALABRA/USO_PALABRA_FINALIZADO")
+    datos, persona = _redactar_identidad(
+        "Uso de palabra finalizado", mensaje, "PALABRA/USO_PALABRA_FINALIZADO"
+    )
     causa = _CAUSAS_FIN_PALABRA[datos["causa"]]
-    return f"Uso de la palabra finalizado {causa}: {_persona(datos['concejal'], datos['banca'])}"
+    return f"Uso de la palabra finalizado {causa}: {persona}"
 
 
 # ---------------------------------------------------------------------------
@@ -340,10 +643,24 @@ def _redactar_uso_finalizado(mensaje: str) -> str:
 # ---------------------------------------------------------------------------
 
 # ``tipo`` y ``tema`` son texto libre cargado por Moderación u obtenido del Orden
-# del Día: pueden contener ``;`` y ``=``. Por eso el patrón los delimita con las
-# claves literales que vienen después y no partiendo el mensaje por separadores.
-_VOTACION_ABIERTA = re.compile(
-    r"Votación abierta: número=(?P<numero>\d+); tipo=(?P<tipo>.*?); tema=(?P<tema>.*)"
+# del Día, y son los dos únicos campos humanos **adyacentes** del L3: el
+# separador ``"; tema="`` puede aparecer dentro del propio ``tipo``. En el
+# formato nuevo van codificados, así que ``[^;]*`` los separa de forma exacta.
+_PREFIJO_VOTACION_ABIERTA = "Votación abierta: "
+
+_VOTACION_ABIERTA_CODIFICADA = re.compile(
+    rf"{_PREFIJO_VOTACION_ABIERTA}{MARCA_FORMATO_TEXTO_HUMANO}; número=(?P<numero>\d+)"
+    rf"; tipo=(?P<tipo>{CAMPO_HUMANO_CODIFICADO}); tema=(?P<tema>{CAMPO_HUMANO_CODIFICADO})"
+    r"; tipo_mayoria=(?P<mayoria>SIMPLE|ESPECIAL); factor=(?P<factor>[^;]*)"
+    r"; base=(?P<base>[A-Z_]+)"
+)
+
+# Ruta histórica. Conserva la lectura de la iteración 1, incluida su ambigüedad
+# irreparable: la información que permitiría separar tipo de tema nunca se
+# persistió en esos archivos.
+_VOTACION_ABIERTA_LEGACY = re.compile(
+    rf"{_PREFIJO_VOTACION_ABIERTA}número=(?P<numero>\d+); tipo=(?P<tipo>{CARACTER_TEXTO_HUMANO}*?)"
+    rf"; tema=(?P<tema>{CARACTER_TEXTO_HUMANO}*)"
     r"; tipo_mayoria=(?P<mayoria>SIMPLE|ESPECIAL); factor=(?P<factor>[^;]*)"
     r"; base=(?P<base>[A-Z_]+)"
 )
@@ -374,20 +691,25 @@ def _base_en_prosa(base: str, familia: str) -> str:
 def _redactar_votacion_abierta(mensaje: str) -> str:
     """Publica número, tipo, tema y regla de mayoría de la votación abierta."""
 
-    datos = _exigir(_VOTACION_ABIERTA, mensaje, "VOTACION/VOTACION_ABIERTA")
+    familia = "VOTACION/VOTACION_ABIERTA"
+    if _declara_formato_nuevo(mensaje, _PREFIJO_VOTACION_ABIERTA, familia):
+        datos = _exigir(_VOTACION_ABIERTA_CODIFICADA, mensaje, familia)
+        tipo = _decodificar_campo(datos["tipo"], familia)
+        tema = _decodificar_campo(datos["tema"], familia)
+    else:
+        datos = _exigir(_VOTACION_ABIERTA_LEGACY, mensaje, familia)
+        tipo, tema = datos["tipo"], datos["tema"]
     if datos["mayoria"] == "SIMPLE":
         regla = "Mayoría simple."
     else:
-        base = _base_en_prosa(datos["base"], "VOTACION/VOTACION_ABIERTA")
+        base = _base_en_prosa(datos["base"], familia)
         regla = f"Mayoría especial: proporción requerida {datos['factor']} sobre {base}."
-    return (
-        f"Votación Nro {datos['numero']} abierta. "
-        f"Tipo: {datos['tipo']}. Tema: {datos['tema']}. {regla}"
-    )
+    return f"Votación Nro {datos['numero']} abierta. Tipo: {tipo}. Tema: {tema}. {regla}"
 
 
 _VOTO_ORDINARIO = re.compile(
-    r"Voto ordinario: (?P<persona>.*) votó (?P<valor>POSITIVO|NEGATIVO|ABSTENCION)"
+    rf"Voto ordinario: (?P<persona>{CARACTER_TEXTO_HUMANO}*)"
+    r" votó (?P<valor>POSITIVO|NEGATIVO|ABSTENCION)"
     r"; votación número=(?P<numero>\d+); id=[^;]*"
 )
 
@@ -477,10 +799,10 @@ _INCONCLUSA = re.compile(
     r"Votación finalizada inconclusa; numero_votacion=(?P<numero>\d+); id=[^;]*"
     r"; causa=(?P<causa>MANUAL|PERDIDA_QUORUM|CIERRE_SESION); estado_previo=[A-Z_]+"
     r"; resultado_previo=[A-Za-z]+; votos_conservados=(?P<votos>\d+)"
-    r"; resultado_nuevo=INCONCLUSA(?P<cola>.*)"
+    rf"; resultado_nuevo=INCONCLUSA(?P<cola>{CARACTER_TEXTO_HUMANO}*)"
 )
 
-_COLA_MANUAL = re.compile(r"; motivo_manual=(?P<motivo>.*)")
+_COLA_MANUAL = re.compile(rf"; motivo_manual=(?P<motivo>{CARACTER_TEXTO_HUMANO}*)")
 _COLA_QUORUM = re.compile(r"; presentes=(?P<presentes>\d+); quorum_requerido=(?P<quorum>\d+)")
 _COLA_CIERRE = re.compile(r"; resuelta_por_cierre_sesion=true")
 
@@ -519,7 +841,8 @@ def _redactar_inconclusa(mensaje: str) -> str:
 
 _VOTO_DESEMPATE = re.compile(
     r"Voto presidencial de desempate: numero_votacion=(?P<numero>\d+); id=[^;]*"
-    r"; presidencia=(?P<presidencia>.*); sentido=(?P<sentido>POSITIVO|NEGATIVO)"
+    rf"; presidencia=(?P<presidencia>{CARACTER_TEXTO_HUMANO}*)"
+    r"; sentido=(?P<sentido>POSITIVO|NEGATIVO)"
     r"; estado_previo=[A-Z_]+; resultado_previo=[A-Z]+; votos_ordinarios=\d+"
     rf"; {_CONTEOS}"
 )
@@ -537,7 +860,8 @@ def _redactar_voto_desempate(mensaje: str) -> str:
 
 _RESULTADO_DESEMPATE = re.compile(
     r"Resultado por desempate presidencial: numero_votacion=(?P<numero>\d+); id=[^;]*"
-    r"; presidencia=(?P<presidencia>.*); sentido=(?P<sentido>POSITIVO|NEGATIVO)"
+    rf"; presidencia=(?P<presidencia>{CARACTER_TEXTO_HUMANO}*)"
+    r"; sentido=(?P<sentido>POSITIVO|NEGATIVO)"
     r"; resultado_previo=EMPATADA; resultado_final=(?P<final>[A-Z]+)"
     rf"; votos_ordinarios=\d+; {_CONTEOS}"
 )
@@ -613,23 +937,38 @@ POLITICAS_ACTA: Mapping[tuple[str, str], PoliticaActa] = MappingProxyType(
             motivo="Sólo cierre y número de sesión, ambos institucionales.",
         ),
         (ETIQUETA_SESION, CODIGO_NUMERO_SESION_ACTUALIZADO): PoliticaActa(
-            redactar=_conservar_si_coincide(
-                _NUMERO_SESION_ACTUALIZADO,
-                "SESION/NUMERO_SESION_ACTUALIZADO",
+            redactar=_redactar_actualizacion_historica(
+                "Número de sesión", "SESION/NUMERO_SESION_ACTUALIZADO"
+            ),
+            motivo="Conjunto cerrado: número anterior y nuevo, tal como se escribieron.",
+        ),
+        (ETIQUETA_SESION, CODIGO_PRESIDENCIA_ACTUALIZADA): PoliticaActa(
+            redactar=_redactar_actualizacion_historica(
+                "Presidencia", "SESION/PRESIDENCIA_ACTUALIZADA"
+            ),
+            motivo="Conjuntos cerrados: autoridad anterior y nueva, tal como se escribieron.",
+        ),
+        (ETIQUETA_SESION, CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA): PoliticaActa(
+            redactar=_redactar_actualizacion_historica(
+                "Secretaría Legislativa", "SESION/SECRETARIA_LEGISLATIVA_ACTUALIZADA"
+            ),
+            motivo="Conjuntos cerrados: autoridad anterior y nueva, tal como se escribieron.",
+        ),
+        (ETIQUETA_SESION, CODIGO_NUMERO_SESION_ACTUALIZADO_H1): PoliticaActa(
+            redactar=_redactar_actualizacion_codificada(
+                "Número de sesión", "SESION/NUMERO_SESION_ACTUALIZADO_H1"
             ),
             motivo="Valor anterior y nuevo del número de sesión, sin metadata técnica.",
         ),
-        (ETIQUETA_SESION, CODIGO_PRESIDENCIA_ACTUALIZADA): PoliticaActa(
-            redactar=_conservar_si_coincide(
-                _PRESIDENCIA_ACTUALIZADA,
-                "SESION/PRESIDENCIA_ACTUALIZADA",
+        (ETIQUETA_SESION, CODIGO_PRESIDENCIA_ACTUALIZADA_H1): PoliticaActa(
+            redactar=_redactar_actualizacion_codificada(
+                "Presidencia", "SESION/PRESIDENCIA_ACTUALIZADA_H1"
             ),
             motivo="Nombres de la autoridad anterior y nueva, sin metadata técnica.",
         ),
-        (ETIQUETA_SESION, CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA): PoliticaActa(
-            redactar=_conservar_si_coincide(
-                _SECRETARIA_ACTUALIZADA,
-                "SESION/SECRETARIA_LEGISLATIVA_ACTUALIZADA",
+        (ETIQUETA_SESION, CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1): PoliticaActa(
+            redactar=_redactar_actualizacion_codificada(
+                "Secretaría Legislativa", "SESION/SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1"
             ),
             motivo="Nombres de la autoridad anterior y nueva, sin metadata técnica.",
         ),

@@ -48,11 +48,29 @@ from sis_leg_backend.servicios.finalizacion_votacion import (
     finalizar_votacion_inconclusa_bajo_lock,
 )
 from sis_leg_backend.servicios.serializacion import EjecutorMutaciones
+from sis_leg_backend.servicios.texto_humano_l3 import (
+    MARCA_FORMATO_TEXTO_HUMANO,
+    codificar_texto_humano,
+)
 
 ETIQUETA_SESION = "SESION"
-CODIGO_NUMERO_SESION_ACTUALIZADO = "NUMERO_SESION_ACTUALIZADO"
-CODIGO_PRESIDENCIA_ACTUALIZADA = "PRESIDENCIA_ACTUALIZADA"
-CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA = "SECRETARIA_LEGISLATIVA_ACTUALIZADA"
+# Los tres cambios institucionales llevan el sufijo de versión del formato de
+# texto humano en su propio ``event_code`` (WP-107 I003).
+#
+# Por qué el discriminador vive acá y no dentro del mensaje: en estas familias el
+# primer campo humano empieza **inmediatamente después** del prefijo
+# (``"Presidencia actualizado: <anterior> -> <nuevo>"``), así que cualquier marca
+# textual puesta en esa posición puede haber sido escrita por una persona —
+# DEC-008 define las autoridades como texto libre— y no distingue nada. El
+# ``event_code`` es una columna propia del CSV que sólo escribe el productor: no
+# hay forma de que un valor humano lo imite.
+#
+# Los códigos históricos sin sufijo siguen existiendo en el catálogo del acta,
+# donde significan exclusivamente el formato anterior. Ningún productor los emite
+# ya, y por eso no se declaran en este módulo.
+CODIGO_NUMERO_SESION_ACTUALIZADO_H1 = "NUMERO_SESION_ACTUALIZADO_H1"
+CODIGO_PRESIDENCIA_ACTUALIZADA_H1 = "PRESIDENCIA_ACTUALIZADA_H1"
+CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1 = "SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1"
 CODIGO_SESION_ABIERTA = "SESION_ABIERTA"
 CODIGO_SESION_CERRADA = "SESION_CERRADA"
 CODIGO_COMANDO_SESION_RECHAZADO = "COMANDO_SESION_RECHAZADO"
@@ -149,7 +167,7 @@ class ServicioSesion:
             if numero != preparacion.numero_sesion:
                 self._registrar_actualizacion(
                     preparacion,
-                    CODIGO_NUMERO_SESION_ACTUALIZADO,
+                    CODIGO_NUMERO_SESION_ACTUALIZADO_H1,
                     "Número de sesión",
                     preparacion.numero_sesion,
                     numero,
@@ -161,7 +179,7 @@ class ServicioSesion:
             if presidencia != preparacion.presidencia:
                 self._registrar_actualizacion(
                     preparacion,
-                    CODIGO_PRESIDENCIA_ACTUALIZADA,
+                    CODIGO_PRESIDENCIA_ACTUALIZADA_H1,
                     "Presidencia",
                     preparacion.presidencia,
                     presidencia,
@@ -175,7 +193,7 @@ class ServicioSesion:
             if secretaria != preparacion.secretaria_legislativa:
                 self._registrar_actualizacion(
                     preparacion,
-                    CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA,
+                    CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1,
                     "Secretaría Legislativa",
                     preparacion.secretaria_legislativa,
                     secretaria,
@@ -269,7 +287,7 @@ class ServicioSesion:
             if presidencia != contexto.presidencia:
                 self._registrar_actualizacion(
                     contexto,
-                    CODIGO_PRESIDENCIA_ACTUALIZADA,
+                    CODIGO_PRESIDENCIA_ACTUALIZADA_H1,
                     "Presidencia",
                     contexto.presidencia,
                     presidencia,
@@ -284,7 +302,7 @@ class ServicioSesion:
             if secretaria != contexto.secretaria_legislativa:
                 self._registrar_actualizacion(
                     contexto,
-                    CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA,
+                    CODIGO_SECRETARIA_LEGISLATIVA_ACTUALIZADA_H1,
                     "Secretaría Legislativa",
                     contexto.secretaria_legislativa,
                     secretaria,
@@ -425,9 +443,9 @@ class ServicioSesion:
             NivelAuditoria.L3,
             ETIQUETA_SESION,
             codigo,
-            f"{campo} actualizado: "
-            f"{ServicioSesion._valor_humano(anterior)} -> "
-            f"{ServicioSesion._valor_humano(nuevo)}",
+            f"{campo} actualizado: {MARCA_FORMATO_TEXTO_HUMANO}; "
+            f"anterior={codificar_texto_humano(ServicioSesion._valor_humano(anterior))}; "
+            f"nuevo={codificar_texto_humano(ServicioSesion._valor_humano(nuevo))}",
         )
 
     @staticmethod
