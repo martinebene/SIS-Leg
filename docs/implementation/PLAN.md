@@ -598,7 +598,9 @@ La revalidación read-only de WP-101B demostró que la release activa del host (
 
 | WP | Objetivo | Estado | Depende de | Agente |
 |---|---|---|---|---|
-| WP-105 | Bootstrap público seguro transicional desde releases anteriores a WP-101A | EN_CURSO | WP-100, WP-101, WP-104 | claude |
+| WP-105 | Bootstrap público seguro transicional desde releases anteriores a WP-101A | INTEGRADO | WP-100, WP-101, WP-104 | - |
+
+WP-105 quedó `VERIFIED_COMPLETE`: PR #117 integrada por squash como `d1f3115600cc07134ca5a74ac886a4cf9c041c27`, con tree `50d4b48c157949cf67cb1f1574ebd7003d58730e`, auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`, CI post-merge #558 `success` y release pública #15 publicada correctamente. El cleanup quedó verificado. Esa release fue posteriormente instalada y validada en producción durante WP-101B; cualquier mutación productiva posterior requiere una nueva autoridad explícita.
 
 ## Zócalo: ancho dinámico de rótulos - WP-106 (15/09/2026)
 
@@ -606,7 +608,9 @@ La prueba humana del Zócalo mostró que el rótulo `Votación` podía perder su
 
 | WP | Objetivo | Estado | Depende de | Agente |
 |---|---|---|---|---|
-| WP-106 | Ancho dinámico de la columna de rótulos del Zócalo | EN_CURSO | WP-099, WP-103 | claude |
+| WP-106 | Ancho dinámico de la columna de rótulos del Zócalo | INTEGRADO | WP-099, WP-103 | - |
+
+WP-106 quedó `VERIFIED_COMPLETE`: PR #119 integrada por squash como `73b2c00ab7f8645452500c012ef6b1ffc9e04e01`, con tree idéntico al candidato revisado `3ed198fada4214654863d46e93ef9bcb04826981`, revisión independiente 0 BLOQUEANTES / 0 IMPORTANTES / 0 MENORES, auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`, CI candidata #560 y post-merge #561 `success` 8/8, release pública #18 y cleanup verificado. Producción todavía no incorporó esta release de forma separada; el cambio viajará con una actualización posterior.
 
 ## Robustez del ACTA ante texto humano válido - WP-107 (24/09/2026)
 
@@ -614,4 +618,6 @@ Tras varios días de uso productivo se observaron cierres donde los CSV L1/L2/L3
 
 | WP | Objetivo | Estado | Depende de | Agente |
 |---|---|---|---|---|
-| WP-107 | Robustez del ACTA ante texto humano válido y advertencia persistente | EN_CURSO | WP-085, WP-078 | claude |
+| WP-107 | Robustez del ACTA ante texto humano válido y advertencia persistente | INTEGRADO | WP-085, WP-078 | - |
+
+WP-107 quedó `VERIFIED_COMPLETE` tras tres iteraciones: PR #120 integrada por squash como `569dc7f2f5b51e8fd0347ddaee05270fce1b931e`, con tree `53dc63889f1e26846307cfe188be78b731030504` idéntico al candidato revisado, revisión independiente final 0 BLOQUEANTES / 0 IMPORTANTES / 0 MENORES, auditoría ORCHESTRATOR `APROBADO_PARA_MERGE`, CI candidata #564 y post-merge #565 `success` 8/8, release pública #22 y cleanup verificado sin ramas remotas ni worktree activo del WP. La release productiva activa registrada sigue siendo `d1f3115600cc07134ca5a74ac886a4cf9c041c27`; desplegar `569dc7f2...` requiere una nueva autoridad productiva y preflight del host.
